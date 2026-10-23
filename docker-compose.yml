@@ -1,7 +1,7 @@
 # ติดตั้งบน VPS คู่กับ n8n (เครือข่ายภายในเดียวกัน ไม่เปิดพอร์ตออกอินเทอร์เน็ต)
 services:
   aff-renderer:
-    build: https://github.com/mcpumee/aff-renderer.git#main
+    build: .
     container_name: aff-renderer
     restart: unless-stopped
     environment:

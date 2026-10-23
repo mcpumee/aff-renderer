@@ -1,0 +1,22 @@
+# ติดตั้งบน VPS คู่กับ n8n (เครือข่ายภายในเดียวกัน ไม่เปิดพอร์ตออกอินเทอร์เน็ต)
+services:
+  aff-renderer:
+    build: https://github.com/mcpumee/aff-renderer.git#main
+    container_name: aff-renderer
+    restart: unless-stopped
+    environment:
+      - PUBLIC_BASE=${PUBLIC_BASE}
+      - RENDER_TOKEN=${RENDER_TOKEN}
+      - CONCURRENCY=2
+      - KEEP_DAYS=30
+    volumes:
+      - aff_data:/data
+    networks:
+      - n8n_net
+    mem_limit: 5g
+volumes:
+  aff_data:
+networks:
+  n8n_net:
+    external: true
+    name: ${N8N_NETWORK:-n8n_default}

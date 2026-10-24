@@ -49,6 +49,29 @@ async function localize(id, url, i, ext) {
   return `${LOCAL}/tmp/${name}`;
 }
 
+/** ขนาดรูปจริง (กว้าง×สูง) */
+async function probeSize(file) {
+  try {
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0:s=x', file]);
+    const [w, h] = stdout.trim().split('x').map(Number);
+    return w && h ? { w, h } : null;
+  } catch { return null; }
+}
+
+/** รูปเล็กกว่าจอ: ขยายด้วย lanczos + เพิ่มความคมเล็กน้อย (ดีกว่าให้เบราว์เซอร์ยืดเอง) */
+async function enhanceImage(file) {
+  const size = await probeSize(file);
+  if (!size) return { w: 1080, h: 1920 };
+  if (size.w >= 1080) return size;
+  const out = file.replace(/\.jpg$/, '-hd.jpg');
+  try {
+    await run('ffmpeg', ['-y', '-v', 'error', '-i', file, '-vf',
+      'scale=1080:-2:flags=lanczos,unsharp=5:5:0.6:5:5:0.0', '-q:v', '2', out]);
+    fs.renameSync(out, file);
+  } catch (e) { log('enhance ไม่สำเร็จ ใช้รูปเดิม', e.message); }
+  return size; // ขนาดต้นฉบับ (ใช้ตัดสินว่ารูปเล็กไหม)
+}
+
 async function probeSeconds(file) {
   const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]);
   return Number(stdout.trim()) || 0;
@@ -64,10 +87,15 @@ async function buildProps(id, req) {
       captions = captionsFromAlignment(al);
       speechEnd = al?.character_end_times_seconds?.at(-1) || (await probeSeconds(path.join(TMP, `${id}-vo.mp3`)));
     }
-    const imgs = async (arr, tag) => Promise.all((arr || []).filter(Boolean).map((u, i) => localize(id, u, `${tag}${i}`, 'jpg')));
-    const [hero] = await imgs([req.hero], 'h');
-    const reviewUrls = await imgs(req.reviews, 'r');
-    const shotUrls = await imgs(req.shots, 's');
+    const sizes = {};
+    const imgs = async (arr, tag, enhance) => Promise.all((arr || []).filter(Boolean).map(async (u, i) => {
+      const url = await localize(id, u, `${tag}${i}`, 'jpg');
+      if (enhance) sizes[url] = await enhanceImage(path.join(TMP, `${id}-${tag}${i}.jpg`));
+      return url;
+    }));
+    const [hero] = await imgs([req.hero], 'h', true);
+    const reviewUrls = await imgs(req.reviews, 'r', false);
+    const shotUrls = await imgs(req.shots, 's', true);
     const durationSec = Math.max(HOOK_SEC + END_SEC + 2, speechEnd + 0.8);
     return {
       comp: 'ReviewClip',
@@ -75,7 +103,7 @@ async function buildProps(id, req) {
         durationSec, audioUrl, captions,
         hookText: req.hookText || 'เอาตรงๆเลยนะ\nจากรีวิว',
         heroUrl: hero || shotUrls[0] || reviewUrls[0] || '',
-        reviewUrls, shotUrls,
+        reviewUrls, shotUrls, sizes,
         price: req.price || '', cta: req.cta || 'กดตะกร้าได้เลย 👇',
       },
     };

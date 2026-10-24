@@ -12,6 +12,7 @@ export type ReviewProps = {
   heroUrl: string;       // รูปสินค้าที่สวยที่สุด (Hook + 5 วิท้าย)
   reviewUrls: string[];  // แคปรีวิว 2–3 ภาพ (เด้งแปะช่วง Hook)
   shotUrls: string[];    // รูปสินค้ามุมอื่น / ใช้งานจริง (ช่วงกลาง)
+  sizes?: Record<string, { w: number; h: number }>; // ขนาดรูปต้นฉบับ
   price: string;         // "฿184"
   cta: string;           // "กดตะกร้าได้เลย 👇"
 };
@@ -19,10 +20,27 @@ export type ReviewProps = {
 const HOOK_SEC = 3.6;
 const END_SEC = 5;
 
-/** รูปเต็มจอ ซูมช้า ๆ (Ken Burns) */
-const SlowZoom: React.FC<{ src: string; dur: number; dir?: 1 | -1; blur?: number }> = ({ src, dur, dir = 1, blur = 0 }) => {
+/** ต้องยืดรูปกี่เท่าถึงเต็มจอ 1080×1920 (มากกว่า ~1.5 เท่า = ภาพจะนุ่ม) */
+const coverUpscale = (sz?: { w: number; h: number }) => (sz ? Math.max(1080 / sz.w, 1920 / sz.h) : 1);
+const SMALL = 1.5;
+
+/** รูปเต็มจอ ซูมช้า ๆ — รูปชัดพอ: ครอปเต็มจอ / รูปเล็ก: วางทั้งรูปบนพื้นหลังเบลอ ไม่ยืดจนแตก */
+const SlowZoom: React.FC<{ src: string; dur: number; dir?: 1 | -1; blur?: number; size?: { w: number; h: number } }> = ({ src, dur, dir = 1, blur = 0, size }) => {
   const frame = useCurrentFrame();
-  const s = interpolate(frame, [0, dur], dir === 1 ? [1, 1.1] : [1.1, 1], { extrapolateRight: 'clamp' });
+  const up = coverUpscale(size);
+  if (!blur && up > SMALL) {
+    const s2 = interpolate(frame, [0, dur], dir === 1 ? [1, 1.04] : [1.04, 1], { extrapolateRight: 'clamp' });
+    return (
+      <AbsoluteFill style={{ overflow: 'hidden', background: '#000' }}>
+        <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scale(1.15)', filter: 'blur(45px) brightness(0.65)' }} />
+        <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${s2})` }} />
+        </AbsoluteFill>
+      </AbsoluteFill>
+    );
+  }
+  const z = up > 1.2 ? 1.05 : 1.1; // รูปค่อนข้างเล็ก ซูมน้อยลง
+  const s = interpolate(frame, [0, dur], dir === 1 ? [1, z] : [z, 1], { extrapolateRight: 'clamp' });
   return (
     <AbsoluteFill style={{ overflow: 'hidden', background: '#000' }}>
       <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${s})`, filter: blur ? `blur(${blur}px)` : undefined }} />
@@ -64,7 +82,7 @@ export const ReviewClip: React.FC<ReviewProps> = (p) => {
         const len = Math.min(shotLen, midStart + midLen - from);
         return (
           <Sequence key={'s' + i} from={from} durationInFrames={len}>
-            <SlowZoom src={shots[i % shots.length]} dur={len} dir={i % 2 === 0 ? 1 : -1} />
+            <SlowZoom src={shots[i % shots.length]} size={p.sizes?.[shots[i % shots.length]]} dur={len} dir={i % 2 === 0 ? 1 : -1} />
           </Sequence>
         );
       })}
@@ -77,7 +95,7 @@ export const ReviewClip: React.FC<ReviewProps> = (p) => {
 
       {/* Hook: รูปสินค้า + แคปรีวิวเด้งแปะ */}
       <Sequence from={0} durationInFrames={hookF}>
-        <SlowZoom src={p.heroUrl} dur={hookF} />
+        <SlowZoom src={p.heroUrl} size={p.sizes?.[p.heroUrl]} dur={hookF} />
         <AbsoluteFill style={{ background: 'rgba(0,0,0,0.28)' }} />
         {p.reviewUrls.slice(0, 3).map((u, i) => (
           <ReviewCard key={'r' + i} src={u} from={Math.round((0.3 + i * 0.6) * fps)}

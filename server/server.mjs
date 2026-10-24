@@ -26,6 +26,43 @@ fs.mkdirSync(TMP, { recursive: true });
 
 const LOCAL = `http://127.0.0.1:${PORT}`;
 const HOOK_SEC = 3.6, END_SEC = 5, OUTRO_SEC = 2.5;
+const CUTOUT_PY = process.env.CUTOUT_PY || 'python3';
+const OPEN_PHRASE = 'ระเบิดกล่องสินค้า แนะนำ';
+
+/** ตัดพื้นหลังหลายรูปในครั้งเดียว (โหลดโมเดลครั้งเดียว) */
+async function cutouts(files) {
+  if (!files.length) return [];
+  const args = [path.join(ROOT, 'server', 'cutout.py')];
+  for (const f of files) args.push(f, f.replace(/\.jpg$/, '-cut.png'));
+  try {
+    const { stdout } = await run(CUTOUT_PY, args, { timeout: 180000, maxBuffer: 1 << 20 });
+    const res = JSON.parse(stdout.trim().split('\n').pop());
+    return res.map((r, i) => ({ ...r, file: files[i].replace(/\.jpg$/, '-cut.png') }));
+  } catch (e) {
+    log('ตัดพื้นหลังไม่สำเร็จ ใช้แบบการ์ดแทน', e.message.slice(0, 200));
+    return files.map(() => ({ ok: false, reason: 'cutout error' }));
+  }
+}
+
+/** ธีมกล่องของขวัญ — เลือกให้ตัดกับสีสินค้า และสุ่มคงที่ตามงาน */
+const THEMES = {
+  goldRed: { bg: ['#F6E7C8', '#C49A5A'], box: '#A3192A', boxDark: '#6E0F1B', ribbon: '#FFF4DE', baubles: ['#C8102E', '#D9AE3B'], confetti: ['#C8102E', '#E9C46A', '#FFFFFF', '#8B0000'] },
+  navy: { bg: ['#2A3F6B', '#0C1428'], box: '#D9AE3B', boxDark: '#9C7A20', ribbon: '#1E2E55', baubles: ['#D9AE3B', '#DDE3EE'], confetti: ['#D9AE3B', '#FFFFFF', '#8FB3FF', '#F4D58D'] },
+  emerald: { bg: ['#EEF6EE', '#8FC2A0'], box: '#17694A', boxDark: '#0C4430', ribbon: '#F4D35E', baubles: ['#F4D35E', '#C8102E'], confetti: ['#F4D35E', '#FFFFFF', '#17694A', '#C8102E'] },
+  pink: { bg: ['#FFE9F0', '#F2A1B8'], box: '#D93D68', boxDark: '#9E1F44', ribbon: '#FFFFFF', baubles: ['#FF8FB1', '#E8C26B'], confetti: ['#FFFFFF', '#FF8FB1', '#E8C26B', '#D93D68'] },
+  purple: { bg: ['#F1E9FF', '#AE93E6'], box: '#5A2CA0', boxDark: '#3A1870', ribbon: '#F7D774', baubles: ['#F7D774', '#C9B6FF'], confetti: ['#F7D774', '#FFFFFF', '#9B6BFF', '#5A2CA0'] },
+  orange: { bg: ['#FFF2E8', '#FFB27D'], box: '#EE4D2D', boxDark: '#B5321A', ribbon: '#FFFFFF', baubles: ['#EE4D2D', '#FFD23F'], confetti: ['#FFD23F', '#FFFFFF', '#EE4D2D', '#FF9F68'] },
+};
+function pickTheme(hue, seed) {
+  let pool;
+  if (hue == null) pool = Object.keys(THEMES);
+  else if (hue < 40 || hue >= 330) pool = ['navy', 'emerald']; // สินค้าสีแดง/ส้ม/ชมพู
+  else if (hue < 170) pool = ['goldRed', 'purple', 'pink']; // เหลือง/เขียว
+  else if (hue < 260) pool = ['orange', 'goldRed']; // ฟ้า/น้ำเงิน
+  else pool = ['goldRed', 'emerald']; // ม่วง
+  const h = [...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  return THEMES[pool[h % pool.length]];
+}
 
 let serveUrl;
 const queue = [];
@@ -102,12 +139,43 @@ async function buildProps(id, req) {
     const [hero] = await imgs([req.hero], 'h', true);
     const reviewUrls = await imgs(req.reviews, 'r', false);
     const shotUrls = await imgs(req.shots, 's', true);
-    const durationSec = Math.max(HOOK_SEC + END_SEC + 2, speechEnd + 0.8);
+
+    // ฉากเปิด: ตัดพื้นหลังรูปสินค้า (รูปหลัก + มุมอื่นอีกไม่เกิน 2) — ตัดไม่สวยใช้แบบการ์ด
+    const local = (u) => path.join(TMP, path.basename(u));
+    const heroSrc = hero || shotUrls[0] || '';
+    const extraSrc = shotUrls.filter((u) => u !== heroSrc).slice(0, 3);
+    const cuts = heroSrc ? await cutouts([heroSrc, ...extraSrc].map(local)) : [];
+    const asUrl = (f) => `${LOCAL}/tmp/${path.basename(f)}`;
+    let products = [];
+    if (cuts[0]?.ok) {
+      products.push({ url: asUrl(cuts[0].file), w: cuts[0].w, h: cuts[0].h, cut: true });
+      for (const c of cuts.slice(1)) if (c.ok && products.length < 3) products.push({ url: asUrl(c.file), w: c.w, h: c.h, cut: true });
+    } else if (heroSrc) {
+      const sz = sizes[heroSrc] || { w: 1080, h: 1350 };
+      products.push({ url: heroSrc, w: sz.w, h: sz.h, cut: false });
+    }
+    log('ฉากเปิด', id, cuts.map((c) => (c.ok ? 'ตัดได้' : `การ์ด(${c.reason})`)).join(', '));
+    const theme = pickTheme(cuts[0]?.hue ?? null, id);
+
+    // จังหวะระเบิด = ตอนพูด "ระเบิดกล่องสินค้า แนะนำ" จบ
+    let burstSec = 1.6;
+    const alN = req.voiceover?.normalized_alignment || req.voiceover?.alignment;
+    if (alN?.characters?.length) {
+      const txt = alN.characters.join('');
+      const at = txt.indexOf(OPEN_PHRASE);
+      if (at >= 0 && at < 5) burstSec = alN.character_end_times_seconds[at + OPEN_PHRASE.length - 1] + 0.1;
+    }
+    burstSec = Math.min(3, Math.max(1.1, burstSec));
+    const nRev = Math.min(3, reviewUrls.length);
+    const introSec = burstSec + 1.4 + nRev * 0.75 + 1.2;
+    const durationSec = Math.max(introSec + END_SEC + 2, speechEnd + 0.8);
     return {
       comp: 'ReviewClip',
       props: {
         durationSec, audioUrl, captions,
-        hookText: req.hookText || 'เอาตรงๆเลยนะ\nจากรีวิว',
+        hookText: req.hookText || 'ระเบิดกล่องสินค้า\nแนะนำ!',
+        burstSec, introSec, products, theme,
+        snapshotSec: burstSec + 1.1,
         heroUrl: hero || shotUrls[0] || reviewUrls[0] || '',
         reviewUrls, shotUrls, sizes,
         price: req.price || '', cta: req.cta || 'กดตะกร้าได้เลย 👇',
@@ -150,7 +218,7 @@ async function work(job) {
       concurrency: CONCURRENCY, chromiumOptions: { gl: 'swangle' }, timeoutInMilliseconds: 120000,
       onProgress: ({ progress }) => { job.progress = Math.round(progress * 100); },
     });
-    await run('ffmpeg', ['-y', '-loglevel', 'error', '-ss', '1.5', '-i', out, '-frames:v', '1', '-vf', 'scale=540:-2', path.join(OUT, `${job.id}.jpg`)]);
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(props.snapshotSec || 1.5), '-i', out, '-frames:v', '1', '-vf', 'scale=540:-2', path.join(OUT, `${job.id}.jpg`)]);
     job.status = 'succeeded';
     log('เสร็จ', job.id, comp, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
     await callback(job, { id: job.id, status: 'succeeded', url: `${PUBLIC_BASE}${job.id}.mp4`, snapshot_url: `${PUBLIC_BASE}${job.id}.jpg`, metadata: job.metadata });

@@ -3,6 +3,7 @@ import {
   AbsoluteFill, Audio, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig,
 } from 'remotion';
 import { Caption, Captions, FONT, PriceChip, YELLOW, outline, usePop } from './common';
+import { GiftIntro, Product, Theme } from './GiftIntro';
 
 export type ReviewProps = {
   durationSec: number;   // ความยาวคลิปทั้งหมด (ตามเสียงพากย์)
@@ -13,6 +14,10 @@ export type ReviewProps = {
   reviewUrls: string[];  // แคปรีวิว 2–3 ภาพ (เด้งแปะช่วง Hook)
   shotUrls: string[];    // รูปสินค้ามุมอื่น / ใช้งานจริง (ช่วงกลาง)
   sizes?: Record<string, { w: number; h: number }>; // ขนาดรูปต้นฉบับ
+  burstSec?: number;     // จังหวะกล่องระเบิด (ตามเสียงพากย์)
+  introSec?: number;     // ความยาวฉากเปิด (กล่อง + รีวิว)
+  products?: Product[];  // รูปสินค้าที่ตัดพื้นหลังแล้ว / แบบการ์ด
+  theme?: Theme;
   price: string;         // "฿184"
   cta: string;           // "กดตะกร้าได้เลย 👇"
 };
@@ -64,7 +69,8 @@ const ReviewCard: React.FC<{ src: string; from: number; rotate: number; x: numbe
 
 export const ReviewClip: React.FC<ReviewProps> = (p) => {
   const { fps, durationInFrames } = useVideoConfig();
-  const hookF = Math.round(HOOK_SEC * fps);
+  const gift = !!(p.theme && p.products && p.products.length);
+  const hookF = Math.round((gift ? p.introSec || HOOK_SEC : HOOK_SEC) * fps);
   const endF = Math.round(END_SEC * fps);
   const midStart = hookF;
   const midLen = Math.max(1, durationInFrames - hookF - endF);
@@ -93,7 +99,13 @@ export const ReviewClip: React.FC<ReviewProps> = (p) => {
         </AbsoluteFill>
       </Sequence>
 
-      {/* Hook: รูปสินค้า + แคปรีวิวเด้งแปะ */}
+      {/* ฉากเปิด: กล่องของขวัญระเบิด → สินค้า → แปะรีวิว */}
+      {gift ? (
+        <Sequence from={0} durationInFrames={hookF}>
+          <GiftIntro theme={p.theme!} products={p.products!} reviewUrls={p.reviewUrls} hookText={p.hookText}
+            burstSec={p.burstSec || 1.6} introSec={p.introSec || HOOK_SEC} />
+        </Sequence>
+      ) : (
       <Sequence from={0} durationInFrames={hookF}>
         <SlowZoom src={p.heroUrl} size={p.sizes?.[p.heroUrl]} dur={hookF} />
         <AbsoluteFill style={{ background: 'rgba(0,0,0,0.28)' }} />
@@ -108,12 +120,23 @@ export const ReviewClip: React.FC<ReviewProps> = (p) => {
           }}>{p.hookText}</div>
         </AbsoluteFill>
       </Sequence>
+      )}
 
       {/* 5 วิท้าย: รูปสวยสุด + ตราประทับราคา */}
       <Sequence from={durationInFrames - endF} durationInFrames={endF}>
-        <SlowZoom src={p.heroUrl} dur={endF} blur={40} />
-        <AbsoluteFill style={{ background: 'rgba(0,0,0,0.35)' }} />
-        <EndHero src={p.heroUrl} dur={endF} />
+        {gift && p.products![0].cut ? (
+          <>
+            <AbsoluteFill style={{ background: `radial-gradient(circle at 50% 55%, ${p.theme!.bg[0]} 0%, ${p.theme!.bg[1]} 100%)` }} />
+            <AbsoluteFill style={{ background: 'rgba(0,0,0,0.12)' }} />
+            <EndHero src={p.products![0].url} dur={endF} />
+          </>
+        ) : (
+          <>
+            <SlowZoom src={p.heroUrl} dur={endF} blur={40} />
+            <AbsoluteFill style={{ background: 'rgba(0,0,0,0.35)' }} />
+            <EndHero src={p.heroUrl} dur={endF} />
+          </>
+        )}
         <AbsoluteFill style={{ alignItems: 'center', paddingTop: 190 }}>
           <PriceChip text={p.price} size={150} rotate={-6} from={Math.round(0.5 * fps)} startScale={1.8} />
           <EndCta text={p.cta} from={Math.round(1 * fps)} />

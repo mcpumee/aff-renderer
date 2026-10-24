@@ -83,9 +83,15 @@ async function buildProps(id, req) {
     if (req.voiceover?.audio_base64) {
       fs.writeFileSync(path.join(TMP, `${id}-vo.mp3`), Buffer.from(req.voiceover.audio_base64, 'base64'));
       audioUrl = `${LOCAL}/tmp/${id}-vo.mp3`;
-      const al = req.voiceover.normalized_alignment || req.voiceover.alignment;
+      let al = req.voiceover.normalized_alignment || req.voiceover.alignment;
+      const audioSec = await probeSeconds(path.join(TMP, `${id}-vo.mp3`));
+      if (!al?.characters?.length && req.voiceover.text && audioSec) {
+        // ไม่มีเวลาต่อตัวอักษร → กระจายข้อความเท่า ๆ กันตามความยาวเสียง (ซับยังขึ้น แม้ไม่ตรงเป๊ะ)
+        const ch = [...String(req.voiceover.text)], per = audioSec / ch.length;
+        al = { characters: ch, character_start_times_seconds: ch.map((_, i) => i * per), character_end_times_seconds: ch.map((_, i) => (i + 1) * per) };
+      }
       captions = captionsFromAlignment(al);
-      speechEnd = al?.character_end_times_seconds?.at(-1) || (await probeSeconds(path.join(TMP, `${id}-vo.mp3`)));
+      speechEnd = al?.character_end_times_seconds?.at(-1) || audioSec;
     }
     const sizes = {};
     const imgs = async (arr, tag, enhance) => Promise.all((arr || []).filter(Boolean).map(async (u, i) => {

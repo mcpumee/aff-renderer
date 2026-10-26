@@ -2,3 +2,5 @@ node_modules
 data
 out
 *.mp4
+docker-compose.override.yml
+.env

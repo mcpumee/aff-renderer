@@ -218,6 +218,10 @@ async function work(job) {
       concurrency: CONCURRENCY, chromiumOptions: { gl: 'swangle' }, timeoutInMilliseconds: 120000,
       onProgress: ({ progress }) => { job.progress = Math.round(progress * 100); },
     });
+    // ย้าย moov ไว้หน้าไฟล์ ให้มือถือ/LINE เล่นได้ทันทีขณะโหลด
+    const fast = out.replace(/\.mp4$/, '.fs.mp4');
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', out, '-c', 'copy', '-movflags', '+faststart', fast]);
+    fs.renameSync(fast, out);
     await run('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(props.snapshotSec || 1.5), '-i', out, '-frames:v', '1', '-vf', 'scale=540:-2', path.join(OUT, `${job.id}.jpg`)]);
     job.status = 'succeeded';
     log('เสร็จ', job.id, comp, `${((Date.now() - t0) / 1000).toFixed(1)}s`);

@@ -182,6 +182,69 @@ async function buildProps(id, req) {
       },
     };
   }
+  if (req.type === 'story') {
+    // เสียงพากย์ + เวลาของแต่ละตัวอักษร
+    const vo = req.voiceover || {};
+    fs.writeFileSync(path.join(TMP, `${id}-vo.mp3`), Buffer.from(vo.audio_base64 || '', 'base64'));
+    const audioSec = await probeSeconds(path.join(TMP, `${id}-vo.mp3`));
+    let al = vo.normalized_alignment || vo.alignment;
+    if (!al?.characters?.length && vo.text && audioSec) {
+      const ch = [...String(vo.text)], per = audioSec / ch.length;
+      al = { characters: ch, character_start_times_seconds: ch.map((_, i) => i * per), character_end_times_seconds: ch.map((_, i) => (i + 1) * per) };
+    }
+    const captions = captionsFromAlignment(al);
+    const chars = al.characters.join('');
+    const st = al.character_start_times_seconds;
+    const speechEnd = al.character_end_times_seconds.at(-1) || audioSec;
+    // หาจุดเริ่มของแต่ละท่อนบท (ช็อต + ท่อนจบ) ในเสียง
+    let pos = 0;
+    const startOf = (text) => {
+      const t = String(text || '').trim();
+      if (!t) return null;
+      const probe = t.slice(0, Math.min(8, t.length));
+      const i = chars.indexOf(probe, pos);
+      if (i < 0) return null;
+      pos = i + probe.length;
+      return st[Math.min(i, st.length - 1)];
+    };
+    const segs = (req.shots || []).map((sh) => startOf(sh.vo));
+    const endAt = startOf(req.endVo);
+    const endStart = Math.max(3, endAt ?? Math.max(0, speechEnd - 3.5));
+    // ดาวน์โหลดช็อต
+    const shots = [];
+    for (let i = 0; i < (req.shots || []).length; i++) {
+      const sh = req.shots[i];
+      const ext = sh.kind === 'image' ? 'jpg' : 'mp4';
+      const url = await localize(id, sh.url, `st${i}`, ext);
+      const start = i === 0 ? 0 : (segs[i] ?? (shots.at(-1).start + shots.at(-1).dur));
+      shots.push({ url, kind: sh.kind === 'image' ? 'image' : 'video', start, dur: 0, onscreen: sh.onscreen || '', file: path.join(TMP, `${id}-st${i}.${ext}`) });
+    }
+    for (let i = 0; i < shots.length; i++) {
+      const next = i + 1 < shots.length ? shots[i + 1].start : endStart;
+      shots[i].dur = Math.max(1.2, next - shots[i].start);
+      if (shots[i].kind === 'video') {
+        const vs = await probeSeconds(shots[i].file);
+        shots[i].rate = vs && vs < shots[i].dur ? Math.max(0.4, vs / shots[i].dur) : 1;
+      }
+      delete shots[i].file;
+    }
+    // ฉากจบ: รูปสินค้าจริง (ตัดพื้นหลังถ้าได้)
+    let endImage = '', endCut = false, theme = null;
+    if (req.endImage) {
+      endImage = await localize(id, req.endImage, 'end', 'jpg');
+      const [c] = await cutouts([path.join(TMP, `${id}-end.jpg`)]);
+      if (c?.ok) { endImage = `${LOCAL}/tmp/${path.basename(c.file)}`; endCut = true; }
+      theme = pickTheme(c?.hue ?? null, id);
+    }
+    return {
+      comp: 'StoryClip',
+      props: {
+        durationSec: Math.max(endStart + 3.2, speechEnd + 1.2), audioUrl: `${LOCAL}/tmp/${id}-vo.mp3`, captions,
+        shots, endStart, endImage, endCut, theme, price: req.price || '', cta: req.cta || 'กดตะกร้าเลย 👇',
+        snapshotSec: Math.min(2.5, endStart / 2),
+      },
+    };
+  }
   if (req.type === 'self') {
     const dest = path.join(TMP, `${id}-v.mp4`);
     await download(req.videoUrl, dest);

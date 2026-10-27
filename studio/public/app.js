@@ -40,14 +40,16 @@ const TYPES = {
     needs: [['แคปรีวิว 2–3 รูป', 'req'], ['รูปสินค้า (รูปหลักพื้นเรียบ)', 'req'], ['แคปหน้าสินค้า', 'rec']] },
   long: { name: 'รีวิวยาว', sub: '1–2 นาที · เร็วๆ นี้', cost: '~$1.3', ready: false, needs: [] },
   self: { name: 'ถ่ายเอง', sub: 'ตัดสั้น + ยาว · เร็วๆ นี้', cost: '~ฟรี', ready: false, needs: [] },
-  story: { name: 'เรื่องเล่า', sub: 'หนังสั้น · เร็วๆ นี้', cost: '~$4–6', ready: false, needs: [] },
+  story: { name: 'เรื่องเล่า', sub: 'หนังสั้น 30–60 วิ · ไม่ใช้รีวิว', cost: '~$4–6', ready: true,
+    needs: [['รูปสินค้า (รูปหลักพื้นเรียบ)', 'req'], ['พล็อตเรื่อง (ว่างได้ AI คิดให้)', 'rec'], ['แคปรีวิว', 'no']] },
 };
+const STORY_LENS = ['30 วิ', '45 วิ', '1 นาที'];
 const TAG = { req: ['จำเป็น', 'req'], rec: ['แนะนำ', 'rec'], opt: ['ไม่บังคับ', 'opt'], no: ['ไม่ใช้', 'no'] };
 const KIND = { product: 'รูปสินค้า', review: 'แคปรีวิว', page: 'แคปหน้าสินค้า', other: 'ไม่ใช้', unsorted: 'ยังไม่แยก', video: 'คลิป' };
 const PLATFORMS = [['tiktok', 'TikTok'], ['shopee', 'Shopee Video'], ['facebook', 'Facebook Reels'], ['instagram', 'Instagram Reels']];
-const RUNNING = ['analyzing', 'scripting', 'voicing', 'rendering'];
+const RUNNING = ['analyzing', 'scripting', 'shooting', 'voicing', 'rendering'];
 const STATUS = {
-  draft: ['ร่าง', 'st-wait'], analyzing: ['AI กำลังอ่านรูป', 'st-run'], ready: ['รอเขียนบท', 'st-wait'], scripting: ['AI กำลังเขียนบท', 'st-run'],
+  draft: ['ร่าง', 'st-wait'], analyzing: ['AI กำลังอ่านรูป', 'st-run'], ready: ['รอเขียนบท', 'st-wait'], scripting: ['AI กำลังเขียนบท', 'st-run'], shooting: ['AI กำลังสร้างช็อตวิดีโอ', 'st-run'],
   script: ['รออนุมัติบท', 'st-wait'], voicing: ['กำลังทำเสียงพากย์', 'st-run'], rendering: ['กำลังตัดต่อ', 'st-run'], done: ['เสร็จแล้ว', 'st-done'], failed: ['ไม่สำเร็จ', 'st-failed'],
 };
 
@@ -89,15 +91,19 @@ function renderNew() {
       <label class="f" for="link">ลิงก์ Affiliate<input id="link" type="url" placeholder="วางลิงก์ Shopee / TikTok / Lazada"></label>
       <label class="drop" for="files">${ICON.up}<b>อัปรูปทั้งหมดรวมกันได้เลย</b><span>แคปหน้าสินค้า · รูปสินค้า · แคปรีวิว<br>ปนกันได้ AI จะแยกให้เอง</span></label>
       <input id="files" type="file" accept="image/*" multiple class="hide">
+      ${newType === 'story' ? `<label class="f" for="plot">พล็อตเรื่อง (ว่างไว้ = AI คิดให้)<textarea id="plot" rows="4" placeholder="เช่น POV โลกที่ไม่มีดาบ ทุกคนสู้กันด้วยปากกา แล้วปากกาในตำนานปักอยู่บนก้อนหิน…"></textarea></label>
+      <div class="chips" role="group" aria-label="ความยาว">${STORY_LENS.map((l, i) => `<button type="button" class="chip" data-nlen="${l}" aria-pressed="${i === 1}">${l}</button>`).join('')}</div>` : ''}
       <p class="muted" id="nmsg"></p>
     </section></div>${nav('new')}`;
+  let nlen = newType === 'story' ? STORY_LENS[1] : '30 วิ';
+  app.querySelectorAll('[data-nlen]').forEach((b) => { b.onclick = () => { nlen = b.dataset.nlen; app.querySelectorAll('[data-nlen]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); }; });
   app.querySelectorAll('.type').forEach((b) => { b.onclick = () => { newType = b.dataset.t; renderNew(); }; });
   $('#files').onchange = async (e) => {
     const files = [...e.target.files];
     if (!files.length) return;
     $('#nmsg').innerHTML = '<span class="row"><span class="spin"></span>กำลังอัป ' + files.length + ' รูป…</span>';
     try {
-      const job = await api('jobs', { method: 'POST', body: { type: newType, link: $('#link').value.trim() } });
+      const job = await api('jobs', { method: 'POST', body: { type: newType, link: $('#link').value.trim(), extra: $('#plot')?.value || '', length: nlen } });
       await uploadFiles(job.id, files);
       await api(`jobs/${job.id}/analyze`, { method: 'POST' });
       location.hash = '#/job/' + job.id;
@@ -155,6 +161,7 @@ function drawJob() {
   const P = j.product || {};
   const S = j.script || null;
   const busy = RUNNING.includes(j.status);
+  const story = j.type === 'story';
   const pf = (k) => (j.src && j.src[k] ? `<small>${j.src[k] === 'link' ? 'จากลิงก์' : 'จากรูป'}</small>` : '');
   app.innerHTML = `<div class="wrap">
     <header class="top" style="justify-content:flex-start"><a class="back" href="#/jobs" aria-label="กลับ">${ICON.back}</a>
@@ -162,7 +169,7 @@ function drawJob() {
       <span class="status ${st[1]}">${st[0]}</span></header>
 
     ${j.error ? `<div class="note bad" role="alert" style="margin-bottom:14px">${esc(j.error)}</div>` : ''}
-    ${busy ? `<div class="card"><div class="row"><span class="spin"></span><b>${st[0]}…</b></div>${j.status === 'rendering' ? '<div class="bar"><i id="pbar" style="width:3%"></i></div><span class="muted" id="ptext">ตัดต่อคลิปละประมาณ 3–6 นาที</span>' : '<span class="muted">หน้านี้จะอัปเดตเอง ปิดไปทำอย่างอื่นก่อนได้</span>'}</div>` : ''}
+    ${busy ? `<div class="card"><div class="row"><span class="spin"></span><b>${st[0]}…</b></div>${j.status === 'shooting' && j.progress ? `<div class="bar"><i style="width:${Math.max(4, Math.round(100 * j.progress.done / j.progress.total))}%"></i></div><span class="muted">สร้างแล้ว ${j.progress.done}/${j.progress.total} ช็อต · ช็อตละ 1–3 นาที</span>` : j.status === 'rendering' ? '<div class="bar"><i id="pbar" style="width:3%"></i></div><span class="muted" id="ptext">ตัดต่อคลิปละประมาณ 3–6 นาที</span>' : '<span class="muted">หน้านี้จะอัปเดตเอง ปิดไปทำอย่างอื่นก่อนได้</span>'}</div>` : ''}
 
     ${j.status === 'done' ? doneBlock(j) : ''}
 
@@ -185,13 +192,13 @@ function drawJob() {
         <label class="f" for="p_sold">ขายแล้ว<input id="p_sold" data-p="sold" type="text" value="${esc(P.sold)}"></label>
       </div>
       <label class="f" for="p_features">จุดเด่นสินค้า<textarea id="p_features" data-p="features" rows="3">${esc(P.features)}</textarea></label>
-      ${reviewBox(j.reviews)}
-      <label class="f" for="extra">ข้อมูลเพิ่ม / โปร (ไม่บังคับ)<textarea id="extra" rows="2">${esc(j.extra)}</textarea></label>
-      <div class="chips" role="group" aria-label="ความยาว">${['20 วิ', '30 วิ'].map((l) => `<button type="button" class="chip" data-len="${l}" aria-pressed="${j.length === l}">${l}</button>`).join('')}</div>
-      ${!busy && j.status !== 'done' ? `<button type="button" class="btn ${S ? '' : 'primary'} block" id="doScript">${S ? 'ให้ AI เขียนบทใหม่' : 'ให้ AI เขียนบท →'}</button><p class="muted" style="margin:0;text-align:center">ขั้นเขียนบทยังไม่เสียค่าเสียงหรือวิดีโอ</p>` : ''}
+      ${story ? '' : reviewBox(j.reviews)}
+      <label class="f" for="extra">${story ? 'พล็อตเรื่อง (ว่างไว้ = AI คิดให้)' : 'ข้อมูลเพิ่ม / โปร (ไม่บังคับ)'}<textarea id="extra" rows="${story ? 4 : 2}">${esc(j.extra)}</textarea></label>
+      <div class="chips" role="group" aria-label="ความยาว">${(story ? STORY_LENS : ['20 วิ', '30 วิ']).map((l) => `<button type="button" class="chip" data-len="${l}" aria-pressed="${j.length === l}">${l}</button>`).join('')}</div>
+      ${!busy && j.status !== 'done' ? `<button type="button" class="btn ${S ? '' : 'primary'} block" id="doScript">${S ? (story ? 'ให้ AI เขียนบทภาพใหม่' : 'ให้ AI เขียนบทใหม่') : (story ? 'ให้ AI เขียนบทภาพ →' : 'ให้ AI เขียนบท →')}</button><p class="muted" style="margin:0;text-align:center">ขั้นเขียนบทยังไม่เสียค่าเสียงหรือวิดีโอ</p>` : ''}
     </details>` : ''}
 
-    ${S && j.status !== 'done' ? scriptBlock(j) : ''}
+    ${S && j.status !== 'done' ? (story ? storyBlock(j) : scriptBlock(j)) : ''}
     <button type="button" class="btn ghost" id="delJob" style="margin:8px 0 24px">ลบงานนี้</button>
   </div>${nav('jobs')}`;
   bindJob();
@@ -212,6 +219,36 @@ function capText(c) {
   if (!c) return '';
   if (typeof c === 'string') return c;
   return [c.caption || '', (c.hashtags || []).join(' ')].filter(Boolean).join('\n');
+}
+function storyBlock(j) {
+  const S = j.script;
+  const reuse = (S.shots || []).filter((s) => s.file && !s.failed).length;
+  const cost = Math.max(0, (S.shots.length - reuse) * 0.8).toFixed(1);
+  return `<section class="card"><h2>บทภาพ: ${esc(S.title || '')}</h2>
+    ${S.logline ? `<p class="muted" style="margin:0">${esc(S.logline)}</p>` : ''}
+    ${S.shots.map((sh, i) => `<div class="cap" data-shot="${i}">
+      <div class="row between"><b>ช็อต ${i + 1}</b>${sh.file && !sh.failed ? '<span class="status st-done">มีวิดีโอแล้ว</span>' : sh.failed ? '<span class="status st-failed">สร้างไม่ได้ ใช้รูปแทน</span>' : ''}</div>
+      <label class="f" for="vo${i}">เสียงพากย์<textarea id="vo${i}" data-sf="vo" rows="2">${esc(sh.vo)}</textarea></label>
+      <label class="f" for="os${i}">ข้อความบนจอ (ว่างได้)<input id="os${i}" data-sf="onscreen" type="text" value="${esc(sh.onscreen)}"></label>
+      <details><summary class="muted" style="cursor:pointer">คำสั่งภาพสำหรับ AI (ภาษาอังกฤษ)</summary>
+        <label class="hide" for="vi${i}">คำสั่งภาพ</label><textarea id="vi${i}" data-sf="visual" rows="4" style="margin-top:6px;font-size:13px">${esc(sh.visual)}</textarea></details>
+      <label class="row" style="font-size:13px"><input type="checkbox" data-sf="useProduct" ${sh.useProduct ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--accent)">ใส่สินค้าจริงในช็อตนี้ (ใช้รูปหลัก)</label>
+    </div>`).join('')}
+    <label class="f" for="endvo">เสียงพากย์ฉากจบ (สินค้าจริง + ราคา)<textarea id="endvo" data-s="endVo" rows="2">${esc(S.endVo)}</textarea></label>
+    <div class="grid2">
+      <label class="f" for="s_price">ป้ายราคา<input id="s_price" data-s="price" type="text" value="${esc(S.price || j.product?.price)}"></label>
+      <label class="f" for="s_cta">ข้อความตอนจบ<input id="s_cta" data-s="cta" type="text" value="${esc(S.cta || 'กดตะกร้าเลย')}"></label>
+    </div>
+    <div class="note info">ค่าสร้างวิดีโอ AI ประมาณ <b>$${cost}</b> (${S.shots.length - reuse} ช็อตใหม่ × ~$0.8)${reuse ? ` · ใช้ช็อตเดิม ${reuse} ช็อต ไม่เสียซ้ำ` : ''} · เสียงพากย์ ~$0.05 · ตัดต่อฟรี</div>
+    ${j.status === 'script' || j.status === 'failed' ? `<button type="button" class="btn primary block" id="doStory">อนุมัติ & สร้างหนัง</button>` : ''}
+  </section>${captionsBlock(j)}`;
+}
+function readShots() {
+  return [...app.querySelectorAll('[data-shot]')].map((el) => {
+    const o = {};
+    el.querySelectorAll('[data-sf]').forEach((f) => { o[f.dataset.sf] = f.type === 'checkbox' ? f.checked : f.value; });
+    return o;
+  });
 }
 function scriptBlock(j) {
   const S = j.script;
@@ -271,7 +308,13 @@ function bindJob() {
   on('#reanalyze', 'click', async () => { curJob = await api(`jobs/${j.id}/analyze`, { method: 'POST' }); drawJob(); });
   on('#doScript', 'click', async () => {
     const product = {}; app.querySelectorAll('[data-p]').forEach((el) => { product[el.dataset.p] = el.value; });
-    curJob = await api(`jobs/${j.id}/script`, { method: 'POST', body: { product, extra: $('#extra')?.value || '' } }); drawJob();
+    curJob = await api(`jobs/${j.id}/${j.type === 'story' ? 'storyboard' : 'script'}`, { method: 'POST', body: { product, extra: $('#extra')?.value || '' } }); drawJob();
+  });
+  on('[data-sf]', 'change', () => patch({ script: { shots: readShots().map((s, i) => ({ ...(curJob.script.shots[i] || {}), ...s })) } }, true));
+  on('#doStory', 'click', async () => {
+    if (!window.confirm('เริ่มสร้างวิดีโอ AI? (มีค่าใช้จ่ายตามที่แสดง)')) return;
+    const script = {}; app.querySelectorAll('[data-s]').forEach((el) => { script[el.dataset.s] = el.value; });
+    curJob = await api(`jobs/${j.id}/render`, { method: 'POST', body: { script, shots: readShots() } }); drawJob();
   });
   on('#doRender', 'click', async () => {
     const script = {}; app.querySelectorAll('[data-s]').forEach((el) => { script[el.dataset.s] = el.value; });
@@ -289,7 +332,7 @@ async function pollJob() {
   if (!curJob || !location.hash.startsWith('#/job/')) return stopPoll();
   try {
     const j = await api('jobs/' + curJob.id);
-    if (j.status !== curJob.status) { curJob = j; drawJob(); return; }
+    if (j.status !== curJob.status || (j.status === 'shooting' && j.progress?.done !== curJob.progress?.done)) { curJob = j; drawJob(); return; }
     if (j.status === 'rendering') {
       const p = await api(`jobs/${curJob.id}/progress`);
       if (p.progress != null && $('#pbar')) { $('#pbar').style.width = Math.max(3, p.progress) + '%'; $('#ptext').textContent = `ตัดต่อแล้ว ${p.progress}%`; }

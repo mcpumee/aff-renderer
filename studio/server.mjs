@@ -140,7 +140,7 @@ app.post('/api/jobs', auth, (q, r) => {
   const job = {
     id, code: 'S' + String(db.seq).padStart(4, '0'), tok: crypto.randomBytes(12).toString('hex'),
     type: ['box', 'long', 'self', 'story'].includes(q.body?.type) ? q.body.type : 'box',
-    status: 'draft', link: String(q.body?.link || ''), files: [], hero: '', product: {}, reviews: {}, extra: '',
+    status: 'draft', link: String(q.body?.link || ''), files: [], hero: '', product: {}, reviews: {}, extra: String(q.body?.extra || ''),
     length: q.body?.length || '30 วิ', script: null, clip: null, error: '',
     posted: { tiktok: false, shopee: false, facebook: false, instagram: false },
     createdAt: now(), updatedAt: now(),
@@ -277,13 +277,100 @@ app.post('/api/jobs/:id/script', auth, async (q, r) => {
   }
 });
 
+// 2b) AI เขียนบทภาพ (คลิปเรื่องเล่า)
+app.post('/api/jobs/:id/storyboard', auth, async (q, r) => {
+  const job = db.jobs[q.params.id];
+  if (!job) return r.status(404).json({ error: 'ไม่พบงาน' });
+  if (q.body?.product) job.product = { ...job.product, ...q.body.product };
+  if ('extra' in (q.body || {})) job.extra = q.body.extra;
+  if ('length' in (q.body || {})) job.length = q.body.length;
+  update(job, { status: 'scripting', error: '' });
+  r.json(view(job));
+  try {
+    const res = await n8n('studio-story', { product: job.product, plot: job.extra, length: job.length });
+    if (!Array.isArray(res.shots) || !res.shots.length) throw new Error('AI ไม่ได้ส่งช็อตกลับมา');
+    res.shots = res.shots.slice(0, 8).map((s, i) => ({ ...s, n: i + 1 }));
+    update(job, { status: 'script', script: res });
+  } catch (e) {
+    log('storyboard', e.message);
+    update(job, { status: 'failed', error: 'AI เขียนบทภาพไม่สำเร็จ: ' + e.message.slice(0, 200) });
+  }
+});
+
+const SHOT_COST = 0.8; // ~8 วิ x $0.10 (720p)
+async function renderStory(job) {
+  const dir = path.join(JOBS_DIR, job.id);
+  const m = (f) => `${SELF}/m/${job.id}/${job.tok}/${f}`;
+  const products = job.files.filter((f) => f.kind === 'product');
+  const hero = job.hero || products[0]?.name || '';
+  let heroB64 = '';
+  if (hero) heroB64 = (await sharp(path.join(dir, hero)).resize({ width: 1024, height: 1024, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer()).toString('base64');
+  const shots = job.script.shots;
+  update(job, { status: 'shooting', progress: { done: 0, total: shots.length } });
+  let spent = 0;
+  const one = async (sh, i) => {
+    const file = `shot${i + 1}.mp4`;
+    const key = sh.visual + '|' + (sh.useProduct ? hero : '');
+    if (sh.file === file && sh.key === key && fs.existsSync(path.join(dir, file))) return; // ใช้ช็อตเดิม ไม่เสียเงินซ้ำ
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await n8n('studio-shot', { prompt: sh.visual, image: sh.useProduct && attempt === 0 ? heroB64 : '' }, 420000);
+        if (!res.video_base64) throw new Error('ไม่ได้วิดีโอ');
+        fs.writeFileSync(path.join(dir, file), Buffer.from(res.video_base64, 'base64'));
+        Object.assign(sh, { file, key, failed: false });
+        spent += SHOT_COST;
+        return;
+      } catch (e) { log('shot', i + 1, attempt, e.message.slice(0, 200)); }
+    }
+    Object.assign(sh, { file: '', key: '', failed: true }); // ใช้รูปสินค้าแทน
+  };
+  let next = 0, done = 0;
+  const worker = async () => {
+    while (next < shots.length) {
+      const i = next++;
+      await one(shots[i], i);
+      done++;
+      update(job, { progress: { done, total: shots.length } });
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  const fallback = (i) => (products.length ? products[i % products.length].name : hero);
+  const voText = [...shots.map((s) => String(s.vo || '').trim()), String(job.script.endVo || '').trim()].filter(Boolean).join(' ');
+  update(job, { status: 'voicing', cost: { ...(job.cost || {}), video: Math.round(((job.cost?.video || 0) + spent) * 100) / 100 } });
+  const voice = await n8n('studio-voice', { text: voText, voice_id: VOICE_ID });
+  if (!voice?.audio_base64) throw new Error('ไม่ได้ไฟล์เสียง');
+  update(job, { status: 'rendering' });
+  const rr = await fetch(`${RENDERER}/render`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-render-token': RENDER_TOKEN },
+    body: JSON.stringify({
+      type: 'story',
+      voiceover: { audio_base64: voice.audio_base64, alignment: voice.alignment, normalized_alignment: voice.normalized_alignment, text: voText },
+      shots: shots.map((s, i) => (s.file ? { url: m(s.file), kind: 'video', vo: s.vo, onscreen: s.onscreen || '' } : { url: m(fallback(i)), kind: 'image', vo: s.vo, onscreen: s.onscreen || '' })),
+      endVo: job.script.endVo || '', endImage: hero ? m(hero) : '',
+      price: job.script.price || job.product.price || '', cta: (job.script.cta || 'กดตะกร้าเลย') + ' 👇',
+      webhook_url: `${SELF}/api/render-done`, metadata: JSON.stringify({ job: job.id, tok: job.tok }),
+    }),
+  });
+  if (!rr.ok) throw new Error(`ตัวตัดต่อตอบ ${rr.status}: ${(await rr.text()).slice(0, 200)}`);
+  const { id } = await rr.json();
+  update(job, { renderId: id });
+}
+
 // 3) อนุมัติ → เสียงพากย์ → ตัดต่อ
 const OPEN = 'ระเบิดกล่องสินค้า แนะนำ!';
 app.post('/api/jobs/:id/render', auth, async (q, r) => {
   const job = db.jobs[q.params.id];
   if (!job) return r.status(404).json({ error: 'ไม่พบงาน' });
-  if (!job.script?.voiceover) return r.status(400).json({ error: 'ยังไม่มีบท' });
+  if (!job.script?.voiceover && !job.script?.shots) return r.status(400).json({ error: 'ยังไม่มีบท' });
   if (q.body?.script) job.script = { ...job.script, ...q.body.script };
+  if (job.type === 'story') {
+    if (q.body?.shots) job.script.shots = q.body.shots.map((s, i) => ({ ...(job.script.shots[i] || {}), ...s }));
+    update(job, { error: '', clip: null });
+    r.json(view(job));
+    try { await renderStory(job); } catch (e) { log('story', e.message); update(job, { status: 'failed', error: e.message.slice(0, 300) }); }
+    return;
+  }
   update(job, { status: 'voicing', error: '', clip: null });
   r.json(view(job));
   try {

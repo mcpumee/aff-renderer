@@ -286,11 +286,22 @@ async function work(job) {
     const { comp, props } = await buildProps(job.id, job.req);
     const composition = await selectComposition({ serveUrl, id: comp, inputProps: props, browserExecutable: BROWSER });
     const out = path.join(OUT, `${job.id}.mp4`);
-    await renderMedia({
+    // คลิปที่มีวิดีโอซ้อน (เรื่องเล่า/ถ่ายเอง) กินแรมมาก: ทำทีละเฟรม + จำกัดแคชวิดีโอ ไม่ให้เครื่องตัดทิ้ง (SIGKILL)
+    const heavy = comp === 'StoryClip' || comp === 'SelfClip';
+    const opts = (conc) => ({
       composition, serveUrl, browserExecutable: BROWSER, codec: 'h264', crf: 20, outputLocation: out, inputProps: props,
-      concurrency: CONCURRENCY, chromiumOptions: { gl: 'swangle' }, timeoutInMilliseconds: 120000,
+      concurrency: conc, chromiumOptions: { gl: 'swangle' }, timeoutInMilliseconds: 180000,
+      offthreadVideoCacheSizeInBytes: 384 * 1024 * 1024, offthreadVideoThreads: 1,
       onProgress: ({ progress }) => { job.progress = Math.round(progress * 100); },
     });
+    try {
+      await renderMedia(opts(heavy ? 1 : CONCURRENCY));
+    } catch (e) {
+      if (!/SIGKILL|memory|killed/i.test(String(e.message))) throw e;
+      log('แรมไม่พอ ลองใหม่แบบประหยัดแรม', job.id);
+      job.progress = 0;
+      await renderMedia({ ...opts(1), offthreadVideoCacheSizeInBytes: 128 * 1024 * 1024 });
+    }
     // ย้าย moov ไว้หน้าไฟล์ ให้มือถือ/LINE เล่นได้ทันทีขณะโหลด
     const fast = out.replace(/\.mp4$/, '.fs.mp4');
     await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', out, '-c', 'copy', '-movflags', '+faststart', fast]);

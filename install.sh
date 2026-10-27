@@ -36,11 +36,28 @@ if [ "$HOST" != "-" ]; then
 else
   PB=${PUBLIC_BASE:-$(grep -s '^PUBLIC_BASE=' .env | cut -d= -f2- || true)}
 fi
+# AFF Studio: รหัสผ่านเข้าเว็บ (ถามครั้งแรกครั้งเดียว) + กุญแจลับประจำเครื่อง
+SPW=$(grep -s '^STUDIO_PASSWORD=' .env | cut -d= -f2- || true)
+SSEC=$(grep -s '^STUDIO_SECRET=' .env | cut -d= -f2- || true)
+if [ -z "$SPW" ] || [ "${RESET_STUDIO_PASSWORD:-}" = "1" ]; then
+  while true; do
+    if ! read -r -s -p ">> ตั้งรหัสผ่านเข้าเว็บ AFF Studio (อย่างน้อย 8 ตัว แล้วกด Enter): " SPW < /dev/tty; then echo; echo "!! อ่านรหัสผ่านไม่ได้ (ต้องรันใน Terminal)"; exit 1; fi; echo
+    if [ ${#SPW} -lt 8 ]; then echo "   สั้นเกินไป ลองใหม่"; continue; fi
+    read -r -s -p ">> พิมพ์รหัสผ่านอีกครั้ง: " SPW2 < /dev/tty || exit 1; echo
+    [ "$SPW" = "$SPW2" ] && break
+    echo "   รหัสไม่ตรงกัน ลองใหม่"
+  done
+fi
+[ -z "$SSEC" ] && SSEC=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 cat > .env <<EOF
 PUBLIC_BASE=${PB}
 RENDER_TOKEN=${TOKEN}
 N8N_NETWORK=${NET}
+N8N_INTERNAL=http://${N8N_CT}:5678
+STUDIO_PASSWORD=${SPW}
+STUDIO_SECRET=${SSEC}
 EOF
+chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"
 
 # เปิดทางให้โหลดไฟล์คลิปตรงจากตัวตัดต่อ (รองรับเล่นบนมือถือ/LINE) — เปิดเฉพาะ /files เท่านั้น
@@ -59,6 +76,19 @@ if [ "$HOST" != "-" ]; then
     echo "      - \"traefik.http.middlewares.afffiles-path.replacepathregex.regex=^/aff-files/(.*)\""
     echo "      - \"traefik.http.middlewares.afffiles-path.replacepathregex.replacement=/files/\$\$1\""
     echo "      - traefik.http.services.afffiles.loadbalancer.server.port=3000"
+    echo "  aff-studio:"
+    echo "    labels:"
+    echo "      - traefik.enable=true"
+    echo "      - traefik.docker.network=${NET}"
+    echo "      - \"traefik.http.routers.affstudio.rule=Host(\`${HOST}\`) && (Path(\`/studio\`) || PathPrefix(\`/studio/\`))\""
+    echo "      - traefik.http.routers.affstudio.entrypoints=${EP}"
+    echo "      - traefik.http.routers.affstudio.tls=true"
+    [ "$CR" != "-" ] && echo "      - traefik.http.routers.affstudio.tls.certresolver=${CR}"
+    echo "      - traefik.http.routers.affstudio.middlewares=affstudio-slash,affstudio-strip"
+    echo "      - \"traefik.http.middlewares.affstudio-slash.redirectregex.regex=^(https?://[^/]+/studio)\$\$\""
+    echo "      - \"traefik.http.middlewares.affstudio-slash.redirectregex.replacement=\$\${1}/\""
+    echo "      - traefik.http.middlewares.affstudio-strip.stripprefix.prefixes=/studio"
+    echo "      - traefik.http.services.affstudio.loadbalancer.server.port=3100"
   } > docker-compose.override.yml
 fi
 
@@ -71,6 +101,9 @@ for i in $(seq 1 180); do
       sleep 3
       CODE=$(curl -s -o /dev/null -w '%{http_code}' "https://$HOST/aff-files/health-check-none.mp4" || true)
       echo ">> ทดสอบลิงก์ไฟล์: HTTP $CODE (404 = ทางเปิดแล้ว ถูกต้อง)"
+      for k in $(seq 1 30); do docker logs aff-studio 2>&1 | grep -q 'AFF Studio' && break; sleep 2; done
+      SC=$(curl -s -o /dev/null -w '%{http_code}' "https://$HOST/studio/api/health" || true)
+      echo ">> ✅ AFF Studio: https://$HOST/studio/  (ทดสอบ HTTP $SC — 200 = ใช้ได้)"
     fi
     exit 0
   fi

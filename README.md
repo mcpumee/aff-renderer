@@ -15,3 +15,10 @@ Hook 3.6 วิ (รูปสินค้า + แคปรีวิวเด้
 
 ## Remotion License
 ฟรีสำหรับบุคคล/บริษัทไม่เกิน 3 คน (https://remotion.dev/license)
+
+## AFF Studio (เว็บสั่งงาน) — `studio/`
+เว็บมือถือที่ `https://<โดเมน n8n>/studio/` (ล็อกอินด้วยรหัสผ่านที่ตั้งตอนติดตั้ง)
+- อัปรูปรวม → n8n `studio-analyze` (Gemini แยกรูป + อ่านข้อมูลสินค้า/รีวิว) → แก้ได้ทุกช่อง
+- `studio-script` (Gemini เขียนบท + แคปชัน 4 แพลตฟอร์ม) → แก้บท → `studio-voice` (ElevenLabs) → ตัวตัดต่อ → คลิปกลับมาที่เว็บ
+- webhook ของ n8n รับเฉพาะคำขอจากภายในเครื่อง (ไม่มี X-Forwarded-For)
+- เปลี่ยนรหัสผ่าน: `RESET_STUDIO_PASSWORD=1` แล้วรัน install.sh ใหม่

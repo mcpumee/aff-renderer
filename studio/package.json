@@ -1,0 +1,14 @@
+{
+  "name": "aff-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "express": "4.21.2",
+    "multer": "2.0.2",
+    "sharp": "0.34.4"
+  }
+}

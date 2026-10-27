@@ -223,6 +223,16 @@ async function buildProps(id, req) {
       const next = i + 1 < shots.length ? shots[i + 1].start : endStart;
       shots[i].dur = Math.max(1.2, next - shots[i].start);
       if (shots[i].kind === 'video') {
+        // วิดีโอความละเอียดต่ำ (เช่น 360p): ขยายเป็น 1080x1920 แบบคม (lanczos + sharpen) ก่อนตัดต่อ
+        const sz = await probeSize(shots[i].file);
+        if (sz && sz.h < 1000) {
+          const up = shots[i].file.replace(/\.mp4$/, '-hd.mp4');
+          try {
+            await run('ffmpeg', ['-y', '-v', 'error', '-i', shots[i].file, '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,unsharp=5:5:0.8:5:5:0.0',
+              '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'copy', up], { timeout: 300000 });
+            fs.renameSync(up, shots[i].file);
+          } catch (e) { log('ขยายวิดีโอไม่สำเร็จ ใช้ไฟล์เดิม', e.message.slice(0, 150)); }
+        }
         const vs = await probeSeconds(shots[i].file);
         shots[i].rate = vs && vs < shots[i].dur ? Math.max(0.4, vs / shots[i].dur) : 1;
       }

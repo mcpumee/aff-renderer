@@ -297,7 +297,7 @@ app.post('/api/jobs/:id/storyboard', auth, async (q, r) => {
   }
 });
 
-const SHOT_COST = 0.8; // ~8 วิ x $0.10 (720p)
+const SHOT_COST = { '360p': 0.27, '720p': 0.8 }; // ~8 วิต่อช็อต (Omni Flash ~$0.034/วิ ที่ 360p, ~$0.10/วิ ที่ 720p)
 async function renderStory(job) {
   const dir = path.join(JOBS_DIR, job.id);
   const m = (f) => `${SELF}/m/${job.id}/${job.tok}/${f}`;
@@ -306,19 +306,20 @@ async function renderStory(job) {
   let heroB64 = '';
   if (hero) heroB64 = (await sharp(path.join(dir, hero)).resize({ width: 1024, height: 1024, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer()).toString('base64');
   const shots = job.script.shots;
+  const resol = job.script.res === '720p' ? '720p' : '360p';
   update(job, { status: 'shooting', progress: { done: 0, total: shots.length } });
   let spent = 0;
   const one = async (sh, i) => {
     const file = `shot${i + 1}.mp4`;
-    const key = sh.visual + '|' + (sh.useProduct ? hero : '');
+    const key = sh.visual + '|' + (sh.useProduct ? hero : '') + '|' + resol;
     if (sh.file === file && sh.key === key && fs.existsSync(path.join(dir, file))) return; // ใช้ช็อตเดิม ไม่เสียเงินซ้ำ
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await n8n('studio-shot', { prompt: sh.visual, image: sh.useProduct && attempt === 0 ? heroB64 : '' }, 420000);
+        const res = await n8n('studio-shot', { prompt: sh.visual, image: sh.useProduct && attempt === 0 ? heroB64 : '', resolution: resol }, 420000);
         if (!res.video_base64) throw new Error('ไม่ได้วิดีโอ');
         fs.writeFileSync(path.join(dir, file), Buffer.from(res.video_base64, 'base64'));
         Object.assign(sh, { file, key, failed: false });
-        spent += SHOT_COST;
+        spent += SHOT_COST[resol] || 0.8;
         return;
       } catch (e) { log('shot', i + 1, attempt, e.message.slice(0, 200)); }
     }

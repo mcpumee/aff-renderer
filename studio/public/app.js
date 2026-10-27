@@ -43,7 +43,8 @@ const TYPES = {
   story: { name: 'เรื่องเล่า', sub: 'หนังสั้น 30–60 วิ · ไม่ใช้รีวิว', cost: '~$4–6', ready: true,
     needs: [['รูปสินค้า (รูปหลักพื้นเรียบ)', 'req'], ['พล็อตเรื่อง (ว่างได้ AI คิดให้)', 'rec'], ['แคปรีวิว', 'no']] },
 };
-const STORY_LENS = ['30 วิ', '45 วิ', '1 นาที'];
+const STORY_LENS = ['45 วิ', '1 นาที'];
+const RES_COST = { '360p': 0.27, '720p': 0.8 };
 const TAG = { req: ['จำเป็น', 'req'], rec: ['แนะนำ', 'rec'], opt: ['ไม่บังคับ', 'opt'], no: ['ไม่ใช้', 'no'] };
 const KIND = { product: 'รูปสินค้า', review: 'แคปรีวิว', page: 'แคปหน้าสินค้า', other: 'ไม่ใช้', unsorted: 'ยังไม่แยก', video: 'คลิป' };
 const PLATFORMS = [['tiktok', 'TikTok'], ['shopee', 'Shopee Video'], ['facebook', 'Facebook Reels'], ['instagram', 'Instagram Reels']];
@@ -92,10 +93,10 @@ function renderNew() {
       <label class="drop" for="files">${ICON.up}<b>อัปรูปทั้งหมดรวมกันได้เลย</b><span>แคปหน้าสินค้า · รูปสินค้า · แคปรีวิว<br>ปนกันได้ AI จะแยกให้เอง</span></label>
       <input id="files" type="file" accept="image/*" multiple class="hide">
       ${newType === 'story' ? `<label class="f" for="plot">พล็อตเรื่อง (ว่างไว้ = AI คิดให้)<textarea id="plot" rows="4" placeholder="เช่น POV โลกที่ไม่มีดาบ ทุกคนสู้กันด้วยปากกา แล้วปากกาในตำนานปักอยู่บนก้อนหิน…"></textarea></label>
-      <div class="chips" role="group" aria-label="ความยาว">${STORY_LENS.map((l, i) => `<button type="button" class="chip" data-nlen="${l}" aria-pressed="${i === 1}">${l}</button>`).join('')}</div>` : ''}
+      <div class="chips" role="group" aria-label="ความยาว">${STORY_LENS.map((l, i) => `<button type="button" class="chip" data-nlen="${l}" aria-pressed="${i === 0}">${l}</button>`).join('')}</div>` : ''}
       <p class="muted" id="nmsg"></p>
     </section></div>${nav('new')}`;
-  let nlen = newType === 'story' ? STORY_LENS[1] : '30 วิ';
+  let nlen = newType === 'story' ? STORY_LENS[0] : '30 วิ';
   app.querySelectorAll('[data-nlen]').forEach((b) => { b.onclick = () => { nlen = b.dataset.nlen; app.querySelectorAll('[data-nlen]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); }; });
   app.querySelectorAll('.type').forEach((b) => { b.onclick = () => { newType = b.dataset.t; renderNew(); }; });
   $('#files').onchange = async (e) => {
@@ -223,7 +224,8 @@ function capText(c) {
 function storyBlock(j) {
   const S = j.script;
   const reuse = (S.shots || []).filter((s) => s.file && !s.failed).length;
-  const cost = Math.max(0, (S.shots.length - reuse) * 0.8).toFixed(1);
+  const res = S.res === '720p' ? '720p' : '360p';
+  const cost = Math.max(0, (S.shots.length - reuse) * RES_COST[res]).toFixed(2);
   return `<section class="card"><h2>บทภาพ: ${esc(S.title || '')}</h2>
     ${S.logline ? `<p class="muted" style="margin:0">${esc(S.logline)}</p>` : ''}
     ${S.shots.map((sh, i) => `<div class="cap" data-shot="${i}">
@@ -239,7 +241,9 @@ function storyBlock(j) {
       <label class="f" for="s_price">ป้ายราคา<input id="s_price" data-s="price" type="text" value="${esc(S.price || j.product?.price)}"></label>
       <label class="f" for="s_cta">ข้อความตอนจบ<input id="s_cta" data-s="cta" type="text" value="${esc(S.cta || 'กดตะกร้าเลย')}"></label>
     </div>
-    <div class="note info">ค่าสร้างวิดีโอ AI ประมาณ <b>$${cost}</b> (${S.shots.length - reuse} ช็อตใหม่ × ~$0.8)${reuse ? ` · ใช้ช็อตเดิม ${reuse} ช็อต ไม่เสียซ้ำ` : ''} · เสียงพากย์ ~$0.05 · ตัดต่อฟรี</div>
+    <div class="f" style="font-size:13px;font-weight:500;color:var(--ink2)">ความคมชัดวิดีโอ AI
+      <div class="chips" role="group" aria-label="ความคมชัด"><button type="button" class="chip" data-res="360p" aria-pressed="${res === '360p'}">ประหยัด 360p</button><button type="button" class="chip" data-res="720p" aria-pressed="${res === '720p'}">คมชัด 720p</button></div></div>
+    <div class="note info">ค่าสร้างวิดีโอ AI ประมาณ <b>$${cost}</b> (${S.shots.length - reuse} ช็อตใหม่ × ~$${RES_COST[res]})${reuse ? ` · ใช้ช็อตเดิม ${reuse} ช็อต ไม่เสียซ้ำ` : ''} · เสียงพากย์ ~$0.05 · ตัดต่อฟรี</div>
     ${j.status === 'script' || j.status === 'failed' ? `<button type="button" class="btn primary block" id="doStory">อนุมัติ & สร้างหนัง</button>` : ''}
   </section>${captionsBlock(j)}`;
 }
@@ -310,6 +314,7 @@ function bindJob() {
     const product = {}; app.querySelectorAll('[data-p]').forEach((el) => { product[el.dataset.p] = el.value; });
     curJob = await api(`jobs/${j.id}/${j.type === 'story' ? 'storyboard' : 'script'}`, { method: 'POST', body: { product, extra: $('#extra')?.value || '' } }); drawJob();
   });
+  on('[data-res]', 'click', async (e) => { curJob = await api('jobs/' + j.id, { method: 'PATCH', body: { script: { res: e.target.dataset.res } } }); drawJob(); });
   on('[data-sf]', 'change', () => patch({ script: { shots: readShots().map((s, i) => ({ ...(curJob.script.shots[i] || {}), ...s })) } }, true));
   on('#doStory', 'click', async () => {
     if (!window.confirm('เริ่มสร้างวิดีโอ AI? (มีค่าใช้จ่ายตามที่แสดง)')) return;

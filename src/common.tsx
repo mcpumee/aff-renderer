@@ -11,7 +11,7 @@ export const FONT = "'Kanit', sans-serif";
 export const ORANGE = '#EE4D2D';
 export const YELLOW = '#FFD23F';
 
-export type Caption = { start: number; end: number; text: string };
+export type Caption = { start: number; end: number; text: string; name?: string; color?: string };
 
 /** ตัวหนังสือมีขอบดำ อ่านง่ายบนทุกภาพ */
 export const outline = (px: number) => ({
@@ -76,12 +76,18 @@ export const Captions: React.FC<{ captions: Caption[]; bottom?: number }> = ({ c
           fontWeight: 700,
           fontSize: 66,
           lineHeight: 1.25,
-          color: '#fff',
+          color: cur.color || '#fff',
           textAlign: 'center',
           transform: `scale(${pop})`,
           ...outline(10),
         }}
       >
+        {cur.name ? (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 46, fontWeight: 800, color: '#0B0B0D', background: cur.color || '#fff', padding: '4px 22px', borderRadius: 999,
+              WebkitTextStroke: '0px', textShadow: 'none', boxShadow: '0 6px 16px rgba(0,0,0,0.35)' }}>{cur.name}</span>
+          </div>
+        ) : null}
         {cur.text}
       </div>
     </div>

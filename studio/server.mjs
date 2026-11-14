@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { VOICES, NARRATOR, castVoices, parseLines } from './voices.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3100);
@@ -110,6 +111,7 @@ app.get('/api/health', (_q, r) => r.json({ ok: true, jobs: Object.keys(db.jobs).
 // ทุกอย่างด้านล่างต้องล็อกอิน
 const auth = (req, res, next) => (validSession(cookie(req, 'aff_sid')) ? next() : res.status(401).json({ error: 'login' }));
 app.get('/api/me', auth, (_q, r) => r.json({ ok: true }));
+app.get('/api/voices', auth, (_q, r) => r.json({ voices: VOICES, narrator: NARRATOR }));
 
 const view = (j) => {
   const m = (f) => `m/${j.id}/${j.tok}/${f}`;
@@ -193,6 +195,7 @@ app.patch('/api/jobs/:id', auth, (q, r) => {
   for (const k of ['link', 'extra', 'length', 'type', 'hero']) if (k in b) patch[k] = b[k];
   if (b.product) patch.product = { ...job.product, ...b.product };
   if (b.script) patch.script = { ...(job.script || {}), ...b.script };
+  if (b.script?.characters) patch.script.characters = castVoices(b.script.characters); // ให้เห็นเสียงที่ระบบเลือกทันที
   if (b.posted) patch.posted = { ...job.posted, ...b.posted };
   if (b.kinds) job.files.forEach((f) => { if (b.kinds[f.name]) f.kind = b.kinds[f.name]; });
   r.json(view(update(job, patch)));
@@ -277,6 +280,24 @@ app.post('/api/jobs/:id/script', auth, async (q, r) => {
   }
 });
 
+/** จัดบทภาพให้อยู่ในรูปบทสนทนา: ตัวละคร (มีเสียงตามเพศ/วัย) + บทพูดรายช็อต */
+function normStory(res) {
+  const chars = castVoices((Array.isArray(res.characters) ? res.characters : []).slice(0, 6).map((c, i) => ({
+    id: String(c.id || `C${i + 1}`), name: String(c.name || `ตัวละคร${i + 1}`).replace(/[:：]/g, '').slice(0, 20),
+    gender: c.gender, age: c.age, look: c.look || '', voice: c.voice || '', pitch: c.pitch,
+  })));
+  const ids = new Set(chars.map((c) => c.id));
+  const byName = (w) => chars.find((c) => c.name === w)?.id;
+  const shots = res.shots.slice(0, 8).map((s, i) => {
+    let lines = Array.isArray(s.lines) ? s.lines : [];
+    lines = lines.map((l) => ({ who: ids.has(l.who) ? l.who : byName(l.who) || 'N', text: String(l.text || '').trim() })).filter((l) => l.text);
+    if (!lines.length && String(s.vo || '').trim()) lines = parseLines(s.vo, chars);
+    return { ...s, n: i + 1, lines, vo: lines.map((l) => l.text).join(' ') };
+  });
+  const endWho = ids.has(res.endWho) ? res.endWho : 'N';
+  return { ...res, characters: chars, shots, endWho };
+}
+
 // 2b) AI เขียนบทภาพ (คลิปเรื่องเล่า)
 app.post('/api/jobs/:id/storyboard', auth, async (q, r) => {
   const job = db.jobs[q.params.id];
@@ -289,8 +310,7 @@ app.post('/api/jobs/:id/storyboard', auth, async (q, r) => {
   try {
     const res = await n8n('studio-story', { product: job.product, plot: job.extra, length: job.length });
     if (!Array.isArray(res.shots) || !res.shots.length) throw new Error('AI ไม่ได้ส่งช็อตกลับมา');
-    res.shots = res.shots.slice(0, 8).map((s, i) => ({ ...s, n: i + 1 }));
-    update(job, { status: 'script', script: res });
+    update(job, { status: 'script', script: normStory(res) });
   } catch (e) {
     log('storyboard', e.message);
     update(job, { status: 'failed', error: 'AI เขียนบทภาพไม่สำเร็จ: ' + e.message.slice(0, 200) });
@@ -336,17 +356,38 @@ async function renderStory(job) {
   };
   await Promise.all([worker(), worker()]);
   const fallback = (i) => (products.length ? products[i % products.length].name : hero);
-  const voText = [...shots.map((s) => String(s.vo || '').trim()), String(job.script.endVo || '').trim()].filter(Boolean).join(' ');
   update(job, { status: 'voicing', cost: { ...(job.cost || {}), video: Math.round(((job.cost?.video || 0) + spent) * 100) / 100 } });
-  const voice = await n8n('studio-voice', { text: voText, voice_id: VOICE_ID });
-  if (!voice?.audio_base64) throw new Error('ไม่ได้ไฟล์เสียง');
-  update(job, { status: 'rendering' });
+  const chars = castVoices(job.script.characters || []);
+  const cast = (who) => chars.find((c) => c.id === who) || NARRATOR;
+  const todo = [];
+  shots.forEach((s, i) => {
+    const ls = s.lines?.length ? s.lines : String(s.vo || '').trim() ? [{ who: 'N', text: String(s.vo).trim() }] : [];
+    for (const l of ls) todo.push({ shot: i, who: l.who, text: l.text });
+  });
+  if (String(job.script.endVo || '').trim()) todo.push({ shot: -1, who: job.script.endWho || 'N', text: String(job.script.endVo).trim() });
+  if (!todo.length) throw new Error('ยังไม่มีบทพูด');
+  update(job, { progress: { done: 0, total: todo.length, what: 'voice' } });
+  let vDone = 0, vNext = 0;
+  const lines = new Array(todo.length);
+  const vWorker = async () => {
+    while (vNext < todo.length) {
+      const k = vNext++;
+      const t = todo[k], c = cast(t.who);
+      const v = await n8n('studio-voice', { text: t.text, voice_id: c.voice });
+      if (!v?.audio_base64) throw new Error(`ไม่ได้ไฟล์เสียง (${c.name})`);
+      lines[k] = { ...t, name: c.id === 'N' ? '' : c.name, color: c.id === 'N' ? '#FFFFFF' : c.color, pitch: c.pitch || 1,
+        audio_base64: v.audio_base64, alignment: v.normalized_alignment || v.alignment };
+      update(job, { progress: { done: ++vDone, total: todo.length, what: 'voice' } });
+    }
+  };
+  await Promise.all([vWorker(), vWorker(), vWorker()]);
+  update(job, { status: 'rendering', progress: null });
   const rr = await fetch(`${RENDERER}/render`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-render-token': RENDER_TOKEN },
     body: JSON.stringify({
       type: 'story',
-      voiceover: { audio_base64: voice.audio_base64, alignment: voice.alignment, normalized_alignment: voice.normalized_alignment, text: voText },
+      lines,
       shots: shots.map((s, i) => (s.file ? { url: m(s.file), kind: 'video', vo: s.vo, onscreen: s.onscreen || '' } : { url: m(fallback(i)), kind: 'image', vo: s.vo, onscreen: s.onscreen || '' })),
       endVo: job.script.endVo || '', endImage: hero ? m(hero) : '',
       price: job.script.price || job.product.price || '', cta: (job.script.cta || 'กดตะกร้าเลย') + ' 👇',
@@ -411,7 +452,7 @@ app.get('/api/jobs/:id/progress', auth, async (q, r) => {
   if (!job?.renderId) return r.json({ progress: null });
   try {
     const x = await fetch(`${RENDERER}/renders/${job.renderId}`).then((y) => y.json());
-    r.json({ progress: x.progress ?? null, status: x.status });
+    r.json({ progress: x.progress ?? null, status: x.status, stage: x.stage || '' });
   } catch { r.json({ progress: null }); }
 });
 

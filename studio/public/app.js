@@ -152,6 +152,7 @@ async function renderJob(id) {
   stopPoll();
   if (!curJob || curJob.id !== id) app.innerHTML = `<div class="wrap"><div class="row" style="padding:24px 0"><span class="spin"></span>กำลังโหลด…</div></div>${nav('jobs')}`;
   curJob = await api('jobs/' + id);
+  if (curJob.type === 'story') await loadVoices();
   drawJob();
 }
 function drawJob() {
@@ -170,7 +171,7 @@ function drawJob() {
       <span class="status ${st[1]}">${st[0]}</span></header>
 
     ${j.error ? `<div class="note bad" role="alert" style="margin-bottom:14px">${esc(j.error)}</div>` : ''}
-    ${busy ? `<div class="card"><div class="row"><span class="spin"></span><b>${st[0]}…</b></div>${j.status === 'shooting' && j.progress ? `<div class="bar"><i style="width:${Math.max(4, Math.round(100 * j.progress.done / j.progress.total))}%"></i></div><span class="muted">สร้างแล้ว ${j.progress.done}/${j.progress.total} ช็อต · ช็อตละ 1–3 นาที</span>` : j.status === 'rendering' ? '<div class="bar"><i id="pbar" style="width:3%"></i></div><span class="muted" id="ptext">ตัดต่อคลิปละประมาณ 3–6 นาที</span>' : '<span class="muted">หน้านี้จะอัปเดตเอง ปิดไปทำอย่างอื่นก่อนได้</span>'}</div>` : ''}
+    ${busy ? `<div class="card"><div class="row"><span class="spin"></span><b>${st[0]}…</b></div>${j.status === 'shooting' && j.progress ? `<div class="bar"><i style="width:${Math.max(4, Math.round(100 * j.progress.done / j.progress.total))}%"></i></div><span class="muted">สร้างแล้ว ${j.progress.done}/${j.progress.total} ช็อต · ช็อตละ 1–3 นาที</span>` : j.status === 'voicing' && j.progress?.what === 'voice' ? `<div class="bar"><i style="width:${Math.max(4, Math.round(100 * j.progress.done / j.progress.total))}%"></i></div><span class="muted">พากย์แล้ว ${j.progress.done}/${j.progress.total} ประโยค</span>` : j.status === 'rendering' ? '<div class="bar"><i id="pbar" style="width:3%"></i></div><span class="muted" id="ptext">กำลังเตรียมงานตัดต่อ…</span>' : '<span class="muted">หน้านี้จะอัปเดตเอง ปิดไปทำอย่างอื่นก่อนได้</span>'}</div>` : ''}
 
     ${j.status === 'done' ? doneBlock(j) : ''}
 
@@ -221,6 +222,51 @@ function capText(c) {
   if (typeof c === 'string') return c;
   return [c.caption || '', (c.hashtags || []).join(' ')].filter(Boolean).join('\n');
 }
+let VOICES = null;
+async function loadVoices() { if (!VOICES) { try { VOICES = (await api('voices')).voices; } catch { VOICES = []; } } return VOICES; }
+const GENDERS = [['male', 'ชาย'], ['female', 'หญิง']];
+const AGES = [['child', 'เด็ก'], ['young', 'หนุ่มสาว'], ['middle', 'วัยกลางคน'], ['old', 'ชรา']];
+const PITCH = [['0', 'อัตโนมัติ'], ['1', 'ปกติ'], ['1.2', 'สูง (เด็ก)'], ['0.9', 'ต่ำ (ชรา)']];
+const opt = (list, v) => list.map(([k, l]) => `<option value="${k}" ${String(v) === String(k) ? 'selected' : ''}>${l}</option>`).join('');
+const NARR = { id: 'N', name: 'ผู้บรรยาย' };
+function linesToText(lines, chars) {
+  return (lines || []).map((l) => `${(chars.find((c) => c.id === l.who) || NARR).name}: ${l.text}`).join('\n');
+}
+function parseLines(text, chars) {
+  const out = [];
+  for (const raw of String(text || '').split('\n')) {
+    const row = raw.trim(); if (!row) continue;
+    const m = row.match(/^([^:：]{1,24})[:：]\s*(.+)$/);
+    let who = 'N', t = row;
+    if (m) { const c = chars.find((x) => x.name === m[1].trim()); if (c) { who = c.id; t = m[2]; } else if (/บรรยาย/.test(m[1])) t = m[2]; }
+    if (t.trim()) out.push({ who, text: t.trim() });
+  }
+  return out;
+}
+function charsBlock(S) {
+  const chars = S.characters || [];
+  const vs = VOICES || [];
+  return `<div class="cap" id="chars"><b>ตัวละคร & เสียง</b>
+    <p class="muted" style="margin:0;font-size:13px">ระบบเลือกเสียงให้ตามเพศและวัย เปลี่ยนเองได้ · ผู้บรรยายใช้เสียงเดิม</p>
+    ${chars.map((c, i) => `<div data-ch="${i}" style="border-left:5px solid ${c.color || '#ccc'};padding-left:10px;display:flex;flex-direction:column;gap:6px">
+      <div class="grid2"><label class="f" for="cn${i}">ชื่อ<input id="cn${i}" data-cf="name" type="text" value="${esc(c.name)}"></label>
+        <label class="f" for="cg${i}">เพศ<select id="cg${i}" data-cf="gender">${opt(GENDERS, c.gender)}</select></label></div>
+      <div class="grid2"><label class="f" for="ca${i}">วัย<select id="ca${i}" data-cf="age">${opt(AGES, c.age)}</select></label>
+        <label class="f" for="cp${i}">ระดับเสียง<select id="cp${i}" data-cf="pitch">${opt(PITCH, c.pitch || 0)}</select></label></div>
+      <label class="f" for="cv${i}">เสียง<select id="cv${i}" data-cf="voice"><option value="">อัตโนมัติตามเพศ/วัย</option>${vs.map((v) => `<option value="${v.id}" ${c.voice === v.id ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
+      <button type="button" class="btn" data-delch="${i}" style="height:36px;font-size:13px">ลบตัวละครนี้</button>
+    </div>`).join('')}
+    <button type="button" class="btn" id="addCh" style="height:40px">+ เพิ่มตัวละคร</button>
+  </div>`;
+}
+function readChars() {
+  const prev = curJob.script.characters || [];
+  return [...app.querySelectorAll('[data-ch]')].map((el, i) => {
+    const o = { ...(prev[i] || {}) };
+    el.querySelectorAll('[data-cf]').forEach((f) => { o[f.dataset.cf] = f.dataset.cf === 'pitch' ? Number(f.value) : f.value; });
+    return o;
+  });
+}
 function storyBlock(j) {
   const S = j.script;
   const reuse = (S.shots || []).filter((s) => s.file && !s.failed).length;
@@ -228,15 +274,17 @@ function storyBlock(j) {
   const cost = Math.max(0, (S.shots.length - reuse) * RES_COST[res]).toFixed(2);
   return `<section class="card"><h2>บทภาพ: ${esc(S.title || '')}</h2>
     ${S.logline ? `<p class="muted" style="margin:0">${esc(S.logline)}</p>` : ''}
+    ${charsBlock(S)}
     ${S.shots.map((sh, i) => `<div class="cap" data-shot="${i}">
       <div class="row between"><b>ช็อต ${i + 1}</b>${sh.file && !sh.failed ? '<span class="status st-done">มีวิดีโอแล้ว</span>' : sh.failed ? '<span class="status st-failed">สร้างไม่ได้ ใช้รูปแทน</span>' : ''}</div>
-      <label class="f" for="vo${i}">เสียงพากย์<textarea id="vo${i}" data-sf="vo" rows="2">${esc(sh.vo)}</textarea></label>
+      <label class="f" for="vo${i}">บทพูด (บรรทัดละคน · ชื่อ: ข้อความ)<textarea id="vo${i}" data-sf="dialog" rows="3">${esc(sh.lines?.length ? linesToText(sh.lines, S.characters || []) : sh.vo ? 'ผู้บรรยาย: ' + sh.vo : '')}</textarea></label>
       <label class="f" for="os${i}">ข้อความบนจอ (ว่างได้)<input id="os${i}" data-sf="onscreen" type="text" value="${esc(sh.onscreen)}"></label>
       <details><summary class="muted" style="cursor:pointer">คำสั่งภาพสำหรับ AI (ภาษาอังกฤษ)</summary>
         <label class="hide" for="vi${i}">คำสั่งภาพ</label><textarea id="vi${i}" data-sf="visual" rows="4" style="margin-top:6px;font-size:13px">${esc(sh.visual)}</textarea></details>
       <label class="row" style="font-size:13px"><input type="checkbox" data-sf="useProduct" ${sh.useProduct ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--accent)">ใส่สินค้าจริงในช็อตนี้ (ใช้รูปหลัก)</label>
     </div>`).join('')}
     <label class="f" for="endvo">เสียงพากย์ฉากจบ (สินค้าจริง + ราคา)<textarea id="endvo" data-s="endVo" rows="2">${esc(S.endVo)}</textarea></label>
+    <label class="f" for="endwho">คนพูดฉากจบ<select id="endwho" data-s="endWho">${opt([['N', 'ผู้บรรยาย'], ...(S.characters || []).map((c) => [c.id, c.name])], S.endWho || 'N')}</select></label>
     <div class="grid2">
       <label class="f" for="s_price">ป้ายราคา<input id="s_price" data-s="price" type="text" value="${esc(S.price || j.product?.price)}"></label>
       <label class="f" for="s_cta">ข้อความตอนจบ<input id="s_cta" data-s="cta" type="text" value="${esc(S.cta || 'กดตะกร้าเลย')}"></label>
@@ -248,9 +296,11 @@ function storyBlock(j) {
   </section>${captionsBlock(j)}`;
 }
 function readShots() {
+  const chars = curJob.script.characters || [];
   return [...app.querySelectorAll('[data-shot]')].map((el) => {
     const o = {};
     el.querySelectorAll('[data-sf]').forEach((f) => { o[f.dataset.sf] = f.type === 'checkbox' ? f.checked : f.value; });
+    if ('dialog' in o) { o.lines = parseLines(o.dialog, chars); o.vo = o.lines.map((l) => l.text).join(' '); delete o.dialog; }
     return o;
   });
 }
@@ -316,6 +366,24 @@ function bindJob() {
   });
   on('[data-res]', 'click', async (e) => { curJob = await api('jobs/' + j.id, { method: 'PATCH', body: { script: { res: e.target.dataset.res } } }); drawJob(); });
   on('[data-sf]', 'change', () => patch({ script: { shots: readShots().map((s, i) => ({ ...(curJob.script.shots[i] || {}), ...s })) } }, true));
+  on('[data-cf]', 'change', async (e) => {
+    const cs = readChars();
+    const i = Number(e.target.closest('[data-ch]').dataset.ch);
+    if (['gender', 'age'].includes(e.target.dataset.cf)) { cs[i].voice = ''; cs[i].pitch = 0; } // ให้ระบบเลือกเสียงใหม่ตามเพศ/วัย
+    const shots = readShots().map((s, k) => ({ ...(curJob.script.shots[k] || {}), ...s }));
+    curJob = await api('jobs/' + j.id, { method: 'PATCH', body: { script: { characters: cs, shots } } });
+    if (e.target.dataset.cf !== 'name') drawJob();
+  });
+  on('[data-delch]', 'click', async (e) => {
+    const cs = readChars(); cs.splice(Number(e.target.dataset.delch), 1);
+    curJob = await api('jobs/' + j.id, { method: 'PATCH', body: { script: { characters: cs } } }); drawJob();
+  });
+  on('#addCh', 'click', async () => {
+    const cs = readChars();
+    const id = 'C' + (Math.max(0, ...cs.map((c) => Number(String(c.id).replace(/\D/g, '')) || 0)) + 1);
+    cs.push({ id, name: 'ตัวละคร' + (cs.length + 1), gender: 'female', age: 'young', voice: '', pitch: 0 });
+    curJob = await api('jobs/' + j.id, { method: 'PATCH', body: { script: { characters: cs } } }); drawJob();
+  });
   on('#doStory', 'click', async () => {
     if (!window.confirm('เริ่มสร้างวิดีโอ AI? (มีค่าใช้จ่ายตามที่แสดง)')) return;
     const script = {}; app.querySelectorAll('[data-s]').forEach((el) => { script[el.dataset.s] = el.value; });
@@ -337,10 +405,13 @@ async function pollJob() {
   if (!curJob || !location.hash.startsWith('#/job/')) return stopPoll();
   try {
     const j = await api('jobs/' + curJob.id);
-    if (j.status !== curJob.status || (j.status === 'shooting' && j.progress?.done !== curJob.progress?.done)) { curJob = j; drawJob(); return; }
+    if (j.status !== curJob.status || (['shooting', 'voicing'].includes(j.status) && j.progress?.done !== curJob.progress?.done)) { curJob = j; drawJob(); return; }
     if (j.status === 'rendering') {
       const p = await api(`jobs/${curJob.id}/progress`);
-      if (p.progress != null && $('#pbar')) { $('#pbar').style.width = Math.max(3, p.progress) + '%'; $('#ptext').textContent = `ตัดต่อแล้ว ${p.progress}%`; }
+      if (p.progress != null && $('#pbar')) {
+        $('#pbar').style.width = Math.max(3, p.progress) + '%';
+        $('#ptext').textContent = p.status === 'queued' ? 'รอคิวตัดต่อ (มีงานก่อนหน้า)' : p.progress > 0 ? `ตัดต่อแล้ว ${p.progress}%` : (p.stage || 'กำลังเตรียมงานตัดต่อ') + '…';
+      }
     }
   } catch { /* */ }
 }

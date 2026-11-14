@@ -114,7 +114,120 @@ async function probeSeconds(file) {
   return Number(stdout.trim()) || 0;
 }
 
-async function buildProps(id, req) {
+/** บทสนทนา: เสียงแต่ละประโยค (ต่างคนต่างเสียง) → ปรับระดับเสียง → เรียงต่อกันเป็นแทร็กเดียว + ซับสีตามตัวละคร */
+async function buildDialogue(id, lines, stage) {
+  const GAP_SAME = 0.12, GAP_SHOT = 0.3;
+  let t = 0.15;
+  const placed = [];
+  for (let k = 0; k < lines.length; k++) {
+    stage(`เตรียมเสียงพากย์ ${k + 1}/${lines.length}`);
+    const L = lines[k];
+    const raw = path.join(TMP, `${id}-l${k}.mp3`);
+    fs.writeFileSync(raw, Buffer.from(L.audio_base64 || '', 'base64'));
+    let file = raw;
+    const pitch = Number(L.pitch) || 1;
+    if (Math.abs(pitch - 1) > 0.01) {
+      // เปลี่ยนระดับเสียงโดยความยาวเท่าเดิม (เวลาซับไม่เพี้ยน)
+      const fx = path.join(TMP, `${id}-l${k}-fx.wav`);
+      try {
+        await run('ffmpeg', ['-y', '-v', 'error', '-i', raw, '-af', `asetrate=44100*${pitch},aresample=44100,atempo=${(1 / pitch).toFixed(4)}`, fx]);
+        file = fx;
+      } catch (e) { log('ปรับเสียงไม่สำเร็จ ใช้เสียงเดิม', e.message.slice(0, 120)); }
+    }
+    const dur = (await probeSeconds(file)) || 1;
+    if (k > 0) t += lines[k - 1].shot === L.shot ? GAP_SAME : GAP_SHOT;
+    let al = L.alignment;
+    const end = al?.character_end_times_seconds?.at(-1) || dur;
+    if (al?.characters?.length) {
+      // ตัดแท็กอารมณ์ของ v3 เช่น [laughs] [whispers] ออกจากซับ
+      const keep = []; let inTag = false;
+      al.characters.forEach((c, i) => { if (c === '[') inTag = true; if (!inTag) keep.push(i); if (c === ']') inTag = false; });
+      al = { characters: keep.map((i) => al.characters[i]), character_start_times_seconds: keep.map((i) => al.character_start_times_seconds[i]), character_end_times_seconds: keep.map((i) => al.character_end_times_seconds[i]) };
+    }
+    let caps = captionsFromAlignment(al);
+    if (!caps.length && L.text) caps = [{ start: 0, end, text: L.text }];
+    caps = caps.map((c) => ({ ...c, text: c.text.replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim() })).filter((c) => c.text);
+    placed.push({ ...L, file, at: t, dur, caps: caps.map((c) => ({ start: c.start + t, end: Math.min(c.end, end + 0.25) + t, text: c.text, name: L.name || '', color: L.color || '#FFFFFF' })) });
+    t += Math.min(dur, end + 0.15);
+  }
+  stage('รวมเสียงพากย์');
+  const out = path.join(TMP, `${id}-vo.mp3`);
+  const args = ['-y', '-v', 'error'];
+  placed.forEach((p) => args.push('-i', p.file));
+  const f = placed.map((p, i) => `[${i}:a]aformat=sample_rates=44100:channel_layouts=mono,adelay=${Math.round(p.at * 1000)}:all=1[a${i}]`).join(';');
+  args.push('-filter_complex', `${f};${placed.map((_, i) => `[a${i}]`).join('')}amix=inputs=${placed.length}:normalize=0:dropout_transition=0[o]`, '-map', '[o]', '-ac', '1', '-b:a', '128k', out);
+  await run('ffmpeg', args, { timeout: 120000 });
+  const captions = placed.flatMap((p) => p.caps).sort((a, b) => a.start - b.start);
+  for (let i = 0; i + 1 < captions.length; i++) captions[i].end = Math.min(captions[i].end, captions[i + 1].start);
+  return { placed, captions, speechEnd: t };
+}
+
+/** ขยายวิดีโอความละเอียดต่ำเป็น 1080x1920 แบบคม */
+async function upscale(file) {
+  const sz = await probeSize(file);
+  if (!sz || sz.h >= 1000) return;
+  const up = file.replace(/\.mp4$/, '-hd.mp4');
+  try {
+    await run('ffmpeg', ['-y', '-v', 'error', '-i', file, '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,unsharp=5:5:0.8:5:5:0.0',
+      '-c:v', 'libx264', '-preset', 'superfast', '-crf', '20', '-threads', '1', '-c:a', 'copy', up], { timeout: 300000 });
+    fs.renameSync(up, file);
+  } catch (e) { log('ขยายวิดีโอไม่สำเร็จ ใช้ไฟล์เดิม', e.message.slice(0, 150)); }
+}
+
+async function storyProps(id, req, stage, { captions, segs, endStart, speechEnd }) {
+  // ดาวน์โหลดช็อต
+  stage('ดาวน์โหลดช็อตวิดีโอ');
+  const shots = [];
+  for (let i = 0; i < (req.shots || []).length; i++) {
+    const sh = req.shots[i];
+    const ext = sh.kind === 'image' ? 'jpg' : 'mp4';
+    const url = await localize(id, sh.url, `st${i}`, ext);
+    const start = i === 0 ? 0 : (segs[i] ?? (shots.at(-1).start + shots.at(-1).dur));
+    shots.push({ url, kind: sh.kind === 'image' ? 'image' : 'video', start, dur: 0, onscreen: sh.onscreen || '', file: path.join(TMP, `${id}-st${i}.${ext}`) });
+  }
+  for (let i = 0; i < shots.length; i++) {
+    const next = i + 1 < shots.length ? shots[i + 1].start : endStart;
+    shots[i].dur = Math.max(1.2, next - shots[i].start);
+  }
+  // วิดีโอ 360p: ขยายเป็น 1080x1920 แบบคม ทำพร้อมกัน 2 ช็อต (เครื่องมี 2 คอร์)
+  const vids = shots.filter((x) => x.kind === 'video');
+  let upDone = 0, upNext = 0;
+  stage(`ขยายช็อตให้คม 0/${vids.length}`);
+  const upWorker = async () => {
+    while (upNext < vids.length) {
+      const v = vids[upNext++];
+      await upscale(v.file);
+      stage(`ขยายช็อตให้คม ${++upDone}/${vids.length}`);
+    }
+  };
+  await Promise.all([upWorker(), upWorker()]);
+  for (const x of shots) {
+    if (x.kind === 'video') {
+      const vs = await probeSeconds(x.file);
+      x.rate = vs && vs < x.dur ? Math.max(0.4, vs / x.dur) : 1;
+    }
+    delete x.file;
+  }
+  // ฉากจบ: รูปสินค้าจริง (ตัดพื้นหลังถ้าได้)
+  stage('ตัดพื้นหลังรูปสินค้า');
+  let endImage = '', endCut = false, theme = null;
+  if (req.endImage) {
+    endImage = await localize(id, req.endImage, 'end', 'jpg');
+    const [c] = await cutouts([path.join(TMP, `${id}-end.jpg`)]);
+    if (c?.ok) { endImage = `${LOCAL}/tmp/${path.basename(c.file)}`; endCut = true; }
+    theme = pickTheme(c?.hue ?? null, id);
+  }
+  return {
+    comp: 'StoryClip',
+    props: {
+      durationSec: Math.max(endStart + 3.2, speechEnd + 1.2), audioUrl: `${LOCAL}/tmp/${id}-vo.mp3`, captions,
+      shots, endStart, endImage, endCut, theme, price: req.price || '', cta: req.cta || 'กดตะกร้าเลย 👇',
+      snapshotSec: Math.min(2.5, endStart / 2),
+    },
+  };
+}
+
+async function buildProps(id, req, stage = () => {}) {
   if (req.type === 'review') {
     let audioUrl = '', captions = [], speechEnd = 0;
     if (req.voiceover?.audio_base64) {
@@ -182,6 +295,14 @@ async function buildProps(id, req) {
       },
     };
   }
+  if (req.type === 'story' && Array.isArray(req.lines) && req.lines.length) {
+    const { placed, captions, speechEnd } = await buildDialogue(id, req.lines, stage);
+    const firstOf = (i) => placed.find((p) => p.shot === i)?.at ?? null;
+    const endAt = firstOf(-1);
+    const endStart = Math.max(3, endAt ?? Math.max(0, speechEnd - 3.5));
+    const segs = (req.shots || []).map((_, i) => firstOf(i));
+    return storyProps(id, req, stage, { captions, segs, endStart, speechEnd });
+  }
   if (req.type === 'story') {
     // เสียงพากย์ + เวลาของแต่ละตัวอักษร
     const vo = req.voiceover || {};
@@ -210,50 +331,7 @@ async function buildProps(id, req) {
     const segs = (req.shots || []).map((sh) => startOf(sh.vo));
     const endAt = startOf(req.endVo);
     const endStart = Math.max(3, endAt ?? Math.max(0, speechEnd - 3.5));
-    // ดาวน์โหลดช็อต
-    const shots = [];
-    for (let i = 0; i < (req.shots || []).length; i++) {
-      const sh = req.shots[i];
-      const ext = sh.kind === 'image' ? 'jpg' : 'mp4';
-      const url = await localize(id, sh.url, `st${i}`, ext);
-      const start = i === 0 ? 0 : (segs[i] ?? (shots.at(-1).start + shots.at(-1).dur));
-      shots.push({ url, kind: sh.kind === 'image' ? 'image' : 'video', start, dur: 0, onscreen: sh.onscreen || '', file: path.join(TMP, `${id}-st${i}.${ext}`) });
-    }
-    for (let i = 0; i < shots.length; i++) {
-      const next = i + 1 < shots.length ? shots[i + 1].start : endStart;
-      shots[i].dur = Math.max(1.2, next - shots[i].start);
-      if (shots[i].kind === 'video') {
-        // วิดีโอความละเอียดต่ำ (เช่น 360p): ขยายเป็น 1080x1920 แบบคม (lanczos + sharpen) ก่อนตัดต่อ
-        const sz = await probeSize(shots[i].file);
-        if (sz && sz.h < 1000) {
-          const up = shots[i].file.replace(/\.mp4$/, '-hd.mp4');
-          try {
-            await run('ffmpeg', ['-y', '-v', 'error', '-i', shots[i].file, '-vf', 'scale=1080:1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,unsharp=5:5:0.8:5:5:0.0',
-              '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'copy', up], { timeout: 300000 });
-            fs.renameSync(up, shots[i].file);
-          } catch (e) { log('ขยายวิดีโอไม่สำเร็จ ใช้ไฟล์เดิม', e.message.slice(0, 150)); }
-        }
-        const vs = await probeSeconds(shots[i].file);
-        shots[i].rate = vs && vs < shots[i].dur ? Math.max(0.4, vs / shots[i].dur) : 1;
-      }
-      delete shots[i].file;
-    }
-    // ฉากจบ: รูปสินค้าจริง (ตัดพื้นหลังถ้าได้)
-    let endImage = '', endCut = false, theme = null;
-    if (req.endImage) {
-      endImage = await localize(id, req.endImage, 'end', 'jpg');
-      const [c] = await cutouts([path.join(TMP, `${id}-end.jpg`)]);
-      if (c?.ok) { endImage = `${LOCAL}/tmp/${path.basename(c.file)}`; endCut = true; }
-      theme = pickTheme(c?.hue ?? null, id);
-    }
-    return {
-      comp: 'StoryClip',
-      props: {
-        durationSec: Math.max(endStart + 3.2, speechEnd + 1.2), audioUrl: `${LOCAL}/tmp/${id}-vo.mp3`, captions,
-        shots, endStart, endImage, endCut, theme, price: req.price || '', cta: req.cta || 'กดตะกร้าเลย 👇',
-        snapshotSec: Math.min(2.5, endStart / 2),
-      },
-    };
+    return storyProps(id, req, stage, { captions, segs, endStart, speechEnd });
   }
   if (req.type === 'self') {
     const dest = path.join(TMP, `${id}-v.mp4`);
@@ -283,7 +361,8 @@ async function work(job) {
   const t0 = Date.now();
   job.status = 'rendering';
   try {
-    const { comp, props } = await buildProps(job.id, job.req);
+    const { comp, props } = await buildProps(job.id, job.req, (s) => { job.stage = s; });
+    job.stage = 'กำลังตัดต่อ';
     const composition = await selectComposition({ serveUrl, id: comp, inputProps: props, browserExecutable: BROWSER });
     const out = path.join(OUT, `${job.id}.mp4`);
     // คลิปที่มีวิดีโอซ้อน (เรื่องเล่า/ถ่ายเอง) กินแรมมาก: ทำทีละเฟรม + จำกัดแคชวิดีโอ ไม่ให้เครื่องตัดทิ้ง (SIGKILL)
@@ -343,7 +422,7 @@ app.get('/health', (_q, r) => r.json({ ok: !!serveUrl, queue: queue.length, busy
 app.get('/renders/:id', (q, r) => {
   const j = jobs.get(q.params.id);
   if (!j) return r.status(404).json({ error: 'not found' });
-  r.json({ id: j.id, status: j.status, progress: j.progress || 0, error: j.error });
+  r.json({ id: j.id, status: j.status, progress: j.progress || 0, stage: j.stage || '', error: j.error });
 });
 app.post('/render', (q, r) => {
   if (TOKEN && q.get('x-render-token') !== TOKEN) return r.status(401).json({ error: 'unauthorized' });

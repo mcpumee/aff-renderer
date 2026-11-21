@@ -30,8 +30,41 @@ services:
     networks:
       - n8n_net
     mem_limit: 1g
+  mcrich-db:
+    image: postgres:16-alpine
+    container_name: mcrich-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=mcrich
+      - POSTGRES_DB=mcrich
+      - POSTGRES_PASSWORD=${MCRICH_DB_PASSWORD}
+    volumes:
+      - mcrich_pg:/var/lib/postgresql/data
+    networks:
+      - n8n_net
+    mem_limit: 512m
+  mcrich-app:
+    build: ./mcrich
+    container_name: mcrich-app
+    restart: unless-stopped
+    depends_on:
+      - mcrich-db
+    environment:
+      - DATABASE_URL=postgres://mcrich:${MCRICH_DB_PASSWORD}@mcrich-db:5432/mcrich
+      - SESSION_SECRET=${MCRICH_SECRET}
+      - PUBLIC_URL=${MCRICH_PUBLIC_URL}
+      - LINE_CHANNEL_ID=${LINE_CHANNEL_ID:-}
+      - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+    volumes:
+      - aff_data:/data
+    networks:
+      - n8n_net
+    mem_limit: 512m
 volumes:
   aff_data:
+  mcrich_pg:
 networks:
   n8n_net:
     external: true

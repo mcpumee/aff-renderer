@@ -1,0 +1,13 @@
+{
+  "name": "mcrich",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": {
+    "express": "4.21.2",
+    "multer": "2.0.2",
+    "pg": "8.13.1",
+    "sharp": "0.34.4"
+  }
+}

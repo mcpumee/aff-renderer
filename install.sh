@@ -49,6 +49,30 @@ if [ -z "$SPW" ] || [ "${RESET_STUDIO_PASSWORD:-}" = "1" ]; then
   done
 fi
 [ -z "$SSEC" ] && SSEC=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+
+# ---- Mc Rich (เว็บแอปลูกค้า) ----
+envget() { grep -s "^$1=" .env | cut -d= -f2- || true; }
+MDBPW=$(envget MCRICH_DB_PASSWORD); [ -z "$MDBPW" ] && MDBPW=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+MSEC=$(envget MCRICH_SECRET); [ -z "$MSEC" ] && MSEC=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+MDOM=${MCRICH_DOMAIN:-$(envget MCRICH_DOMAIN)}
+LID=$(envget LINE_CHANNEL_ID); LSEC=$(envget LINE_CHANNEL_SECRET)
+GID=$(envget GOOGLE_CLIENT_ID); GSEC=$(envget GOOGLE_CLIENT_SECRET)
+if [ -n "$MDOM" ]; then MURL="https://$MDOM"; else MURL="https://$HOST/app"; fi
+askkey() { # $1=ข้อความ $2=ซ่อนไหม(1/0) → ค่าใน REPLY (กด Enter = ข้าม)
+  REPLY=""
+  if [ "$2" = "1" ]; then read -r -s -p "$1" REPLY < /dev/tty || true; echo; else read -r -p "$1" REPLY < /dev/tty || true; fi
+}
+if { [ -z "$LID" ] || [ "${SET_MCRICH_KEYS:-}" = "1" ]; } && [ -r /dev/tty ]; then
+  echo ">> ตั้งค่า LINE Login ของ Mc Rich (ยังไม่มี กด Enter ข้ามได้)"
+  askkey "   LINE Channel ID: " 0; [ -n "$REPLY" ] && LID=$REPLY
+  if [ -n "$LID" ]; then askkey "   LINE Channel secret (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && LSEC=$REPLY; fi
+fi
+if { [ -z "$GID" ] || [ "${SET_MCRICH_KEYS:-}" = "1" ]; } && [ -r /dev/tty ]; then
+  echo ">> ตั้งค่า Google Login ของ Mc Rich (ยังไม่มี กด Enter ข้ามได้)"
+  askkey "   Google Client ID: " 0; [ -n "$REPLY" ] && GID=$REPLY
+  if [ -n "$GID" ]; then askkey "   Google Client secret (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && GSEC=$REPLY; fi
+fi
+
 cat > .env <<EOF
 PUBLIC_BASE=${PB}
 RENDER_TOKEN=${TOKEN}
@@ -56,6 +80,14 @@ N8N_NETWORK=${NET}
 N8N_INTERNAL=http://${N8N_CT}:5678
 STUDIO_PASSWORD=${SPW}
 STUDIO_SECRET=${SSEC}
+MCRICH_DB_PASSWORD=${MDBPW}
+MCRICH_SECRET=${MSEC}
+MCRICH_DOMAIN=${MDOM}
+MCRICH_PUBLIC_URL=${MURL}
+LINE_CHANNEL_ID=${LID}
+LINE_CHANNEL_SECRET=${LSEC}
+GOOGLE_CLIENT_ID=${GID}
+GOOGLE_CLIENT_SECRET=${GSEC}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"
@@ -89,6 +121,27 @@ if [ "$HOST" != "-" ]; then
     echo "      - \"traefik.http.middlewares.affstudio-slash.redirectregex.replacement=\$\${1}/\""
     echo "      - traefik.http.middlewares.affstudio-strip.stripprefix.prefixes=/studio"
     echo "      - traefik.http.services.affstudio.loadbalancer.server.port=3100"
+    echo "  mcrich-app:"
+    echo "    labels:"
+    echo "      - traefik.enable=true"
+    echo "      - traefik.docker.network=${NET}"
+    echo "      - \"traefik.http.routers.mcrich.rule=Host(\`${HOST}\`) && (Path(\`/app\`) || PathPrefix(\`/app/\`))\""
+    echo "      - traefik.http.routers.mcrich.entrypoints=${EP}"
+    echo "      - traefik.http.routers.mcrich.tls=true"
+    [ "$CR" != "-" ] && echo "      - traefik.http.routers.mcrich.tls.certresolver=${CR}"
+    echo "      - traefik.http.routers.mcrich.middlewares=mcrich-slash,mcrich-strip"
+    echo "      - \"traefik.http.middlewares.mcrich-slash.redirectregex.regex=^(https?://[^/]+/app)\$\$\""
+    echo "      - \"traefik.http.middlewares.mcrich-slash.redirectregex.replacement=\$\${1}/\""
+    echo "      - traefik.http.middlewares.mcrich-strip.stripprefix.prefixes=/app"
+    echo "      - traefik.http.routers.mcrich.service=mcrich"
+    echo "      - traefik.http.services.mcrich.loadbalancer.server.port=3200"
+    if [ -n "$MDOM" ]; then
+      echo "      - \"traefik.http.routers.mcrichdom.rule=Host(\`${MDOM}\`) || Host(\`www.${MDOM}\`)\""
+      echo "      - traefik.http.routers.mcrichdom.entrypoints=${EP}"
+      echo "      - traefik.http.routers.mcrichdom.tls=true"
+      [ "$CR" != "-" ] && echo "      - traefik.http.routers.mcrichdom.tls.certresolver=${CR}"
+      echo "      - traefik.http.routers.mcrichdom.service=mcrich"
+    fi
   } > docker-compose.override.yml
 fi
 
@@ -104,6 +157,12 @@ for i in $(seq 1 180); do
       for k in $(seq 1 30); do docker logs aff-studio 2>&1 | grep -q 'AFF Studio' && break; sleep 2; done
       SC=$(curl -s -o /dev/null -w '%{http_code}' "https://$HOST/studio/api/health" || true)
       echo ">> ✅ AFF Studio: https://$HOST/studio/  (ทดสอบ HTTP $SC — 200 = ใช้ได้)"
+      for k in $(seq 1 30); do docker logs mcrich-app 2>&1 | grep -q 'Mc Rich พร้อม' && break; sleep 2; done
+      MC=$(curl -s -o /dev/null -w '%{http_code}' "$MURL/api/health" || true)
+      echo ">> ✅ Mc Rich: $MURL/  (ทดสอบ HTTP $MC — 200 = ใช้ได้)"
+      echo ">>    ลิงก์ Callback สำหรับ LINE Login: $MURL/auth/line/callback"
+      echo ">>    ลิงก์ Callback สำหรับ Google:     $MURL/auth/google/callback"
+      docker logs mcrich-app 2>&1 | grep 'Mc Rich พร้อม' | tail -1
     fi
     exit 0
   fi

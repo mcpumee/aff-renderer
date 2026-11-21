@@ -212,13 +212,14 @@ function tagsView() {
       <button type="button" class="btn" id="save">บันทึก (${tags.length} แท็ก)</button>
     </main>${nav('profile')}`;
     const add = () => {
+      if (!$('#nt').value.trim()) return draw();
       $('#nt').value.split(/[\s,]+/).map((x) => x.trim().replace(/^#*/, '#')).filter((x) => x.length > 1 && !tags.includes(x)).forEach((x) => tags.push(x));
       draw();
     };
     $('#add').onclick = add;
-    $('#nt').onkeydown = (e) => { if (e.key === 'Enter') add(); };
+    $('#nt').onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) add(); };
     app.querySelectorAll('.chip[data-i]').forEach((b) => b.onclick = () => { tags.splice(Number(b.dataset.i), 1); draw(); });
-    $('#save').onclick = async () => { try { ME = await api('api/profile/hashtags', { method: 'PUT', body: { hashtags: tags } }); toast('บันทึกแล้ว'); go('profile'); } catch (e) { toast(e.message); } };
+    $('#save').onclick = async () => { $('#nt').value.split(/[\s,]+/).map((x) => x.trim().replace(/^#*/, '#')).filter((x) => x.length > 1 && !tags.includes(x)).forEach((x) => tags.push(x)); try { ME = await api('api/profile/hashtags', { method: 'PUT', body: { hashtags: tags } }); toast('บันทึกแล้ว'); go('profile'); } catch (e) { toast(e.message); } };
   };
   draw();
 }
@@ -349,7 +350,7 @@ async function createView(qs) {
 
 function stepShell(inner, { next = 'ถัดไป', nextId = 'next', disabled = false } = {}) {
   const s = D.step;
-  app.innerHTML = `${topbar('สร้างผลงาน', s ? '' : 'home')}<main>
+  app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main>
     <div class="row between"><span class="muted" style="font-weight:600">ขั้น ${s + 1}/${STEPS.length} · ${STEPS[s]}</span>
       <button type="button" class="chip" id="reset" style="min-height:34px;padding:4px 12px">เริ่มใหม่</button></div>
     <div class="steps" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i <= s ? 'on' : ''}"></i>`).join('')}</div>

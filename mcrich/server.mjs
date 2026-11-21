@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import multer from 'multer';
 import sharp from 'sharp';
+import { registerPay } from './pay.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3200);
@@ -190,7 +191,6 @@ app.use((req, res, next) => {
 });
 
 app.get('/api/health', (_q, r) => r.json({ ok: true }));
-app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled() }));
 
 // ลิงก์ชวนเพื่อน /r/CODE → จำโค้ดไว้ 30 วัน แล้วไปหน้าแรก
 app.get('/r/:code', (req, res) => {
@@ -313,9 +313,13 @@ app.get('/api/trends', auth, wrap(async (req, res) => {
   res.json({ items: scored.slice(0, 6), personalized: mine.length > 0 });
 }));
 
+// ---------- เติมดาว ----------
+const pay = registerPay(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand });
+app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready() }));
+
 // ---------- หน้าเว็บ ----------
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '1h', index: 'index.html' }));
 app.get(['/privacy', '/terms'], (req, res) => res.sendFile(path.join(__dir, 'public', `${req.path.slice(1)}.html`)));
 
-migrate().then(() => app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()}`)))
+migrate().then(() => app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY}`)))
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

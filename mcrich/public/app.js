@@ -157,9 +157,10 @@ function profileView() {
       <div class="row"><input type="text" id="inv" readonly value="${esc(inviteUrl)}" aria-label="ลิงก์ชวนเพื่อน"><button type="button" class="btn sm" id="copyInv">คัดลอก</button></div>
       <span class="muted">ชวนแล้ว ${ME.referred} คน · ได้ดาวเมื่อเพื่อนเติมดาวครั้งแรก</span></section>
     <div class="row" style="justify-content:center;gap:16px"><a href="privacy" class="muted">นโยบายความเป็นส่วนตัว</a><a href="terms" class="muted">เงื่อนไขการใช้</a></div>
+    ${ME.admin ? '<a class="btn dark" href="#admin">หลังบ้านแอดมิน</a>' : ''}
     <button type="button" class="btn ghost" id="logout">ออกจากระบบ</button>
   </main>${nav('profile')}`;
-  $('#topup').onclick = () => toast('ระบบเติมดาวเปิดในเฟสถัดไป');
+  $('#topup').onclick = () => go('topup');
   $('#copyInv').onclick = async () => {
     try { await navigator.clipboard.writeText($('#inv').value); toast('คัดลอกลิงก์แล้ว'); } catch { $('#inv').select(); toast('กดค้างเพื่อคัดลอก'); }
   };
@@ -222,6 +223,97 @@ function tagsView() {
   draw();
 }
 
+// ---------- เติมดาว ----------
+async function topupView() {
+  app.innerHTML = `${topbar('เติมดาว', 'profile')}<main><p class="muted">กำลังโหลด…</p></main>${nav('profile')}`;
+  const info = await api('api/topup/packages');
+  if (!info.ready) { $('main').innerHTML = '<div class="soon card"><span class="badge b-warn">ยังไม่เปิด</span><h2>ระบบเติมดาวกำลังตั้งค่า</h2></div>'; return; }
+  $('main').innerHTML = `<p class="muted">1 ดาว = 1 บาท · ดาวไม่มีวันหมดอายุ · ได้ใบเสร็จทุกครั้ง</p>
+    <div class="grid2">${info.packages.map((p) => `<button type="button" class="card pk" data-p="${p.id}" style="text-align:left;cursor:pointer;color:var(--fg);${p.id === 'p300' ? 'border:2px solid var(--lime)' : ''}">
+      <b class="num" style="font-size:22px">${num(p.stars)} ดาว</b><span class="num">฿${num(p.amount)}</span>
+      <span class="muted" style="color:${p.bonus ? 'var(--lime)' : 'var(--muted)'};font-weight:600">${p.bonus ? `แถม ${p.bonus} ดาว` : ''}${p.label ? (p.bonus ? ' · ' : '') + p.label : ''}</span></button>`).join('')}</div>
+    <p class="muted">${info.autoCheck ? 'ระบบตรวจสลิปอัตโนมัติ ดาวเข้าภายใน 1 นาที' : 'แอดมินตรวจสลิปและเติมดาวให้ (ปกติภายในวัน)'}</p>
+    <div id="recent"></div>`;
+  app.querySelectorAll('.pk').forEach((b) => b.onclick = () => payView(b.dataset.p).catch((e) => toast(e.message)));
+  const { items } = await api('api/topups');
+  if (items.length) $('#recent').innerHTML = `<h2 style="margin:8px 0">รายการล่าสุด</h2><div class="list">${items.slice(0, 5).map(topRow).join('')}</div>`;
+}
+const STATUS = { paid: ['สำเร็จ', 'b-ok'], review: ['รอแอดมินตรวจ', 'b-warn'], rejected: ['ไม่ผ่าน', 'b-warn'], pending: ['รอโอน', 'b-lime'] };
+const topRow = (t) => `<div><span><b class="num">฿${num(t.amount)} · ${num(t.stars)} ดาว</b><br><span class="muted">${new Date(t.createdAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}${t.reason && t.status !== 'paid' ? ' · ' + esc(t.reason) : ''}</span></span>
+  ${t.status === 'paid' ? `<a href="receipt/${t.id}" target="_blank" rel="noopener" class="badge b-ok" style="text-decoration:none">ใบเสร็จ</a>` : `<span class="badge ${STATUS[t.status]?.[1] || ''}">${STATUS[t.status]?.[0] || t.status}</span>`}</div>`;
+
+async function payView(pkg) {
+  const t = await api('api/topup', { method: 'POST', body: { package: pkg } });
+  let timer;
+  const draw = (msg, kind) => {
+    app.innerHTML = `${topbar('โอนเงิน', 'topup')}<main>
+      <section class="card" style="flex-direction:row;justify-content:space-between"><span><span class="muted">แพ็ก</span><br><b class="num" style="font-size:20px">${num(t.stars)} ดาว</b></span>
+        <span style="text-align:right"><span class="muted">ยอดโอน</span><br><b class="num" style="font-size:20px">฿${num(t.amount)}.00</b></span></section>
+      <section class="card" style="align-items:center;background:#fff;color:#111">
+        <b style="background:#0E3A6B;color:#fff;align-self:stretch;text-align:center;border-radius:10px;padding:8px">PromptPay · ฿${num(t.amount)}.00</b>
+        <img src="${t.qr}" alt="QR PromptPay ยอด ${t.amount} บาท" width="240" height="240" style="image-rendering:pixelated">
+        <span style="font-size:14px">ผู้รับ: <b>${esc(t.payee || 'Mc Rich')}</b></span>
+        <span id="cd" style="font-size:13px;color:#B3261E;font-weight:600"></span>
+        <span style="font-size:12px;color:#555">กดค้างที่ QR เพื่อบันทึกรูป แล้วสแกนในแอปธนาคาร</span>
+      </section>
+      ${msg ? `<p role="alert" class="card" style="background:${kind === 'ok' ? 'var(--ok-bg)' : kind === 'warn' ? 'var(--warn-bg)' : 'var(--bad-bg)'};color:${kind === 'ok' ? 'var(--ok)' : kind === 'warn' ? 'var(--warn)' : 'var(--bad)'}">${esc(msg)}</p>` : ''}
+      <label class="btn" for="slip" style="cursor:pointer" id="slipBtn">โอนแล้ว · แนบสลิป<input id="slip" type="file" accept="image/*" hidden></label>
+      <button type="button" class="btn ghost" id="review">ตรวจไม่ผ่าน? ส่งให้แอดมินตรวจ</button>
+      <p class="muted">ยอดต้องตรงกับ QR · สลิป 1 ใบใช้ได้ครั้งเดียว · โอนจากบัญชีชื่ออะไรก็ได้</p>
+    </main>${nav('profile')}`;
+    const exp = new Date(t.expiresAt).getTime();
+    const tick = () => {
+      const s = Math.max(0, Math.round((exp - Date.now()) / 1000));
+      const el = $('#cd'); if (!el) return clearInterval(timer);
+      el.textContent = s ? `QR หมดอายุใน ${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` : 'QR หมดอายุ (ถ้าโอนแล้ว แนบสลิปได้ภายใน 24 ชม.)';
+    };
+    clearInterval(timer); timer = setInterval(tick, 1000); tick();
+    $('#slip').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      $('#slipBtn').textContent = 'กำลังตรวจสลิป…';
+      const fd = new FormData(); fd.append('slip', f);
+      try {
+        const r = await api(`api/topup/${t.id}/slip`, { method: 'POST', body: fd });
+        if (r.result === 'paid') { clearInterval(timer); if (r.me) ME = r.me; else ME = await api('api/me'); successView(r); return; }
+        if (r.result === 'review') return draw(r.reason || 'ส่งให้แอดมินตรวจแล้ว เติมดาวให้ภายในวัน แจ้งผลทาง LINE', 'warn');
+        draw(r.message || r.reason || 'ตรวจสลิปไม่ผ่าน', 'bad');
+      } catch (er) { draw(er.message, 'bad'); }
+    };
+    $('#review').onclick = async () => {
+      try { await api(`api/topup/${t.id}/review`, { method: 'POST', body: {} }); draw('ส่งให้แอดมินตรวจแล้ว เติมดาวให้ภายในวัน', 'warn'); } catch (er) { toast(er.message); }
+    };
+  };
+  draw();
+}
+function successView(r) {
+  app.innerHTML = `${topbar('เติมดาวสำเร็จ', 'profile')}<main>
+    <section class="hero" style="align-items:center;text-align:center;gap:12px">
+      ${ICON.star.replace('width="17" height="17"', 'width="56" height="56"')}
+      <h1>+${num(r.stars)} ดาว</h1><p class="muted">ยอดคงเหลือ ${num(ME.stars)} ดาว · ใบเสร็จ ${esc(r.receiptNo || '')}</p>
+      <a class="btn" href="#create">ไปสร้างผลงาน</a>
+      <a class="btn dark" href="receipt/${r.id}" target="_blank" rel="noopener">ดูใบเสร็จ</a>
+    </section></main>${nav('profile')}`;
+}
+
+// ---------- แอดมิน ----------
+async function adminView(status = 'review') {
+  app.innerHTML = `${topbar('หลังบ้าน · เติมดาว', 'profile')}<main>
+    <div class="chips">${[['review', 'รอตรวจ'], ['paid', 'สำเร็จ'], ['rejected', 'ไม่ผ่าน']].map(([k, l]) => `<button type="button" class="chip" data-s="${k}" aria-pressed="${k === status}">${l}</button>`).join('')}</div>
+    <div id="sum" class="muted"></div><div id="list" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></div></main>${nav('profile')}`;
+  app.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => adminView(b.dataset.s));
+  const d = await api('api/admin/topups?status=' + status);
+  $('#sum').textContent = `เดือนนี้เติมสำเร็จ ${num(d.month.n)} รายการ · ฿${num(d.month.total)}`;
+  $('#list').innerHTML = d.items.map((t) => `<section class="card">
+    <div class="row between"><b class="num">฿${num(t.amount)} · ${num(t.stars)} ดาว</b><span class="muted">${esc(t.user)} · ${esc(t.userId)}</span></div>
+    <span class="muted">${new Date(t.createdAt).toLocaleString('th-TH')} · ${esc(t.reason || '')}${t.note ? ' · หมายเหตุ: ' + esc(t.note) : ''}</span>
+    ${t.slipData?.amount ? `<span class="muted">สลิป: ฿${esc(t.slipData.amount)} · ผู้รับ ${esc(t.slipData.receiver)} · ผู้โอน ${esc(t.slipData.sender)} · ${esc(t.slipData.transRef || '')}</span>` : ''}
+    ${t.slip ? `<a href="${t.slip}" target="_blank" rel="noopener"><img src="${t.slip}" alt="สลิป" style="max-width:100%;max-height:360px;border-radius:10px"></a>` : '<span class="muted">ไม่มีสลิป</span>'}
+    ${status === 'review' ? `<div class="grid2"><button type="button" class="btn" data-ok="${t.id}">อนุมัติ เติมดาว</button><button type="button" class="btn ghost" data-no="${t.id}">ไม่ผ่าน</button></div>` : ''}
+  </section>`).join('') || '<p class="muted">ไม่มีรายการ</p>';
+  app.querySelectorAll('[data-ok]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/topups/${b.dataset.ok}/approve`, { method: 'POST', body: {} }); toast('เติมดาวแล้ว'); adminView(status); } catch (e) { toast(e.message); } });
+  app.querySelectorAll('[data-no]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/topups/${b.dataset.no}/reject`, { method: 'POST', body: {} }); toast('ปฏิเสธแล้ว'); adminView(status); } catch (e) { toast(e.message); } });
+}
+
 async function starsView() {
   app.innerHTML = `${topbar('ประวัติดาว', 'profile')}<main><div class="list" id="h"><div class="muted">กำลังโหลด…</div></div></main>${nav('profile')}`;
   const { items } = await api('api/stars/history');
@@ -246,6 +338,8 @@ async function route() {
     case 'brand': return brandView();
     case 'tags': return tagsView();
     case 'stars': return starsView().catch((e) => toast(e.message));
+    case 'topup': return topupView().catch((e) => toast(e.message));
+    case 'admin': return ME.admin ? adminView().catch((e) => toast(e.message)) : go('home');
     case 'create': return soon('create', 'สร้างผลงาน', 'สร้างภาพโปสเตอร์ เมนู และคลิปแบบต่างๆ จะเปิดในเฟสถัดไป ตอนนี้ตั้งค่าชุดแบรนด์และแฮชแท็กรอไว้ได้เลย');
     case 'works': return soon('works', 'ผลงานของฉัน', 'ประวัติผลงาน ดาวน์โหลด ส่งเข้า Google Drive และสถิติยอดวิว จะอยู่ที่นี่');
     case 'chat': return soon('chat', 'แชทผู้ช่วย AI', 'ถามเรื่องดาว ผลงาน หรือขอไอเดียคลิปได้ตลอด 24 ชม.');

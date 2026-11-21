@@ -75,3 +75,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
   ip         TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- เติมดาว (PromptPay + ตรวจสลิป)
+CREATE SEQUENCE IF NOT EXISTS receipt_seq;
+CREATE TABLE IF NOT EXISTS topups (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  package     TEXT NOT NULL,
+  amount      INTEGER NOT NULL,           -- บาท (เต็มบาท)
+  stars       INTEGER NOT NULL,           -- ดาวที่ได้รวมโบนัส
+  status      TEXT NOT NULL DEFAULT 'pending',  -- pending | paid | review | rejected | expired
+  receipt_no  TEXT UNIQUE,
+  slip_file   TEXT NOT NULL DEFAULT '',
+  trans_ref   TEXT UNIQUE,
+  slip_data   JSONB NOT NULL DEFAULT '{}'::jsonb,
+  note        TEXT NOT NULL DEFAULT '',
+  reason      TEXT NOT NULL DEFAULT '',
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  paid_at     TIMESTAMPTZ,
+  reviewed_by BIGINT REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS topups_user ON topups(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS topups_status ON topups(status, created_at);
+-- โบนัสชวนเพื่อนได้ครั้งเดียวต่อเพื่อน 1 คน
+CREATE UNIQUE INDEX IF NOT EXISTS star_ledger_ref_once ON star_ledger(user_id, kind, ref) WHERE kind = 'referral';

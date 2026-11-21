@@ -51,7 +51,7 @@ fi
 [ -z "$SSEC" ] && SSEC=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 
 # ---- Mc Rich (เว็บแอปลูกค้า) ----
-envget() { grep -s "^$1=" .env | cut -d= -f2- || true; }
+envget() { grep -s "^$1=" .env | cut -d= -f2- | sed 's/^"//; s/"$//' || true; }
 MDBPW=$(envget MCRICH_DB_PASSWORD); [ -z "$MDBPW" ] && MDBPW=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 MSEC=$(envget MCRICH_SECRET); [ -z "$MSEC" ] && MSEC=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 MDOM=${MCRICH_DOMAIN:-$(envget MCRICH_DOMAIN)}
@@ -73,6 +73,22 @@ if { [ -z "$GID" ] || [ "${SET_MCRICH_KEYS:-}" = "1" ]; } && [ -r /dev/tty ]; th
   if [ -n "$GID" ]; then askkey "   Google Client secret (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && GSEC=$REPLY; fi
 fi
 
+# ---- เติมดาว (PromptPay + ตรวจสลิป) ----
+PPID=$(envget PROMPTPAY_ID); PPNAME=$(envget PROMPTPAY_NAME); RMATCH=$(envget RECEIVER_MATCH); ESKEY=$(envget EASYSLIP_KEY)
+SNAME=$(envget SELLER_NAME); SADDR=$(envget SELLER_ADDRESS); STAX=$(envget SELLER_TAX_ID)
+if { [ -z "$PPID" ] || [ "${SET_MCRICH_PAY:-}" = "1" ]; } && [ -r /dev/tty ]; then
+  echo ">> ตั้งค่ารับเงินเติมดาว (ยังไม่พร้อม กด Enter ข้ามได้)"
+  askkey "   พร้อมเพย์ที่รับเงิน (เบอร์มือถือ 10 หลัก หรือเลขบัตร 13 หลัก ตัวเลขจะไม่แสดง): " 1; [ -n "$REPLY" ] && PPID=$(echo "$REPLY" | tr -cd '0-9')
+  if [ -n "$PPID" ]; then
+    askkey "   ชื่อบัญชีผู้รับ ตามที่ขึ้นในแอปธนาคาร (เช่น วชิรวิทย์ ภ): " 0; [ -n "$REPLY" ] && PPNAME=$REPLY
+    RMATCH="$(echo "$PPNAME" | awk '{print $1}'),${PPID: -4}"
+    askkey "   API key ของ EasySlip สำหรับตรวจสลิปอัตโนมัติ (ยังไม่มี กด Enter = แอดมินตรวจเอง): " 1; [ -n "$REPLY" ] && ESKEY=$REPLY
+    askkey "   ชื่อผู้ขายบนใบเสร็จ (Enter = ใช้ชื่อบัญชี): " 0; SNAME=${REPLY:-${SNAME:-$PPNAME}}
+    askkey "   ที่อยู่บนใบเสร็จ (Enter = ข้าม): " 0; [ -n "$REPLY" ] && SADDR=$REPLY
+    askkey "   เลขผู้เสียภาษีบนใบเสร็จ (Enter = ข้าม): " 0; [ -n "$REPLY" ] && STAX=$REPLY
+  fi
+fi
+
 cat > .env <<EOF
 PUBLIC_BASE=${PB}
 RENDER_TOKEN=${TOKEN}
@@ -88,6 +104,13 @@ LINE_CHANNEL_ID=${LID}
 LINE_CHANNEL_SECRET=${LSEC}
 GOOGLE_CLIENT_ID=${GID}
 GOOGLE_CLIENT_SECRET=${GSEC}
+PROMPTPAY_ID=${PPID}
+PROMPTPAY_NAME="${PPNAME}"
+RECEIVER_MATCH=${RMATCH}
+EASYSLIP_KEY=${ESKEY}
+SELLER_NAME="${SNAME}"
+SELLER_ADDRESS="${SADDR}"
+SELLER_TAX_ID=${STAX}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"
@@ -163,6 +186,7 @@ for i in $(seq 1 180); do
       echo ">>    ลิงก์ Callback สำหรับ LINE Login: $MURL/auth/line/callback"
       echo ">>    ลิงก์ Callback สำหรับ Google:     $MURL/auth/google/callback"
       docker logs mcrich-app 2>&1 | grep 'Mc Rich พร้อม' | tail -1
+      echo ">>    ตั้งตัวเองเป็นแอดมิน: docker exec mcrich-app node admin.mjs <รหัสสมาชิกในหน้าโปรไฟล์>"
     fi
     exit 0
   fi

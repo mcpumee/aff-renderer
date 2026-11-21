@@ -318,7 +318,11 @@ const pay = registerPay(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand });
 app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready() }));
 
 // ---------- หน้าเว็บ ----------
-app.use(express.static(path.join(__dir, 'public'), { maxAge: '1h', index: 'index.html' }));
+// index.html ห้ามจำ (ให้ได้เวอร์ชันใหม่ทุกครั้ง) ส่วน js/css ใส่เลขเวอร์ชันในลิงก์
+const BUILD = Date.now().toString(36);
+const INDEX = fs.readFileSync(path.join(__dir, 'public', 'index.html'), 'utf8').replace(/(app\.(?:js|css))"/g, `$1?v=${BUILD}"`);
+app.get(['/', '/index.html'], (_q, res) => { res.setHeader('cache-control', 'no-cache'); res.type('html').send(INDEX); });
+app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 app.get(['/privacy', '/terms'], (req, res) => res.sendFile(path.join(__dir, 'public', `${req.path.slice(1)}.html`)));
 
 migrate().then(() => app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY}`)))

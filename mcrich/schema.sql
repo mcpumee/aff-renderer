@@ -130,3 +130,37 @@ CREATE INDEX IF NOT EXISTS works_user ON works(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS works_status ON works(status, created_at);
 -- คืนดาวผลงานเดียวกันได้ครั้งเดียว
 CREATE UNIQUE INDEX IF NOT EXISTS star_ledger_refund_once ON star_ledger(user_id, kind, ref) WHERE kind = 'refund';
+
+-- ลิงก์สั้น + นับคลิก
+CREATE TABLE IF NOT EXISTS links (
+  code       TEXT PRIMARY KEY,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  work_id    BIGINT REFERENCES works(id) ON DELETE SET NULL,
+  platform   TEXT NOT NULL DEFAULT '',
+  url        TEXT NOT NULL,
+  label      TEXT NOT NULL DEFAULT '',
+  clicks     INTEGER NOT NULL DEFAULT 0,
+  uniques    INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS links_user ON links(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS links_work ON links(work_id);
+CREATE TABLE IF NOT EXISTS link_clicks (
+  id       BIGSERIAL PRIMARY KEY,
+  code     TEXT NOT NULL REFERENCES links(code) ON DELETE CASCADE,
+  at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  visitor  TEXT NOT NULL DEFAULT '',
+  device   TEXT NOT NULL DEFAULT '',
+  is_unique BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE INDEX IF NOT EXISTS link_clicks_code ON link_clicks(code, at DESC);
+
+-- Google Drive ของลูกค้า (สิทธิ์ drive.file: เห็นเฉพาะไฟล์ที่ Mc Rich สร้าง)
+CREATE TABLE IF NOT EXISTS drive_accounts (
+  user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  refresh_enc TEXT NOT NULL,
+  email       TEXT NOT NULL DEFAULT '',
+  folder_id   TEXT NOT NULL DEFAULT '',
+  auto        BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

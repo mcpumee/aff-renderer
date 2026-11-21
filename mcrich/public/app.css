@@ -42,7 +42,7 @@ main { flex: 1; padding: 16px 16px calc(96px + env(safe-area-inset-bottom)); dis
 .btn.line { background: #06C755; color: #fff; }
 .btn.google { background: #fff; color: #1f1f1f; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
-.btn.sm { min-height: 42px; font-size: 14px; width: auto; }
+.btn.sm { min-height: 42px; font-size: 14px; width: auto; white-space: nowrap; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { min-height: 42px; padding: 8px 14px; border-radius: 999px; background: var(--s1); color: var(--fg); border: 1px solid var(--line); cursor: pointer; font-size: 14px; }
@@ -109,3 +109,6 @@ textarea { resize: vertical; line-height: 1.5; }
 .gallery img { width: 100%; height: auto; border-radius: 14px; background: var(--s2); }
 .spin { width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--s3); border-top-color: var(--lime); animation: sp 0.9s linear infinite; }
 @keyframes sp { to { transform: rotate(360deg); } }
+.bars { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; height: 64px; align-items: end; }
+.bars span { height: 100%; display: flex; align-items: flex-end; }
+.bars i { display: block; width: 100%; background: var(--lime); border-radius: 3px 3px 0 0; min-height: 2px; }

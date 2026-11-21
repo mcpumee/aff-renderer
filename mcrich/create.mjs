@@ -156,9 +156,9 @@ function captionPrompt(p, style, brand) {
 รายละเอียด: ${p.details || '-'}
 ราคา/โปร: ${p.price || '-'}
 ร้าน: ${brand.shopName || '-'} ${brand.line ? `LINE ${brand.line}` : ''} ${brand.phone ? `โทร ${brand.phone}` : ''}
-ลิงก์: ${p.link || '-'}
+ลิงก์: ${p.link ? 'มี — เขียน {LINK} ตรงตำแหน่งที่จะใส่ลิงก์ ห้ามเขียน URL เอง' : '-'}
 โทน: ${p.tone || 'เป็นกันเอง'}
-กฎ: ห้ามอ้างรักษาโรค ห้ามคำเกินจริง (100%, เห็นผลทันที, ดีที่สุดในโลก) ตามกฎหมาย อย. และคุ้มครองผู้บริโภค · ใช้อีโมจิพอดี · ถ้ามีลิงก์ใส่ลิงก์ในแคปชั่นตามจริงห้ามแต่งลิงก์ · ถ้าเป็น Affiliate ให้ชวนกดตะกร้า/ลิงก์
+กฎ: ห้ามอ้างรักษาโรค ห้ามคำเกินจริง (100%, เห็นผลทันที, ดีที่สุดในโลก) ตามกฎหมาย อย. และคุ้มครองผู้บริโภค · ใช้อีโมจิพอดี · ถ้ามีลิงก์ให้ใส่ {LINK} 1 ครั้งต่อแคปชั่น · ถ้าเป็น Affiliate ให้ชวนกดตะกร้า/ลิงก์
 ตอบเป็น JSON เท่านั้น: {"facebook":"แคปชั่นยาว 3-6 บรรทัด","instagram":"กระชับ 2-4 บรรทัด","tiktok":"สั้นมาก 1-2 บรรทัด มีฮุค","shopee":"แคปชั่นขาย สั้น ชัด","hashtags":["#แท็ก", "... 5-8 แท็กภาษาไทย/อังกฤษที่เกี่ยวข้อง"]}`;
 }
 
@@ -184,7 +184,7 @@ async function finish(buf, { logo, watermark }) {
   return { out, w: W, h: H };
 }
 
-export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand }) {
+export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks = {} }) {
   const WORK_DIR = path.join(DATA_DIR, 'works');
   const REF_DIR = path.join(DATA_DIR, 'refs');
   const LOGO_DIR = path.join(DATA_DIR, 'logos');
@@ -387,7 +387,17 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     }
     const cap = await capP || {};
     const captions = {};
-    for (const k of ['facebook', 'instagram', 'tiktok', 'shopee']) captions[k] = clean(cap[k], 2200);
+    const keepLines = (v) => String(v ?? '').replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 2200);
+    for (const k of ['facebook', 'instagram', 'tiktok', 'shopee']) captions[k] = keepLines(cap[k]);
+    // ใส่ลิงก์: ลิงก์สั้นแยกตามแพลตฟอร์ม (นับคลิกได้) ถ้าไม่มีระบบลิงก์สั้นใช้ลิงก์จริง
+    if (p.link) {
+      const short = hooks.shortLinks ? await hooks.shortLinks(w, Object.keys(captions)).catch((e) => { log('shortlink', e.message); return {}; }) : {};
+      for (const k of Object.keys(captions)) {
+        const url = short[k] || p.link;
+        captions[k] = captions[k].includes('{LINK}') ? captions[k].replaceAll('{LINK}', url) : captions[k].split(p.link).join(url);
+        if (captions[k] && !captions[k].includes(url)) captions[k] += `\n👉 ${url}`;
+      }
+    } else for (const k of Object.keys(captions)) captions[k] = captions[k].replaceAll('{LINK}', '').trim();
     const tags = [...new Set([...p.hashtags, ...(Array.isArray(cap.hashtags) ? cap.hashtags : []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, ''))])].filter((t) => t.length > 1).slice(0, 25);
     // ภาพบางเวอร์ชันพลาด คืนดาวส่วนที่ไม่ได้
     const missing = w.versions - ok.length;
@@ -396,6 +406,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       await q("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'refund',$3,$4) ON CONFLICT DO NOTHING", [w.user_id, back, `work:${w.id}`, `คืนดาว ${missing} ภาพที่สร้างไม่สำเร็จ`]);
     }
     await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, done_at=now() WHERE id=$1", [w.id, JSON.stringify(files), captions, tags]);
+    if (hooks.onDone) hooks.onDone({ ...w, files }).catch((e) => log('onDone', w.id, e.message));
     log('work done', w.id, `${ok.length}/${w.versions}`, model, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
   async function kick() {

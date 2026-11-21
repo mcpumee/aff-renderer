@@ -127,7 +127,9 @@ const soon = (cur, title, text) => {
   app.innerHTML = `${topbar()}<main><div class="soon card"><span class="badge b-lime">กำลังเปิดเร็วๆ นี้</span><h2>${title}</h2><p class="muted" style="font-size:14px">${text}</p></div></main>${nav(cur)}`;
 };
 
-function profileView() {
+function profileView(qs) {
+  const dq = new URLSearchParams(qs || '').get('drive');
+  if (dq) { toast({ ok: 'เชื่อม Google Drive แล้ว', fail: 'เชื่อม Google Drive ไม่สำเร็จ ลองใหม่', notready: 'Google Drive ยังไม่เปิดใช้' }[dq] || ''); history.replaceState(null, '', '#profile'); }
   const i = ME.interests || {};
   const iSum = [...(i.goals || []), ...(i.categories || []), ...(i.styles || [])].slice(0, 5).join(' · ') || 'ยังไม่ได้เลือก';
   const inviteUrl = new URL(`r/${ME.referralCode}`, location.href.split('#')[0]).href;
@@ -144,14 +146,16 @@ function profileView() {
     <div class="list">
       <a href="#interests"><span><b>ความสนใจ</b><br><span class="muted">${esc(iSum)}</span></span><span aria-hidden="true">แก้ไข ›</span></a>
       <a href="#brand"><span><b>ชุดแบรนด์</b><br><span class="muted">${ME.brand?.shopName ? esc(ME.brand.shopName) : 'โลโก้ สี ฟอนต์ ชื่อร้าน ช่องทางสั่งซื้อ'}</span></span><span aria-hidden="true">›</span></a>
+      <a href="#links"><span><b>ลิงก์ของฉัน · สถิติคลิก</b><br><span class="muted">ลิงก์สั้นนับคลิกแยกแพลตฟอร์ม</span></span><span aria-hidden="true">›</span></a>
       <a href="#tags"><span><b>แฮชแท็กประจำ</b><br><span class="muted">${(ME.hashtags || []).length} แท็ก · ติ๊กใช้ได้ตอนสร้าง</span></span><span aria-hidden="true">›</span></a>
     </div>
     <section class="card"><h2 style="font-size:16px">การเชื่อมต่อ</h2>
+      <div id="drive" class="card" style="padding:12px;background:var(--s2)"><span class="muted">Google Drive · กำลังโหลด…</span></div>
       <div class="grid2 muted">
-        <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>Google Drive</span><span>เร็วๆ นี้</span></span>
         <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>เพจ Facebook</span><span>เร็วๆ นี้</span></span>
         <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>Instagram</span><span>เร็วๆ นี้</span></span>
         <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>TikTok</span><span>เร็วๆ นี้</span></span>
+        <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>YouTube</span><span>เร็วๆ นี้</span></span>
       </div></section>
     <section class="card" style="background:#1C2410;border-color:#3A4A18"><b>ชวนเพื่อน รับคนละ 20 ดาว</b>
       <div class="row"><input type="text" id="inv" readonly value="${esc(inviteUrl)}" aria-label="ลิงก์ชวนเพื่อน"><button type="button" class="btn sm" id="copyInv">คัดลอก</button></div>
@@ -165,6 +169,23 @@ function profileView() {
     try { await navigator.clipboard.writeText($('#inv').value); toast('คัดลอกลิงก์แล้ว'); } catch { $('#inv').select(); toast('กดค้างเพื่อคัดลอก'); }
   };
   $('#logout').onclick = async () => { await api('api/logout', { method: 'POST' }); ME = null; go('login'); };
+  driveCard().catch(() => {});
+}
+async function driveCard() {
+  const d = await api('api/drive'); const el = $('#drive'); if (!el) return;
+  if (!d.ready) { el.innerHTML = '<div class="row between"><b>Google Drive</b><span class="muted">เร็วๆ นี้</span></div>'; return; }
+  if (!d.connected) {
+    el.innerHTML = `<div class="row between"><span><b>Google Drive</b><br><span class="muted">เก็บผลงานถาวรในไดรฟ์ของคุณ (เซิร์ฟเวอร์เราเก็บแค่ 7 วัน)</span></span></div>
+      <a class="btn sm" href="drive/connect" style="width:100%">เชื่อมต่อ Google Drive</a>
+      <span class="muted">Mc Rich เห็นเฉพาะไฟล์ที่ส่งเข้าไปเอง ไม่เห็นไฟล์อื่นในไดรฟ์</span>`;
+    return;
+  }
+  el.innerHTML = `<div class="row between"><span><b>Google Drive</b> <span class="badge b-ok">เชื่อมแล้ว</span><br><span class="muted">${esc(d.email)}</span></span>
+      ${d.folder ? `<a href="${esc(d.folder)}" target="_blank" rel="noopener" style="font-size:14px">เปิดโฟลเดอร์</a>` : ''}</div>
+    <label class="row between" for="dauto"><span>ส่งผลงานเข้าไดรฟ์อัตโนมัติเมื่อสร้างเสร็จ</span><input id="dauto" type="checkbox" class="sw-in" ${d.auto ? 'checked' : ''}></label>
+    <button type="button" class="btn ghost sm" id="dcut" style="width:100%">ยกเลิกการเชื่อมต่อ</button>`;
+  $('#dauto').onchange = (e) => api('api/drive', { method: 'PUT', body: { auto: e.target.checked } }).then(() => toast('บันทึกแล้ว')).catch((er) => toast(er.message));
+  $('#dcut').onclick = async () => { if (!confirm('ยกเลิกการเชื่อม Google Drive? ไฟล์ที่ส่งไปแล้วยังอยู่ในไดรฟ์')) return; await api('api/drive', { method: 'DELETE' }); toast('ยกเลิกแล้ว'); driveCard(); };
 }
 
 function brandView() {
@@ -559,6 +580,8 @@ async function workView(qs) {
         <button type="button" class="btn dark" id="copyCap">คัดลอกแคปชั่น + แฮชแท็ก</button></section>` : ''}
       <section class="card"><b>โพสต์ไปที่ไหนแล้ว</b><span class="muted">ติ๊กไว้ จะได้รู้ว่างานไหนโพสต์แล้ว (โพสต์ตรงจากแอปจะเปิดเร็วๆ นี้)</span>
         <div class="chips">${PLAT.map(([k, l]) => `<button type="button" class="chip" data-post="${k}" aria-pressed="${!!w.posted?.[k]}">${l}${w.posted?.[k] ? ' · ' + new Date(w.posted[k]).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : ''}</button>`).join('')}</div></section>
+      <div id="wstats"></div>
+      ${w.purged ? '' : '<button type="button" class="btn dark" id="toDrive">ส่งเข้า Google Drive</button>'}
       <div class="list">${historyRows(w)}</div>
       <button type="button" class="btn" id="again">สร้างแบบนี้อีก</button>
       <button type="button" class="btn ghost" id="del">ลบผลงานนี้</button>`;
@@ -571,6 +594,17 @@ async function workView(qs) {
       api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'copy', p: app.querySelector('[data-cap][aria-pressed="true"]')?.dataset.cap } }).catch(() => {});
     };
     app.querySelectorAll('[data-save]').forEach((b) => b.onclick = () => saveImage(w, Number(b.dataset.save)));
+    const td = $('#toDrive'); if (td) td.onclick = async () => {
+      td.disabled = true; td.textContent = 'กำลังส่งเข้า Drive…';
+      try { const r = await api(`api/works/${w.id}/drive`, { method: 'POST', body: {} }); toast(`ส่ง ${r.files} ภาพ + แคปชั่นเข้า Drive แล้ว`); td.textContent = 'ส่งเข้า Drive แล้ว ✓'; }
+      catch (e) { if (/ยังไม่ได้เชื่อม/.test(e.message)) { if (confirm('ยังไม่ได้เชื่อม Google Drive ไปเชื่อมตอนนี้?')) location.href = 'drive/connect'; } else toast(e.message); td.disabled = false; td.textContent = 'ส่งเข้า Google Drive'; }
+    };
+    if (w.params?.link) api(`api/stats/clicks?work=${w.id}`).then((st) => {
+      const tot = st.byPlatform.reduce((a, b) => a + b.clicks, 0); const el = $('#wstats'); if (!el) return;
+      el.innerHTML = `<section class="card"><div class="row between"><b>คลิกลิงก์จากผลงานนี้</b><b class="num" style="font-size:22px;color:var(--lime)">${num(tot)}</b></div>
+        ${bars(st.days)}<div class="chips">${st.byPlatform.map((p) => `<span class="chip" style="cursor:default">${esc(p.label)} ${num(p.clicks)}</span>`).join('')}</div>
+        <span class="muted">นับจากลิงก์สั้นในแคปชั่น แยกตามแพลตฟอร์ม</span></section>`;
+    }).catch(() => {});
     app.querySelectorAll('[data-post]').forEach((b) => b.onclick = async () => {
       const on = b.getAttribute('aria-pressed') !== 'true';
       try { await api(`api/works/${w.id}/posted`, { method: 'POST', body: { platform: b.dataset.post, on } }); workView(qs); } catch (e) { toast(e.message); }
@@ -588,9 +622,9 @@ async function workView(qs) {
 }
 function historyRows(w) {
   const ev = [...(w.events || [])].reverse().slice(0, 8);
-  const lab = { download: 'ดาวน์โหลด', share: 'บันทึก/แชร์', copy: 'คัดลอกแคปชั่น' };
+  const lab = { download: 'ดาวน์โหลด', share: 'บันทึก/แชร์', copy: 'คัดลอกแคปชั่น', drive: 'ส่งเข้า Drive' };
   const d = (x) => new Date(x).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
-  return `<div><span class="muted">สร้างเมื่อ</span><span>${d(w.createdAt)}</span></div>` + ev.map((e) => `<div><span class="muted">${lab[e.t] || e.t}${e.t !== 'copy' ? ` ภาพที่ ${(e.n || 0) + 1}` : ''}</span><span>${d(e.at)}</span></div>`).join('');
+  return `<div><span class="muted">สร้างเมื่อ</span><span>${d(w.createdAt)}</span></div>` + ev.map((e) => `<div><span class="muted">${lab[e.t] || e.t}${e.t === 'drive' ? ` ${e.n} ภาพ` : e.t !== 'copy' ? ` ภาพที่ ${(e.n || 0) + 1}` : ''}</span><span>${d(e.at)}</span></div>`).join('');
 }
 // มือถือ: เปิดหน้าแชร์ของเครื่อง → "บันทึกภาพ" ลงคลังรูป / ส่ง LINE ได้เลย
 async function saveImage(w, i) {
@@ -607,6 +641,43 @@ async function saveImage(w, i) {
   location.href = `${f.url}?dl=1`;
 }
 
+
+// ---------- ลิงก์สั้น + สถิติคลิก ----------
+const bars = (days) => {
+  const max = Math.max(1, ...days.map((d) => d.n));
+  return `<div class="bars" role="img" aria-label="คลิกรายวัน 14 วัน">${days.map((d) => `<span title="${d.day}: ${d.n}"><i style="height:${Math.max(2, Math.round(d.n / max * 100))}%"></i></span>`).join('')}</div>
+    <div class="row between muted" style="font-size:11px"><span>${new Date(days[0].day).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span><span>วันนี้</span></div>`;
+};
+const PLATS = [['tiktok', 'TikTok'], ['facebook', 'Facebook'], ['instagram', 'Instagram'], ['shopee', 'Shopee'], ['lazada', 'Lazada'], ['line', 'LINE'], ['youtube', 'YouTube'], ['other', 'อื่นๆ']];
+async function linksView() {
+  app.innerHTML = `${topbar('ลิงก์ของฉัน', 'profile')}<main><p class="muted">กำลังโหลด…</p></main>${nav('profile')}`;
+  const [d, st] = await Promise.all([api('api/links'), api('api/stats/clicks')]);
+  let plat = 'tiktok';
+  $('main').innerHTML = `
+    <section class="hero"><div class="grid3">
+      <div><span class="muted">คลิกทั้งหมด</span><br><b class="num" style="font-size:24px">${num(d.total.clicks)}</b></div>
+      <div><span class="muted">คนไม่ซ้ำ</span><br><b class="num" style="font-size:24px">${num(d.total.uniques)}</b></div>
+      <div><span class="muted">7 วันล่าสุด</span><br><b class="num" style="font-size:24px;color:var(--lime)">${num(d.total.week)}</b></div></div>
+      ${bars(st.days)}
+      ${st.byPlatform.length ? `<div class="chips">${st.byPlatform.map((p) => `<span class="chip" style="cursor:default">${esc(p.label)} ${num(p.clicks)}</span>`).join('')}</div>` : ''}</section>
+    <section class="card"><b>ย่อลิงก์ใหม่</b><span class="muted">วางลิงก์ Affiliate หรือลิงก์ร้าน ได้ลิงก์สั้นที่นับคลิกได้ ทำแยกต่อแพลตฟอร์มจะรู้ว่าที่ไหนคนกดเยอะ</span>
+      <input id="lurl" type="url" inputmode="url" placeholder="https://s.shopee.co.th/..." aria-label="ลิงก์ปลายทาง">
+      <input id="llabel" type="text" maxlength="80" placeholder="ชื่อเรียก เช่น เต้าหู้ไข่ แพ็ก 10" aria-label="ชื่อเรียก">
+      <div class="chips">${PLATS.map(([k, l]) => `<button type="button" class="chip" data-pl="${k}" aria-pressed="${k === plat}">${l}</button>`).join('')}</div>
+      <button type="button" class="btn" id="mk">สร้างลิงก์สั้น</button></section>
+    <h2>ลิงก์ทั้งหมด</h2>
+    <div class="list">${d.items.map((l) => `<div><span style="min-width:0"><b style="overflow-wrap:anywhere">${esc(l.label || l.url)}</b><br>
+      <span class="muted">${esc(l.platformLabel)}${l.workId ? ` · <a href="#work?id=${l.workId}">ผลงาน</a>` : ''} · ${esc(l.short.replace(/^https?:\/\//, ''))}</span></span>
+      <span style="text-align:right;flex:none"><b class="num">${num(l.clicks)}</b><br><button type="button" class="chip" data-cp="${esc(l.short)}" style="min-height:32px;padding:2px 10px;font-size:12px">คัดลอก</button></span></div>`).join('') || '<div class="muted">ยังไม่มีลิงก์ · ลิงก์ในแคปชั่นผลงานจะถูกย่อให้อัตโนมัติ</div>'}</div>`;
+  app.querySelectorAll('[data-pl]').forEach((b) => b.onclick = () => { plat = b.dataset.pl; app.querySelectorAll('[data-pl]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); });
+  const copy = async (t) => { try { await navigator.clipboard.writeText(t); toast('คัดลอกลิงก์แล้ว'); } catch { prompt('คัดลอกลิงก์', t); } };
+  app.querySelectorAll('[data-cp]').forEach((b) => b.onclick = () => copy(b.dataset.cp));
+  $('#mk').onclick = async () => {
+    try { const l = await api('api/links', { method: 'POST', body: { url: $('#lurl').value.trim(), label: $('#llabel').value, platform: plat } }); await copy(l.short); linksView(); }
+    catch (e) { toast(e.message); }
+  };
+}
+
 // ---------- เส้นทาง ----------
 async function route() {
   const [name, qs] = location.hash.replace(/^#/, '').split('?');
@@ -620,7 +691,8 @@ async function route() {
   switch (r) {
     case 'onboard': return interestsView('onboard');
     case 'interests': return interestsView('edit');
-    case 'profile': return profileView();
+    case 'profile': return profileView(qs);
+    case 'links': return linksView().catch((e) => toast(e.message));
     case 'brand': return brandView();
     case 'tags': return tagsView();
     case 'stars': return starsView().catch((e) => toast(e.message));

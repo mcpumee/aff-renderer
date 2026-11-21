@@ -52,6 +52,9 @@ async function migrate() {
       await q('INSERT INTO trends(title,style,kind,price,badge,color,tags,sort) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [...t, i]);
     }
   }
+  // ราคาคลิปเปิดกล่องจริง (เฟส 6)
+  await q("UPDATE trends SET price='เริ่ม 12 ดาว' WHERE style IN ('blind_box','gift_box') AND price='6 ดาว'");
+  await q("UPDATE trends SET price='เริ่ม 12 ดาว' WHERE style='before_after' AND price='20 ดาว'");
   log('ฐานข้อมูลพร้อม');
 }
 

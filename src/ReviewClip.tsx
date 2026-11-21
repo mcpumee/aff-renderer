@@ -4,6 +4,7 @@ import {
 } from 'remotion';
 import { Caption, Captions, FONT, PriceChip, YELLOW, outline, usePop } from './common';
 import { GiftIntro, Product, Theme } from './GiftIntro';
+import type { RevealKind } from './Reveals';
 
 export type ReviewProps = {
   durationSec: number;   // ความยาวคลิปทั้งหมด (ตามเสียงพากย์)
@@ -18,6 +19,7 @@ export type ReviewProps = {
   introSec?: number;     // ความยาวฉากเปิด (กล่อง + รีวิว)
   products?: Product[];  // รูปสินค้าที่ตัดพื้นหลังแล้ว / แบบการ์ด
   theme?: Theme;
+  reveal?: RevealKind | 'none';
   price: string;         // "฿184"
   cta: string;           // "กดตะกร้าได้เลย 👇"
 };
@@ -103,7 +105,7 @@ export const ReviewClip: React.FC<ReviewProps> = (p) => {
       {gift ? (
         <Sequence from={0} durationInFrames={hookF}>
           <GiftIntro theme={p.theme!} products={p.products!} reviewUrls={p.reviewUrls} hookText={p.hookText}
-            burstSec={p.burstSec || 1.6} introSec={p.introSec || HOOK_SEC} />
+            burstSec={p.burstSec || 1.6} introSec={p.introSec || HOOK_SEC} kind={(p.reveal && p.reveal !== 'none' ? p.reveal : 'gift') as RevealKind} />
         </Sequence>
       ) : (
       <Sequence from={0} durationInFrames={hookF}>

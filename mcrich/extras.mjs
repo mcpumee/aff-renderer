@@ -152,7 +152,8 @@ export function registerExtras(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC
     for (const [i, f] of (w.files || []).entries()) {
       const file = path.join(WORK_DIR, path.basename(f.name));
       if (!fs.existsSync(file)) continue;
-      const j = await upload(at, parent, `${day} ${safe} ${i + 1}.jpg`, fs.readFileSync(file), 'image/jpeg');
+      const isVid = /\.mp4$/i.test(f.name);
+      const j = await upload(at, parent, `${day} ${safe} ${i + 1}${isVid ? '.mp4' : '.jpg'}`, fs.readFileSync(file), isVid ? 'video/mp4' : 'image/jpeg');
       out.push(j.webViewLink);
     }
     const cur = (await q('SELECT captions, hashtags FROM works WHERE id=$1', [w.id])).rows[0] || {};

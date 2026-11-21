@@ -95,6 +95,11 @@ if { [ -z "$GKEY" ] || [ "${SET_MCRICH_AI:-}" = "1" ]; } && [ -r /dev/tty ]; the
   echo ">> ตั้งค่า AI สร้างภาพ (ยังไม่มี กด Enter ข้ามได้)"
   askkey "   Gemini API key ของโปรเจกต์ Mc Rich (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && GKEY=$REPLY
 fi
+ELKEY=$(envget ELEVENLABS_API_KEY)
+if [ "${SET_MCRICH_VOICE:-}" = "1" ] && [ -r /dev/tty ]; then
+  echo ">> เสียงพากย์พรีเมียม ElevenLabs (แพ็กเสียเงินเท่านั้น · กด Enter ข้าม = ใช้เสียง Gemini อย่างเดียว)"
+  askkey "   ElevenLabs API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && ELKEY=$REPLY
+fi
 
 cat > .env <<EOF
 PUBLIC_BASE=${PB}
@@ -119,6 +124,7 @@ SELLER_NAME="${SNAME}"
 SELLER_ADDRESS="${SADDR}"
 SELLER_TAX_ID=${STAX}
 GEMINI_API_KEY=${GKEY}
+ELEVENLABS_API_KEY=${ELKEY}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"

@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
 import sharp from 'sharp';
+import * as V from './video.mjs';
 
 const KEY = () => process.env.GEMINI_API_KEY || '';
 const API = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
 const TEXT_MODEL = process.env.MCRICH_TEXT_MODEL || 'gemini-flash-latest';
 const KEEP_DAYS = 7;
-const WORKERS = Number(process.env.MCRICH_WORKERS || 2);
+const WORKERS = Number(process.env.MCRICH_WORKERS || 3);
 const MAX_ACTIVE = 3; // งานที่รอ/กำลังทำ ต่อคน
 
 // ระดับคุณภาพ: ต้นทุนจริง (บาท) + 80% ปัดขึ้น
@@ -191,11 +192,13 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   fs.mkdirSync(WORK_DIR, { recursive: true });
   fs.mkdirSync(REF_DIR, { recursive: true });
   const ready = () => !!KEY();
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 3 } });
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 6 } });
+  const PROG = new Map(); // ความคืบหน้างานวิดีโอ {stage, pct}
   const thaiToday = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
 
   // ตรวจและจัดรูปคำขอ (ใช้ทั้งตอนทบทวนและตอนยืนยัน)
   function normalize(b, brand) {
+    if (b.kind === 'video') return normalizeVideo(b, brand);
     const style = STYLES.find((s) => s.id === b.style);
     if (!style) return { error: 'เลือกแนวภาพก่อน' };
     const tier = TIERS.find((t) => t.id === b.tier) || TIERS[1];
@@ -215,6 +218,27 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     const c = checkContent([p.product, p.details, p.headline, p.price].join(' '));
     return { style, tier, versions, p, cost: tier.stars * versions, ...c };
   }
+  function normalizeVideo(b, brand) {
+    const style = V.VIDEO_STYLES.find((s) => s.id === b.style);
+    if (!style) return { error: 'เลือกแนวคลิปก่อน' };
+    const link = clean(b.link, 300);
+    const length = V.LENGTHS.some((l) => l.id === Number(b.length)) ? Number(b.length) : 30;
+    const premium = !!b.premiumVoice && V.premiumReady();
+    const voices = premium ? V.EL_VOICES : V.VOICES;
+    const p = {
+      goal: GOALS.some((g) => g.id === b.goal) ? b.goal : 'sell',
+      link: /^https?:\/\/\S+$/i.test(link) ? link : '',
+      product: clean(b.product, 120), details: clean(b.details, 600), price: clean(b.price, 40),
+      tone: TONES.includes(b.tone) ? b.tone : TONES[0], length, premium,
+      voice: voices.some((v) => v.id === b.voice) ? b.voice : voices[0].id,
+      hashtags: (Array.isArray(b.hashtags) ? b.hashtags : []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, '').slice(0, 40)).filter((t) => t.length > 1).slice(0, 20),
+      nProducts: 0,
+    };
+    if (!p.product) return { error: 'ใส่ชื่อสินค้าก่อน' };
+    const c = checkContent([p.product, p.details, p.price].join(' '));
+    const cost = V.VIDEO_PRICE[length] + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
+    return { video: true, style, tier: { id: premium ? 'video_premium' : 'video', free: false, stars: cost }, versions: 1, p, cost, ...c };
+  }
   async function freeLeft(c, uid, lock) {
     const f = (await c.query(`SELECT welcome_left, daily_date, daily_used FROM free_quota WHERE user_id=$1 ${lock ? 'FOR UPDATE' : ''}`, [uid])).rows[0];
     if (!f) return { welcome: 0, today: 0 };
@@ -229,6 +253,12 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       styles: STYLES.map(({ id, label, emoji, color, ratio, text }) => ({ id, label, emoji, color, ratio, text: !!text })),
       tiers: TIERS.map(({ id, label, note, stars, free, size }) => ({ id, label, note, stars, free: !!free, size })),
       stars: m.stars, free: m.freeImages, keepDays: KEEP_DAYS,
+      video: {
+        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal }) => ({ id, label, emoji, color, reveal })),
+        lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
+        voices: V.VOICES.map(({ id, label, gender }) => ({ id, label, gender })),
+        premiumVoices: V.premiumReady() ? V.EL_VOICES.map(({ id, label, gender }) => ({ id, label, gender })) : [],
+      },
     });
   }));
 
@@ -242,7 +272,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }));
 
   // ยืนยันสร้าง: ตัดดาว (หรือภาพฟรี) แล้วเข้าคิว
-  app.post('/api/works', auth, upload.array('refs', 3), wrap(async (req, res) => {
+  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 3 }, { name: 'revs', maxCount: 3 }]), wrap(async (req, res) => {
     if (!ready()) return res.status(503).json({ error: 'ระบบสร้างภาพกำลังตั้งค่า' });
     let body; try { body = JSON.parse(req.body?.data || '{}'); } catch { return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' }); }
     const m = await me(req.uid);
@@ -252,13 +282,19 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
 
     // ภาพอ้างอิง: อัปโหลดใหม่ หรือใช้ของงานเดิม
     const refs = [];
-    for (const f of req.files || []) {
+    const saveRef = async (f) => {
       const name = `${req.uid}-${Date.now().toString(36)}${rand(5).toLowerCase()}.jpg`;
-      try { await sharp(f.buffer).rotate().resize({ width: 1536, height: 1536, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toFile(path.join(REF_DIR, name)); refs.push(name); }
-      catch { return res.status(400).json({ error: 'ไฟล์ภาพอ้างอิงไม่ถูกต้อง' }); }
-    }
+      await sharp(f.buffer).rotate().resize({ width: 1536, height: 1536, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toFile(path.join(REF_DIR, name));
+      refs.push(name);
+    };
+    try {
+      for (const f of req.files?.refs || []) await saveRef(f);
+      n.p.nProducts = refs.length;
+      if (n.video) for (const f of req.files?.revs || []) await saveRef(f);
+    } catch { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ไฟล์ภาพไม่ถูกต้อง' }); }
     if (!refs.length && body.fromWork) {
-      const old = (await q('SELECT refs FROM works WHERE id=$1 AND user_id=$2 AND NOT purged', [Number(body.fromWork) || 0, req.uid])).rows[0];
+      const old = (await q('SELECT refs, params FROM works WHERE id=$1 AND user_id=$2 AND NOT purged', [Number(body.fromWork) || 0, req.uid])).rows[0];
+      n.p.nProducts = old?.params?.nProducts ?? (old?.refs || []).length;
       for (const r of old?.refs || []) {
         if (!fs.existsSync(path.join(REF_DIR, r))) continue;
         const name = `${req.uid}-${Date.now().toString(36)}${rand(5).toLowerCase()}.jpg`;
@@ -266,6 +302,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       }
     }
 
+    if (n.video && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -284,9 +321,9 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       }
       const title = n.p.product || n.p.headline || n.style.label;
       const w = (await c.query(`INSERT INTO works(user_id,kind,style,title,params,tier,versions,cost,free,refs,expires_at)
-        VALUES($1,'image',$2,$3,$4,$5,$6,$7,$8,$9, now() + interval '${KEEP_DAYS} days') RETURNING id`,
-      [req.uid, n.style.id, title.slice(0, 80), { ...n.p, freeSrc, warnings: n.warnings }, n.tier.id, n.versions, n.cost, !!n.tier.free, refs])).rows[0];
-      if (n.cost > 0) await c.query("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'spend',$3,$4)", [req.uid, -n.cost, `work:${w.id}`, `สร้างภาพ ${n.style.label} ×${n.versions}`]);
+        VALUES($1,$10,$2,$3,$4,$5,$6,$7,$8,$9, now() + interval '${KEEP_DAYS} days') RETURNING id`,
+      [req.uid, n.style.id, title.slice(0, 80), { ...n.p, freeSrc, warnings: n.warnings }, n.tier.id, n.versions, n.cost, !!n.tier.free, refs, n.video ? 'video' : 'image'])).rows[0];
+      if (n.cost > 0) await c.query("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'spend',$3,$4)", [req.uid, -n.cost, `work:${w.id}`, n.video ? `สร้างคลิป ${n.style.label} ${n.p.length} วิ` : `สร้างภาพ ${n.style.label} ×${n.versions}`]);
       await c.query("INSERT INTO audit_log(user_id,action,detail,ip) VALUES($1,'work_create',$2,$3)", [req.uid, { id: w.id, style: n.style.id, tier: n.tier.id, cost: n.cost }, req.ip || '']);
       await c.query('COMMIT');
       kick();
@@ -295,7 +332,8 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }));
 
   const view = (w) => ({
-    id: w.id, kind: w.kind, style: w.style, styleLabel: STYLES.find((s) => s.id === w.style)?.label || w.style, title: w.title,
+    id: w.id, kind: w.kind, style: w.style, styleLabel: [...STYLES, ...V.VIDEO_STYLES].find((s) => s.id === w.style)?.label || w.style, title: w.title,
+    progress: PROG.get(w.id) || null,
     tier: w.tier, versions: w.versions, cost: w.cost, free: w.free, status: w.status, error: w.error, purged: w.purged,
     files: w.purged ? [] : w.files.map((f, i) => ({ ...f, url: `api/works/${w.id}/file/${i}`, thumb: `api/works/${w.id}/file/${i}?thumb=1` })),
     captions: w.captions, hashtags: w.hashtags, events: w.events, posted: w.posted, params: w.params,
@@ -319,7 +357,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     res.setHeader('cache-control', 'private, max-age=86400');
     if (req.query.dl) {
       await addEvent(w.id, { t: 'download', n: Number(req.params.n) });
-      res.setHeader('content-disposition', `attachment; filename="mcrich-${w.id}-${Number(req.params.n) + 1}.jpg"`);
+      res.setHeader('content-disposition', `attachment; filename="mcrich-${w.id}-${Number(req.params.n) + 1}${path.extname(f.name) || '.jpg'}"`);
     }
     res.sendFile(file);
   }));
@@ -348,7 +386,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }));
 
   // ---------- คิวสร้างงาน ----------
-  let running = 0;
+  let running = 0, videoRunning = 0;
   async function refund(w, reason) {
     const c = await pool.connect();
     try {
@@ -360,7 +398,76 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       await c.query('COMMIT');
     } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
   }
+  async function finalizeCaptions(w, p, cap) {
+    const captions = {};
+    const keepLines = (v) => String(v ?? '').replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 2200);
+    for (const k of ['facebook', 'instagram', 'tiktok', 'shopee']) captions[k] = keepLines(cap[k]);
+    // ใส่ลิงก์: ลิงก์สั้นแยกตามแพลตฟอร์ม (นับคลิกได้) ถ้าไม่มีระบบลิงก์สั้นใช้ลิงก์จริง
+    if (p.link) {
+      const short = hooks.shortLinks ? await hooks.shortLinks(w, Object.keys(captions)).catch((e) => { log('shortlink', e.message); return {}; }) : {};
+      for (const k of Object.keys(captions)) {
+        const url = short[k] || p.link;
+        captions[k] = captions[k].includes('{LINK}') ? captions[k].replaceAll('{LINK}', url) : captions[k].split(p.link).join(url);
+        if (captions[k] && !captions[k].includes(url)) captions[k] += `\n👉 ${url}`;
+      }
+    } else for (const k of Object.keys(captions)) captions[k] = captions[k].replaceAll('{LINK}', '').trim();
+    const tags = [...new Set([...p.hashtags, ...(Array.isArray(cap.hashtags) ? cap.hashtags : []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, ''))])].filter((t) => t.length > 1).slice(0, 25);
+    return { captions, tags };
+  }
+
+  // ---------- คลิปวิดีโอ ----------
+  const CTA = { aff: 'กดตะกร้าได้เลย 👇', sell: 'ทักแชทสั่งเลย 👇', promo: 'แวะมาที่ร้านเลย 📍', content: 'กดติดตามไว้เลย ❤️' };
+  async function processVideo(w) {
+    const style = V.VIDEO_STYLES.find((s) => s.id === w.style);
+    const brand = (await q('SELECT brand FROM profiles WHERE user_id=$1', [w.user_id])).rows[0]?.brand || {};
+    const p = w.params;
+    const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    const t0 = Date.now();
+    let script, voice;
+    try {
+      stage('AI กำลังเขียนบท', 5);
+      script = await V.writeScript(p, style, brand, GOALS.find((g) => g.id === p.goal)?.label || '');
+      stage('กำลังพากย์เสียง', 20);
+      voice = p.premium ? await V.voiceEleven(script.lines, p.voice) : await V.voiceGemini(script.lines, p.voice, p.tone);
+    } catch (e) {
+      log('video prep fail', w.id, e.message);
+      PROG.delete(w.id);
+      return refund(w, 'AI เขียนบท/พากย์เสียงไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว');
+    }
+    const files = w.refs.filter((r) => fs.existsSync(path.join(REF_DIR, r))).map((r) => V.fileUrl(path.join(REF_DIR, r)));
+    const nP = Math.max(1, Math.min(p.nProducts || 1, files.length));
+    const prods = files.slice(0, nP), revs = files.slice(nP);
+    let out;
+    try {
+      stage('กำลังตัดต่อ', 35);
+      out = await V.render({
+        type: 'review', reveal: style.reveal, themeName: style.theme, openPhrase: style.open || undefined,
+        voiceover: { ...voice, text: script.lines.join(' ') },
+        hero: prods[0], shots: prods, reviews: revs,
+        hookText: script.hookText || style.hook, price: p.price, cta: script.cta && script.cta.length <= 18 ? script.cta : CTA[p.goal] || CTA.sell,
+        metadata: { mcrich: w.id },
+      }, (s) => stage(s.status === 'queued' ? 'รอคิวตัดต่อ' : s.stage || 'กำลังตัดต่อ', 35 + Math.round((s.progress || 0) * 0.6)));
+    } catch (e) {
+      log('video render fail', w.id, e.message);
+      PROG.delete(w.id);
+      return refund(w, 'ตัดต่อคลิปไม่สำเร็จ · คืนดาวแล้ว');
+    }
+    stage('เกือบเสร็จ', 97);
+    const base = `${w.user_id}-${w.id}-v-${rand(6).toLowerCase()}`;
+    V.moveFile(out.mp4, path.join(WORK_DIR, `${base}.mp4`));
+    let thumb = '';
+    if (fs.existsSync(out.jpg)) { await sharp(out.jpg).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); thumb = `${base}.webp`; fs.rm(out.jpg, () => {}); }
+    const { captions, tags } = await finalizeCaptions(w, p, script.captions);
+    const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
+    await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: script.lines })]);
+    PROG.delete(w.id);
+    if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
+    log('video done', w.id, style.id, p.premium ? 'elevenlabs' : 'gemini-tts', `${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+
   async function process1(w) {
+    if (w.kind === 'video') return processVideo(w);
     const style = STYLES.find((s) => s.id === w.style);
     const tier = TIERS.find((t) => t.id === w.tier) || TIERS[1];
     const brand = (await q('SELECT brand FROM profiles WHERE user_id=$1', [w.user_id])).rows[0]?.brand || {};
@@ -385,20 +492,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       await sharp(out).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`));
       files.push({ name: `${base}.jpg`, thumb: `${base}.webp`, w: W, h: H });
     }
-    const cap = await capP || {};
-    const captions = {};
-    const keepLines = (v) => String(v ?? '').replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 2200);
-    for (const k of ['facebook', 'instagram', 'tiktok', 'shopee']) captions[k] = keepLines(cap[k]);
-    // ใส่ลิงก์: ลิงก์สั้นแยกตามแพลตฟอร์ม (นับคลิกได้) ถ้าไม่มีระบบลิงก์สั้นใช้ลิงก์จริง
-    if (p.link) {
-      const short = hooks.shortLinks ? await hooks.shortLinks(w, Object.keys(captions)).catch((e) => { log('shortlink', e.message); return {}; }) : {};
-      for (const k of Object.keys(captions)) {
-        const url = short[k] || p.link;
-        captions[k] = captions[k].includes('{LINK}') ? captions[k].replaceAll('{LINK}', url) : captions[k].split(p.link).join(url);
-        if (captions[k] && !captions[k].includes(url)) captions[k] += `\n👉 ${url}`;
-      }
-    } else for (const k of Object.keys(captions)) captions[k] = captions[k].replaceAll('{LINK}', '').trim();
-    const tags = [...new Set([...p.hashtags, ...(Array.isArray(cap.hashtags) ? cap.hashtags : []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, ''))])].filter((t) => t.length > 1).slice(0, 25);
+    const { captions, tags } = await finalizeCaptions(w, p, await capP || {});
     // ภาพบางเวอร์ชันพลาด คืนดาวส่วนที่ไม่ได้
     const missing = w.versions - ok.length;
     if (missing > 0 && w.cost > 0) {
@@ -411,11 +505,11 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }
   async function kick() {
     while (running < WORKERS) {
-      const w = (await q(`UPDATE works SET status='working' WHERE id = (SELECT id FROM works WHERE status='queued' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *`)).rows[0];
+      const w = (await q(`UPDATE works SET status='working' WHERE id = (SELECT id FROM works WHERE status='queued' ${videoRunning ? "AND kind <> 'video'" : ''} ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *`)).rows[0];
       if (!w) return;
-      running++;
-      process1(w).catch(async (e) => { log('work error', w.id, e.message); await refund(w, 'ระบบขัดข้อง · คืนดาวแล้ว').catch(() => {}); })
-        .finally(() => { running--; kick().catch(() => {}); });
+      running++; if (w.kind === 'video') videoRunning++;
+      process1(w).catch(async (e) => { log('work error', w.id, e.message); PROG.delete(w.id); await refund(w, 'ระบบขัดข้อง · คืนดาวแล้ว').catch(() => {}); })
+        .finally(() => { running--; if (w.kind === 'video') videoRunning--; kick().catch(() => {}); });
     }
   }
 

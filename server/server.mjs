@@ -51,6 +51,9 @@ const THEMES = {
   emerald: { bg: ['#EEF6EE', '#8FC2A0'], box: '#17694A', boxDark: '#0C4430', ribbon: '#F4D35E', baubles: ['#F4D35E', '#C8102E'], confetti: ['#F4D35E', '#FFFFFF', '#17694A', '#C8102E'] },
   pink: { bg: ['#FFE9F0', '#F2A1B8'], box: '#D93D68', boxDark: '#9E1F44', ribbon: '#FFFFFF', baubles: ['#FF8FB1', '#E8C26B'], confetti: ['#FFFFFF', '#FF8FB1', '#E8C26B', '#D93D68'] },
   purple: { bg: ['#F1E9FF', '#AE93E6'], box: '#5A2CA0', boxDark: '#3A1870', ribbon: '#F7D774', baubles: ['#F7D774', '#C9B6FF'], confetti: ['#F7D774', '#FFFFFF', '#9B6BFF', '#5A2CA0'] },
+  gold: { bg: ['#3B2A10', '#120B03'], box: '#E8B730', boxDark: '#9C7410', ribbon: '#FFF1B8', baubles: [], confetti: ['#FFD23F', '#FFF4C2', '#E8B730', '#FFFFFF'] },
+  candy: { bg: ['#E8F4FF', '#8EC5FF'], box: '#FF5C8A', boxDark: '#C2335C', ribbon: '#FFFFFF', baubles: [], confetti: ['#FF5C8A', '#FFD23F', '#5CC8FF', '#FFFFFF'] },
+  mystery: { bg: ['#2B1B4A', '#0D0718'], box: '#1F1F27', boxDark: '#0B0B10', ribbon: '#C8F94A', baubles: [], confetti: ['#C8F94A', '#FFFFFF', '#9B6BFF', '#FFD23F'] },
   orange: { bg: ['#FFF2E8', '#FFB27D'], box: '#EE4D2D', boxDark: '#B5321A', ribbon: '#FFFFFF', baubles: ['#EE4D2D', '#FFD23F'], confetti: ['#FFD23F', '#FFFFFF', '#EE4D2D', '#FF9F68'] },
 };
 function pickTheme(hue, seed) {
@@ -72,6 +75,13 @@ const jobs = new Map();
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
 async function download(url, dest) {
+  // ไฟล์จาก Mc Rich (อยู่ในโวลุ่ม /data ร่วมกัน) ไม่ต้องโหลดผ่านเน็ต
+  if (url.startsWith('file:///data/mcrich/')) {
+    const src = path.resolve(decodeURIComponent(url.slice(7)));
+    if (!src.startsWith('/data/mcrich/') || !fs.existsSync(src)) throw new Error(`ไม่พบไฟล์: ${url}`);
+    fs.copyFileSync(src, dest);
+    return dest;
+  }
   const r = await fetch(url, { redirect: 'follow' });
   if (!r.ok) throw new Error(`ดาวน์โหลดไม่ได้ (${r.status}): ${url}`);
   fs.writeFileSync(dest, Buffer.from(await r.arrayBuffer()));
@@ -231,10 +241,11 @@ async function buildProps(id, req, stage = () => {}) {
   if (req.type === 'review') {
     let audioUrl = '', captions = [], speechEnd = 0;
     if (req.voiceover?.audio_base64) {
-      fs.writeFileSync(path.join(TMP, `${id}-vo.mp3`), Buffer.from(req.voiceover.audio_base64, 'base64'));
-      audioUrl = `${LOCAL}/tmp/${id}-vo.mp3`;
+      const vext = req.voiceover.format === 'wav' ? 'wav' : 'mp3';
+      fs.writeFileSync(path.join(TMP, `${id}-vo.${vext}`), Buffer.from(req.voiceover.audio_base64, 'base64'));
+      audioUrl = `${LOCAL}/tmp/${id}-vo.${vext}`;
       let al = req.voiceover.normalized_alignment || req.voiceover.alignment;
-      const audioSec = await probeSeconds(path.join(TMP, `${id}-vo.mp3`));
+      const audioSec = await probeSeconds(path.join(TMP, `${id}-vo.${vext}`));
       if (!al?.characters?.length && req.voiceover.text && audioSec) {
         // ไม่มีเวลาต่อตัวอักษร → กระจายข้อความเท่า ๆ กันตามความยาวเสียง (ซับยังขึ้น แม้ไม่ตรงเป๊ะ)
         const ch = [...String(req.voiceover.text)], per = audioSec / ch.length;
@@ -257,7 +268,8 @@ async function buildProps(id, req, stage = () => {}) {
     const local = (u) => path.join(TMP, path.basename(u));
     const heroSrc = hero || shotUrls[0] || '';
     const extraSrc = shotUrls.filter((u) => u !== heroSrc).slice(0, 3);
-    const cuts = heroSrc ? await cutouts([heroSrc, ...extraSrc].map(local)) : [];
+    const noIntro = req.reveal === 'none';
+    const cuts = heroSrc && !noIntro ? await cutouts([heroSrc, ...extraSrc].map(local)) : [];
     const asUrl = (f) => `${LOCAL}/tmp/${path.basename(f)}`;
     let products = [];
     if (cuts[0]?.ok) {
@@ -268,17 +280,19 @@ async function buildProps(id, req, stage = () => {}) {
       products.push({ url: heroSrc, w: sz.w, h: sz.h, cut: false });
     }
     log('ฉากเปิด', id, cuts.map((c) => (c.ok ? 'ตัดได้' : `การ์ด(${c.reason})`)).join(', '));
-    const theme = pickTheme(cuts[0]?.hue ?? null, id);
+    if (noIntro) products = [];
+    const theme = (req.themeName && THEMES[req.themeName]) || pickTheme(cuts[0]?.hue ?? null, id);
 
     // จังหวะระเบิด = ตอนพูด "ระเบิดกล่องสินค้า แนะนำ" จบ
     let burstSec = 1.6;
     const alN = req.voiceover?.normalized_alignment || req.voiceover?.alignment;
     if (alN?.characters?.length) {
       const txt = alN.characters.join('');
-      const at = txt.indexOf(OPEN_PHRASE);
-      if (at >= 0 && at < 5) burstSec = alN.character_end_times_seconds[at + OPEN_PHRASE.length - 1] + 0.1;
+      const phrase = req.openPhrase || OPEN_PHRASE;
+      const at = txt.indexOf(phrase);
+      if (at >= 0 && at < 5) burstSec = alN.character_end_times_seconds[at + phrase.length - 1] + 0.1;
     }
-    burstSec = Math.min(3, Math.max(1.1, burstSec));
+    burstSec = Math.min(req.reveal === 'wheel' ? 3.6 : 3, Math.max(req.reveal === 'wheel' ? 2.4 : 1.1, burstSec));
     const nRev = Math.min(3, reviewUrls.length);
     const introSec = burstSec + 1.4 + nRev * 0.75 + 1.2;
     const durationSec = Math.max(introSec + END_SEC + 2, speechEnd + 0.8);
@@ -287,7 +301,7 @@ async function buildProps(id, req, stage = () => {}) {
       props: {
         durationSec, audioUrl, captions,
         hookText: req.hookText || 'ระเบิดกล่องสินค้า\nแนะนำ!',
-        burstSec, introSec, products, theme,
+        burstSec, introSec, products, theme: noIntro ? undefined : theme, reveal: req.reveal || 'gift',
         snapshotSec: burstSec + 1.1,
         heroUrl: hero || shotUrls[0] || reviewUrls[0] || '',
         reviewUrls, shotUrls, sizes,

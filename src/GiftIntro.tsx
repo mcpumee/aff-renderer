@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Audio, Img, Sequence, interpolate, random, spring, staticFile, useCurrentFrame, useVideoConfig, Easing } from 'remotion';
 import { FONT, YELLOW, outline, usePop } from './common';
+import { RevealContainer, RevealKind } from './Reveals';
 
 export type Theme = {
   bg: [string, string];
@@ -25,6 +26,7 @@ type Props = {
   hookText: string;
   burstSec: number;
   introSec: number;
+  kind?: RevealKind;
 };
 
 /** ตำแหน่งสินค้าหลังระเบิด */
@@ -34,7 +36,8 @@ function layout(n: number) {
   return [{ x: 540, y: 770, h: 720, rot: 0, maxW: 520 }, { x: 240, y: 930, h: 520, rot: -12, maxW: 360 }, { x: 850, y: 930, h: 520, rot: 12, maxW: 360 }];
 }
 
-export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookText, burstSec, introSec }) => {
+export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookText, burstSec, introSec, kind = 'gift' }) => {
+  const isBox = kind === 'gift' || kind === 'mystery';
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const B = Math.round(burstSec * fps);
@@ -61,7 +64,7 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
 
   const raysO = interpolate(t, [0, 8], [0, 0.55], clamp) * (1 - 0.4 * k);
   const flash = interpolate(t, [0, 2, 12], [0, 0.9, 0], clamp);
-  const glowPre = frame < B ? p * p * 0.9 : 0;
+  const glowPre = frame < B && (kind === 'gift' || kind === 'mystery') ? p * p * 0.9 : 0;
 
   const hook = usePop(2, 0.5);
   const hookO = interpolate(frame, [B + 10, B + 18], [1, 0], clamp);
@@ -84,8 +87,9 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
       <div style={{ position: 'absolute', left: 540 - 520, top: BOX_TOP + 160 - 520, width: 1040, height: 1040, borderRadius: '50%',
         background: 'radial-gradient(circle, rgba(255,250,220,0.95) 0%, rgba(255,230,150,0.4) 35%, transparent 65%)', opacity: glowPre }} />
 
+      {isBox ? (<>
       {/* ลูกบอลแขวน */}
-      {t >= 0 && theme.baubles.length ? <Baubles theme={theme} t={t} /> : null}
+      {t >= 0 && theme.baubles.length && kind === 'gift' ? <Baubles theme={theme} t={t} /> : null}
 
       {/* เงาพื้น */}
       <div style={{ position: 'absolute', left: 540 - 380, top: 1600 + bodyDrop * 0.3 + boxAway, width: 760, height: 90, borderRadius: '50%',
@@ -101,7 +105,7 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
             <div style={{ position: 'absolute', left: 0, top: -26, width: BOX_W, height: 52, borderRadius: '50%', background: theme.boxDark, filter: 'brightness(0.55)' }} />
           </>
         ) : null}
-        <BoxBody theme={theme} />
+        <BoxBody theme={theme} mark={kind === 'mystery'} />
       </div>
 
       {/* ฝา + โบว์ */}
@@ -117,6 +121,8 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
           </div>
         </div>
       ) : null}
+
+      </>) : <RevealContainer kind={kind} frame={frame} B={B} theme={theme} boxAway={boxAway} />}
 
       {/* สินค้าพุ่งออกจากกล่อง */}
       {t >= 0 ? order.map((i) => {
@@ -173,18 +179,20 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
       <AbsoluteFill style={{ background: '#fff', opacity: flash }} />
 
       {/* เสียงเอฟเฟกต์ */}
-      <Sequence from={0} durationInFrames={Math.max(1, B)}><Audio src={staticFile('sfx/shake.mp3')} volume={(f) => interpolate(f, [0, B], [0.35, 0.8], clamp)} /></Sequence>
+      {isBox ? <Sequence from={0} durationInFrames={Math.max(1, B)}><Audio src={staticFile('sfx/shake.mp3')} volume={(f) => interpolate(f, [0, B], [0.35, 0.8], clamp)} /></Sequence> : null}
       <Sequence from={Math.max(0, B - 1)} durationInFrames={Math.round(1.4 * fps)}><Audio src={staticFile('sfx/boom.mp3')} volume={0.75} /></Sequence>
       <Sequence from={B + 6} durationInFrames={Math.round(1.1 * fps)}><Audio src={staticFile('sfx/sparkle.mp3')} volume={0.55} /></Sequence>
     </AbsoluteFill>
   );
 };
 
-const BoxBody: React.FC<{ theme: Theme }> = ({ theme }) => (
+const BoxBody: React.FC<{ theme: Theme; mark?: boolean }> = ({ theme, mark }) => (
   <div style={{ position: 'absolute', inset: 0, borderRadius: 10, overflow: 'hidden',
     background: `linear-gradient(100deg, ${theme.box} 0%, ${theme.box} 55%, ${theme.boxDark} 100%)`, boxShadow: 'inset 0 -30px 60px rgba(0,0,0,0.25)' }}>
     <div style={{ position: 'absolute', left: BOX_W / 2 - 42, top: 0, width: 84, height: '100%', background: theme.ribbon, boxShadow: '0 0 12px rgba(0,0,0,0.2)' }} />
     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0.18), transparent 40%)' }} />
+    {mark ? <div style={{ position: 'absolute', left: 40, top: 60, fontSize: 200, fontWeight: 800, color: theme.ribbon, lineHeight: 1, transform: 'rotate(-12deg)' }}>?</div> : null}
+    {mark ? <div style={{ position: 'absolute', right: 40, top: 100, fontSize: 150, fontWeight: 800, color: theme.ribbon, lineHeight: 1, transform: 'rotate(10deg)' }}>?</div> : null}
   </div>
 );
 

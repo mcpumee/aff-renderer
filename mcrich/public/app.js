@@ -347,8 +347,9 @@ async function starsView() {
 let CAT = null;
 let D = null;        // ร่างงานที่กำลังสร้าง
 let REFS = [];       // ไฟล์ภาพอ้างอิง (อยู่ในหน่วยความจำ)
+let REVS = [];       // แคปรีวิว (คลิป)
 const STEPS = ['เป้าหมาย', 'แนวงาน', 'รายละเอียด', 'แคปชั่น', 'คุณภาพ', 'ทบทวน'];
-const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0 });
+const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false });
 const saveDraft = () => { try { sessionStorage.setItem('mr_draft', JSON.stringify(D)); } catch {} };
 function loadDraft() { try { const d = JSON.parse(sessionStorage.getItem('mr_draft') || 'null'); if (d && typeof d === 'object') return { ...newDraft(), ...d }; } catch {} return null; }
 
@@ -361,9 +362,13 @@ async function createView(qs) {
   if (params.get('new') || !D) { D = loadDraft() && !params.get('new') ? loadDraft() : newDraft(); REFS = []; }
   if (params.get('new')) history.replaceState(null, '', '#create');
   if (params.get('style')) {
-    const s = params.get('kind') !== 'video' && CAT.styles.find((x) => x.id === params.get('style'));
-    if (s) { D = { ...newDraft(), style: s.id, ratio: s.ratio, step: 0 }; REFS = []; }
-    else { D = newDraft(); REFS = []; toast('แนวคลิปนี้จะเปิดในเฟสวิดีโอ ตอนนี้สร้างภาพได้ก่อน'); }
+    const TV = { gift_box: 'v_gift', blind_box: 'v_mystery', before_after: 'v_sell' };
+    const st = params.get('style');
+    const s = params.get('kind') !== 'video' && CAT.styles.find((x) => x.id === st);
+    REFS = []; REVS = [];
+    if (s) D = { ...newDraft(), style: s.id, ratio: s.ratio, step: 0 };
+    else if (TV[st]) D = { ...newDraft(), kind: 'video', style: TV[st], step: 0 };
+    else { D = { ...newDraft(), kind: 'video' }; toast('คลิปละครสั้นจะเปิดเร็วๆ นี้ ลองแนวเปิดกล่องก่อนได้เลย'); }
     history.replaceState(null, '', '#create');
   }
   drawStep();
@@ -381,7 +386,7 @@ function stepShell(inner, { next = 'ถัดไป', nextId = 'next', disabled 
   </main>${nav('create')}`;
   if (s) { const b = app.querySelector('header .back'); if (b) b.onclick = (e) => { e.preventDefault(); D.step--; drawStep(); }; }
   const p = $('#prev'); if (p) p.onclick = () => { D.step--; drawStep(); };
-  $('#reset').onclick = () => { D = newDraft(); REFS = []; saveDraft(); drawStep(); };
+  $('#reset').onclick = () => { D = newDraft(); REFS = []; REVS = []; saveDraft(); drawStep(); };
 }
 const chipRow = (items, sel, key, multi) => `<div class="chips">${items.map((v) => {
   const id = typeof v === 'object' ? v.id : v; const label = typeof v === 'object' ? v.label : v;
@@ -419,15 +424,41 @@ function drawStep() {
       D.step = 1; drawStep();
     };
   } else if (s === 1) {
+    const vid = D.kind === 'video';
+    const list = vid ? CAT.video.styles : CAT.styles;
     stepShell(`<div class="grid2" role="group" aria-label="ประเภทผลงาน">
-        <button type="button" class="card opt" aria-pressed="true"><b>ภาพ</b><span class="muted">โปสเตอร์ ภาพสินค้า ป้ายโปร</span></button>
-        <button type="button" class="card opt" id="vid" aria-disabled="true" style="opacity:.55"><b>คลิปวิดีโอ</b><span class="muted">เปิดเฟสถัดไป</span></button></div>
-      <h2>เลือกแนวภาพ</h2>
-      <div class="grid2">${CAT.styles.map((x) => `<button type="button" class="stylecard" data-style="${x.id}" aria-pressed="${D.style === x.id}">
-        <span class="sw" style="background:${esc(x.color)}">${x.emoji}</span><b>${esc(x.label)}</b><span class="muted">${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}</span></button>`).join('')}</div>`, { disabled: !D.style });
-    $('#vid').onclick = () => toast('คลิปวิดีโอจะเปิดในเฟสถัดไป');
-    app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => { D.style = b.dataset.style; D.ratio = CAT.styles.find((x) => x.id === D.style).ratio; drawStep(); });
+        <button type="button" class="card opt" data-kind="image" aria-pressed="${!vid}"><b>ภาพ</b><span class="muted">โปสเตอร์ ภาพสินค้า ป้ายโปร</span></button>
+        <button type="button" class="card opt" data-kind="video" aria-pressed="${vid}"><b>คลิปวิดีโอ</b><span class="muted">เปิดกล่อง ลุ้นของ พากย์เสียง</span></button></div>
+      <h2>${vid ? 'เลือกแนวคลิป' : 'เลือกแนวภาพ'}</h2>
+      <div class="grid2">${list.map((x) => `<button type="button" class="stylecard" data-style="${x.id}" aria-pressed="${D.style === x.id}">
+        <span class="sw" style="background:${esc(x.color)}">${x.emoji}</span><b>${esc(x.label)}</b><span class="muted">${vid ? `เริ่ม ${CAT.video.prices[15]} ดาว · 9:16` : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`).join('')}</div>`, { disabled: !D.style || !list.some((x) => x.id === D.style) });
+    app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
+    app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => { D.style = b.dataset.style; if (!vid) D.ratio = CAT.styles.find((x) => x.id === D.style).ratio; drawStep(); });
     $('#next').onclick = () => { D.step = 2; drawStep(); };
+  } else if (s === 2 && D.kind === 'video') {
+    const st = CAT.video.styles.find((x) => x.id === D.style);
+    const thumbs = (arr, key, max, id) => `<div class="refs">${arr.map((f, i) => `<button type="button" class="ref" data-rm="${key}:${i}" aria-label="ลบรูป"><img src="${URL.createObjectURL(f)}" alt=""><span>✕</span></button>`).join('')}
+      ${arr.length < max ? `<label class="ref add" for="${id}" style="cursor:pointer">+ เพิ่มรูป<input id="${id}" type="file" accept="image/*" multiple hidden></label>` : ''}</div>`;
+    stepShell(`<p class="muted">แนว: <b style="color:var(--fg)">${esc(st.label)}</b></p>
+      <section class="card"><b>รูปสินค้า (ต้องมีอย่างน้อย 1 รูป)</b><span class="muted">รูปแรกจะถูกตัดพื้นหลังแล้วพุ่งออกมาตอนเปิด ใส่ได้ 3 รูป หลายมุมยิ่งดี</span>
+        ${thumbs(REFS, 'p', 3, 'refin')}${D.fromWork && !REFS.length ? '<span class="muted">ใช้รูปจากงานเดิม</span>' : ''}</section>
+      <section class="card">
+        <label class="f" for="product">ชื่อสินค้า<input id="product" type="text" maxlength="120" placeholder="เช่น เซรั่มวิตซี ขวดฟ้า" value="${esc(D.product)}"></label>
+        <label class="f" for="price">ราคา / โปร (ขึ้นป้ายในคลิป)<input id="price" type="text" maxlength="40" placeholder="เช่น ฿199 หรือ ลด 50%" value="${esc(D.price)}"></label>
+        <label class="f" for="details">จุดเด่นที่อยากให้พูด<textarea id="details" rows="3" maxlength="600" placeholder="เช่น ซึมไว ไม่เหนียว กลิ่นหอม ขายดีอันดับ 1 ในร้าน">${esc(D.details)}</textarea></label>
+      </section>
+      <section class="card"><b>แคปรีวิวลูกค้า (ไม่บังคับ)</b><span class="muted">ภาพหน้าจอรีวิวจาก Shopee / TikTok จะเด้งแปะในคลิป ใส่ได้ 3 รูป</span>${thumbs(REVS, 'r', 3, 'revin')}</section>`);
+    const fields = ['product', 'price', 'details'];
+    const addFiles = (arr, e) => [...arr, ...[...e.target.files].filter((f) => f.type.startsWith('image/'))].slice(0, 3);
+    const ri = $('#refin'); if (ri) ri.onchange = (e) => { readInputs(fields); REFS = addFiles(REFS, e); drawStep(); };
+    const rv = $('#revin'); if (rv) rv.onchange = (e) => { readInputs(fields); REVS = addFiles(REVS, e); drawStep(); };
+    app.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { readInputs(fields); const [k, i] = b.dataset.rm.split(':'); (k === 'p' ? REFS : REVS).splice(Number(i), 1); drawStep(); });
+    $('#next').onclick = () => {
+      readInputs(fields);
+      if (!REFS.length && !D.fromWork) return toast('ใส่รูปสินค้าอย่างน้อย 1 รูป');
+      if (!D.product.trim()) return toast('ใส่ชื่อสินค้าก่อน');
+      D.step = 3; drawStep();
+    };
   } else if (s === 2) {
     const st = CAT.styles.find((x) => x.id === D.style);
     stepShell(`<p class="muted">แนว: <b style="color:var(--fg)">${esc(st.label)}</b></p>
@@ -466,10 +497,28 @@ function drawStep() {
       <section style="display:flex;flex-direction:column;gap:10px"><div class="row between"><h2>แฮชแท็กประจำ</h2><a href="#tags" style="font-size:14px">จัดการ</a></div>
         ${saved.length ? chipRow(saved, D.hashtags, 'hashtags', true) : '<p class="muted">ยังไม่มีแฮชแท็กประจำ</p>'}</section>
       <label class="f" for="extraTags">แท็กเพิ่มเฉพาะงานนี้<input id="extraTags" type="text" placeholder="#โปรเดือนนี้ #ของมันต้องมี" value="${esc(D.extraTags)}"></label>
-      <span class="muted">AI จะเติมแท็กที่เกี่ยวข้องให้อีก 5–8 แท็ก</span>`);
+      <span class="muted">AI จะเติมแท็กที่เกี่ยวข้องให้อีก 5–8 แท็ก</span>
+      ${D.kind === 'video' ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>เสียงพากย์</h2>
+        ${CAT.video.premiumVoices.length ? `<div class="grid2"><button type="button" class="card opt" data-prem="0" aria-pressed="${!D.premiumVoice}"><b>มาตรฐาน</b><span class="muted">รวมในราคา</span></button>
+          <button type="button" class="card opt" data-prem="1" aria-pressed="${!!D.premiumVoice}"><b>พรีเมียม</b><span class="muted">เสียงเนียนขึ้น +${CAT.video.premiumExtra} ดาว</span></button></div>` : ''}
+        ${chipRow((D.premiumVoice ? CAT.video.premiumVoices : CAT.video.voices).map((v) => ({ id: v.id, label: (v.gender === 'female' ? '👩 ' : '👨 ') + v.label.replace('พรีเมียม · ', '') })), D.voice, 'voice', false)}</section>` : ''}`);
     if (!D.tone) D.tone = CAT.tones[0];
+    if (D.kind === 'video') {
+      const vl = D.premiumVoice ? CAT.video.premiumVoices : CAT.video.voices;
+      if (!vl.some((v) => v.id === D.voice)) { D.voice = vl[0].id; app.querySelector(`.chip[data-k="voice"][data-v="${D.voice}"]`)?.setAttribute('aria-pressed', 'true'); }
+      app.querySelectorAll('[data-prem]').forEach((b) => b.onclick = () => { readInputs(['extraTags']); D.premiumVoice = b.dataset.prem === '1'; D.voice = ''; drawStep(); });
+    }
     bindChips(['hashtags']);
     $('#next').onclick = () => { readInputs(['extraTags']); D.step = 4; drawStep(); };
+  } else if (s === 4 && D.kind === 'video') {
+    const price = (l) => CAT.video.prices[l] + (D.premiumVoice ? CAT.video.premiumExtra : 0);
+    stepShell(`<h1 style="font-size:22px">ความยาวคลิป</h1>
+      <div style="display:flex;flex-direction:column;gap:10px">${CAT.video.lengths.map((l) => `<button type="button" class="card opt tier" data-len="${l.id}" aria-pressed="${Number(D.length) === l.id}">
+        <span class="row between" style="width:100%"><b>${esc(l.label)}</b><b class="num" style="color:var(--lime)">${ICON.star}${price(l.id)} ดาว</b></span>
+        <span class="muted">${{ 15: 'สั้น กระชับ เหมาะ Reels/TikTok ป้ายยาเร็ว', 30: 'ยอดนิยม เล่าจุดเด่นได้ครบ', 45: 'เล่าละเอียด เหมาะสินค้าราคาสูง' }[l.id] || ''}</span></button>`).join('')}</div>
+      <p class="muted">คลิป 9:16 1080p พร้อมซับไทย ป้ายราคา และปุ่มชวนซื้อ · ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
+    app.querySelectorAll('[data-len]').forEach((b) => b.onclick = () => { D.length = Number(b.dataset.len); drawStep(); });
+    $('#next').onclick = () => { D.step = 5; drawStep(); };
   } else if (s === 4) {
     const free = CAT.free.today + CAT.free.welcome;
     if (D.tier === 'free' && !free) D.tier = 'std';
@@ -495,31 +544,33 @@ const payload = () => ({ ...D, hashtags: [...D.hashtags, ...String(D.extraTags |
 async function reviewStep() {
   stepShell('<p class="muted">กำลังคำนวณ…</p>', { next: 'ยืนยัน', disabled: true });
   const qt = await api('api/works/quote', { method: 'POST', body: payload() });
-  const st = CAT.styles.find((x) => x.id === D.style);
-  const tier = CAT.tiers.find((t) => t.id === D.tier);
+  const vid = D.kind === 'video';
+  const st = (vid ? CAT.video.styles : CAT.styles).find((x) => x.id === D.style);
+  const tier = vid ? null : CAT.tiers.find((t) => t.id === D.tier);
   const goal = CAT.goals.find((g) => g.id === D.goal);
+  const vname = vid ? (D.premiumVoice ? CAT.video.premiumVoices : CAT.video.voices).find((v) => v.id === D.voice)?.label : '';
   const row = (k, v) => v ? `<div><span class="muted">${k}</span><span style="text-align:right">${esc(v)}</span></div>` : '';
   const label = qt.blocked ? 'สร้างไม่ได้' : qt.free ? 'ยืนยัน สร้างภาพฟรี' : qt.enough ? `ยืนยัน สร้าง · ${qt.cost} ดาว` : 'ดาวไม่พอ · เติมดาว';
   stepShell(`<h1 style="font-size:22px">ทบทวนก่อนสร้าง</h1>
     ${qt.blocked ? `<p role="alert" class="card" style="background:var(--bad-bg);color:var(--bad)">${esc(qt.blocked)}</p>` : ''}
     ${qt.warnings.length ? `<p role="alert" class="card" style="background:var(--warn-bg);color:var(--warn)">ระวังผิดกฎ อย./โฆษณาเกินจริง: ${esc(qt.warnings.join(', '))} · AI จะเลี่ยงคำเหล่านี้ในแคปชั่น แนะนำแก้ข้อความบนภาพ</p>` : ''}
     <div class="list kv">
-      ${row('เป้าหมาย', goal.label)}${row('ลิงก์', D.link)}${row('แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
-      ${row('คอนเซปต์', D.concepts.join(', '))}${row('ขนาด', D.ratio)}${row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
-      ${row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
-      ${row('คุณภาพ', `${tier.label} ${tier.size} × ${qt.versions} แบบ`)}
+      ${row('เป้าหมาย', goal.label)}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
+      ${row('คอนเซปต์', D.concepts.join(', '))}${vid ? '' : row('ขนาด', D.ratio) + row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
+      ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
+      ${vid ? row('รูปสินค้า', REFS.length ? `${REFS.length} รูป` : '') + row('แคปรีวิว', REVS.length ? `${REVS.length} รูป` : '') + row('เสียงพากย์', vname) + row('ความยาว', `${D.length} วินาที`) : row('คุณภาพ', `${tier.label} ${tier.size} × ${qt.versions} แบบ`)}
     </div>
     <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">${qt.free ? 'ใช้ภาพฟรี' : 'ดาวที่ใช้'}</span>
       <b class="num" style="font-size:28px">${qt.free ? 'ฟรี' : `${ICON.star.replace('17', '24').replace('17', '24')} ${qt.cost}`}</b></div>
       <span class="muted">${qt.free ? `ภาพฟรีเหลือ ${qt.freeLeft.today + qt.freeLeft.welcome} ภาพ · มีลายน้ำเล็กๆ` : `ยอดคงเหลือหลังสร้าง ${num(qt.stars - qt.cost)} ดาว`} · สร้างไม่สำเร็จคืนให้อัตโนมัติ</span></section>
-    <p class="muted">ใช้เวลาประมาณ 20–60 วินาที · ไฟล์เก็บบนเซิร์ฟเวอร์ ${CAT.keepDays} วัน ดาวน์โหลดเก็บไว้ด้วย</p>`, { next: label, nextId: 'go', disabled: !!qt.blocked });
+    <p class="muted">ใช้เวลาประมาณ ${vid ? '2–5 นาที' : '20–60 วินาที'} · ไฟล์เก็บบนเซิร์ฟเวอร์ ${CAT.keepDays} วัน ดาวน์โหลดเก็บไว้ด้วย</p>`, { next: label, nextId: 'go', disabled: !!qt.blocked });
   $('#go').onclick = async () => {
     if (!qt.free && !qt.enough) return go('topup');
     const b = $('#go'); b.disabled = true; b.textContent = 'กำลังส่งงาน…';
-    const fd = new FormData(); fd.append('data', JSON.stringify(payload())); REFS.forEach((f) => fd.append('refs', f));
+    const fd = new FormData(); fd.append('data', JSON.stringify(payload())); REFS.forEach((f) => fd.append('refs', f)); if (D.kind === 'video') REVS.forEach((f) => fd.append('revs', f));
     try {
       const r = await api('api/works', { method: 'POST', body: fd });
-      ME = r.me; CAT = null; D = null; REFS = []; try { sessionStorage.removeItem('mr_draft'); } catch {}
+      ME = r.me; CAT = null; D = null; REFS = []; REVS = []; try { sessionStorage.removeItem('mr_draft'); } catch {}
       go(`work?id=${r.id}`);
     } catch (e) { toast(e.message); b.disabled = false; b.textContent = label; }
   };
@@ -536,7 +587,7 @@ async function worksView() {
   if (!items.length) { $('#wl').outerHTML = `<div class="soon card"><h2>ยังไม่มีผลงาน</h2><p class="muted">สร้างภาพแรกได้เลย มีภาพฟรีให้ ${ME.freeImages.today + ME.freeImages.welcome} ภาพ</p><a class="btn" href="#create?new=1">สร้างภาพแรก</a></div>`; return; }
   $('#wl').innerHTML = items.map((w) => `<a class="wcard" href="#work?id=${w.id}">
     <div class="wthumb">${w.files[0] ? `<img src="${w.files[0].thumb}" alt="" loading="lazy">` : `<span class="muted">${w.purged ? 'ไฟล์ถูกลบแล้ว' : WSTAT[w.status]?.[0] || ''}</span>`}
-      ${w.files.length > 1 ? `<span class="cnt">${w.files.length}</span>` : ''}</div>
+      ${w.kind === 'video' ? '<span class="cnt">▶ คลิป</span>' : w.files.length > 1 ? `<span class="cnt">${w.files.length}</span>` : ''}</div>
     <b style="font-size:14px;line-height:1.3">${esc(w.title)}</b>
     <span class="row between"><span class="badge ${WSTAT[w.status]?.[1]}">${WSTAT[w.status]?.[0]}</span>
       <span class="muted">${w.purged ? 'หมดอายุ' : Object.keys(w.posted || {}).length ? `โพสต์ ${Object.keys(w.posted).length} ที่` : `เหลือ ${daysLeft(w.expiresAt)} วัน`}</span></span></a>`).join('');
@@ -550,13 +601,17 @@ async function workView(qs) {
   let w = await api(`api/works/${id}`);
   if (['queued', 'working'].includes(w.status)) {
     $('main').innerHTML = `<section class="hero" style="align-items:center;text-align:center;gap:14px;padding:32px 18px">
-      <div class="spin" aria-hidden="true"></div><h2>${w.status === 'queued' ? 'รอคิวสร้าง…' : 'AI กำลังสร้างภาพ…'}</h2>
-      <p class="muted">${esc(w.styleLabel)} · ${w.versions} แบบ · ประมาณ 20–60 วินาที<br>ออกจากหน้านี้ได้ เสร็จแล้วดูที่เมนูผลงาน</p></section>`;
+      <div class="spin" aria-hidden="true"></div><h2 id="pst">${w.status === 'queued' ? 'รอคิวสร้าง…' : w.kind === 'video' ? (w.progress?.stage || 'กำลังเริ่ม…') : 'AI กำลังสร้างภาพ…'}</h2>
+      ${w.kind === 'video' ? `<div class="pbar" aria-hidden="true"><i id="pbar" style="width:${w.progress?.pct || 2}%"></i></div>` : ''}
+      <p class="muted">${esc(w.styleLabel)} · ${w.kind === 'video' ? `คลิป ${w.params?.length || 30} วิ · ประมาณ 2–5 นาที` : `${w.versions} แบบ · ประมาณ 20–60 วินาที`}<br>ออกจากหน้านี้ได้ เสร็จแล้วดูที่เมนูผลงาน</p></section>`;
     const t0 = Date.now();
     const poll = async () => {
       if (location.hash !== `#work?id=${id}`) return;
       try { w = await api(`api/works/${id}`); } catch { return; }
-      if (['queued', 'working'].includes(w.status)) return setTimeout(poll, Date.now() - t0 > 60000 ? 5000 : 2500);
+      if (['queued', 'working'].includes(w.status)) {
+        if (w.progress && $('#pst')) { $('#pst').textContent = w.progress.stage; const pb = $('#pbar'); if (pb) pb.style.width = `${w.progress.pct}%`; }
+        return setTimeout(poll, Date.now() - t0 > 60000 ? 5000 : 2500);
+      }
       ME = await api('api/me').catch(() => ME);
       workView(qs);
     };
@@ -571,9 +626,10 @@ async function workView(qs) {
     const tags = (w.hashtags || []).join(' ');
     $('main').innerHTML = `
       ${w.purged ? `<section class="card"><b>ไฟล์ถูกลบจากเซิร์ฟเวอร์แล้ว</b><span class="muted">ครบ ${CAT?.keepDays || 7} วัน · แคปชั่นยังคัดลอกได้ · กด "สร้างแบบนี้อีก" เพื่อทำใหม่</span></section>`
-        : `<div class="gallery">${w.files.map((f, i) => `<figure><img src="${f.url}" alt="ภาพที่ ${i + 1}" width="${f.w}" height="${f.h}">
+        : `<div class="gallery">${w.files.map((f, i) => `<figure>${f.type === 'video' ? `<video src="${f.url}" ${f.thumb ? `poster="${f.thumb}"` : ''} controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;aspect-ratio:9/16"></video>` : `<img src="${f.url}" alt="ภาพที่ ${i + 1}" width="${f.w}" height="${f.h}">`}
           <figcaption class="grid2"><button type="button" class="btn sm" data-save="${i}">บันทึกลงเครื่อง</button><a class="btn dark sm" href="${f.url}?dl=1" download>ดาวน์โหลด</a></figcaption></figure>`).join('')}</div>
-        <p class="muted">ไฟล์อยู่บนเซิร์ฟเวอร์อีก ${daysLeft(w.expiresAt)} วัน · ${w.free ? 'ภาพฟรี (มีลายน้ำ)' : `ใช้ ${w.cost} ดาว`}</p>`}
+        <p class="muted">ไฟล์อยู่บนเซิร์ฟเวอร์อีก ${daysLeft(w.expiresAt)} วัน · ${w.free ? 'ภาพฟรี (มีลายน้ำ)' : `ใช้ ${w.cost} ดาว`}</p>
+        ${w.params?.script?.length ? `<details class="card"><summary style="font-weight:600;cursor:pointer">บทพากย์</summary><p class="muted" style="margin:0">${esc(w.params.script.join(' '))}</p></details>` : ''}`}
       ${caps.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>แคปชั่น</h2>
         <div class="chips" role="tablist">${caps.map(([k, l], i) => `<button type="button" class="chip" role="tab" data-cap="${k}" aria-pressed="${i === 0}">${l}</button>`).join('')}</div>
         <textarea id="cap" rows="7" aria-label="แคปชั่น">${esc(w.captions[caps[0][0]] + (tags ? '\n\n' + tags : ''))}</textarea>
@@ -612,8 +668,8 @@ async function workView(qs) {
   }
   $('#again').onclick = () => {
     const p = w.params || {};
-    D = { ...newDraft(), goal: p.goal, link: p.link, style: w.style, product: p.product, price: p.price, headline: p.headline, details: p.details, concepts: p.concepts || [], ratio: p.ratio, useLogo: p.useLogo, showShop: p.showShop, tone: p.tone, hashtags: p.hashtags || [], tier: w.tier, versions: w.versions, fromWork: w.id, step: 2 };
-    REFS = []; saveDraft(); go('create');
+    D = { ...newDraft(), kind: w.kind, length: p.length || 30, voice: p.voice || '', premiumVoice: !!p.premium, goal: p.goal, link: p.link, style: w.style, product: p.product, price: p.price, headline: p.headline, details: p.details, concepts: p.concepts || [], ratio: p.ratio, useLogo: p.useLogo, showShop: p.showShop, tone: p.tone, hashtags: p.hashtags || [], tier: w.tier, versions: w.versions, fromWork: w.id, step: 2 };
+    REFS = []; REVS = []; saveDraft(); go('create');
   };
   $('#del').onclick = async () => {
     if (!confirm('ลบผลงานนี้? ไฟล์บนเซิร์ฟเวอร์จะหายทันที (ดาวไม่คืน)')) return;
@@ -631,7 +687,8 @@ async function saveImage(w, i) {
   const f = w.files[i];
   try {
     const blob = await (await fetch(f.url, { credentials: 'same-origin' })).blob();
-    const file = new File([blob], `mcrich-${w.id}-${i + 1}.jpg`, { type: 'image/jpeg' });
+    const vid = f.type === 'video';
+    const file = new File([blob], `mcrich-${w.id}-${i + 1}.${vid ? 'mp4' : 'jpg'}`, { type: vid ? 'video/mp4' : 'image/jpeg' });
     if (navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file] });
       api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'share', n: i } }).catch(() => {});

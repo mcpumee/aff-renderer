@@ -74,14 +74,14 @@ if { [ -z "$GID" ] || [ "${SET_MCRICH_KEYS:-}" = "1" ]; } && [ -r /dev/tty ]; th
 fi
 
 # ---- เติมดาว (PromptPay + ตรวจสลิป) ----
-PPID=$(envget PROMPTPAY_ID); PPNAME=$(envget PROMPTPAY_NAME); RMATCH=$(envget RECEIVER_MATCH); ESKEY=$(envget EASYSLIP_KEY)
+PAYID=$(envget PROMPTPAY_ID); PPNAME=$(envget PROMPTPAY_NAME); RMATCH=$(envget RECEIVER_MATCH); ESKEY=$(envget EASYSLIP_KEY)
 SNAME=$(envget SELLER_NAME); SADDR=$(envget SELLER_ADDRESS); STAX=$(envget SELLER_TAX_ID)
-if { [ -z "$PPID" ] || [ "${SET_MCRICH_PAY:-}" = "1" ]; } && [ -r /dev/tty ]; then
+if { [ -z "$PAYID" ] || [ "${SET_MCRICH_PAY:-}" = "1" ]; } && [ -r /dev/tty ]; then
   echo ">> ตั้งค่ารับเงินเติมดาว (ยังไม่พร้อม กด Enter ข้ามได้)"
-  askkey "   พร้อมเพย์ที่รับเงิน (เบอร์มือถือ 10 หลัก หรือเลขบัตร 13 หลัก ตัวเลขจะไม่แสดง): " 1; [ -n "$REPLY" ] && PPID=$(echo "$REPLY" | tr -cd '0-9')
-  if [ -n "$PPID" ]; then
+  askkey "   พร้อมเพย์ที่รับเงิน (เบอร์มือถือ 10 หลัก หรือเลขบัตร 13 หลัก ตัวเลขจะไม่แสดง): " 1; [ -n "$REPLY" ] && PAYID=$(echo "$REPLY" | tr -cd '0-9')
+  if [ -n "$PAYID" ]; then
     askkey "   ชื่อบัญชีผู้รับ ตามที่ขึ้นในแอปธนาคาร (เช่น วชิรวิทย์ ภ): " 0; [ -n "$REPLY" ] && PPNAME=$REPLY
-    RMATCH="$(echo "$PPNAME" | awk '{print $1}'),${PPID: -4}"
+    RMATCH="$(echo "$PPNAME" | awk '{print $1}'),${PAYID: -4}"
     askkey "   API key ของ EasySlip สำหรับตรวจสลิปอัตโนมัติ (ยังไม่มี กด Enter = แอดมินตรวจเอง): " 1; [ -n "$REPLY" ] && ESKEY=$REPLY
     askkey "   ชื่อผู้ขายบนใบเสร็จ (Enter = ใช้ชื่อบัญชี): " 0; SNAME=${REPLY:-${SNAME:-$PPNAME}}
     askkey "   ที่อยู่บนใบเสร็จ (Enter = ข้าม): " 0; [ -n "$REPLY" ] && SADDR=$REPLY
@@ -104,7 +104,7 @@ LINE_CHANNEL_ID=${LID}
 LINE_CHANNEL_SECRET=${LSEC}
 GOOGLE_CLIENT_ID=${GID}
 GOOGLE_CLIENT_SECRET=${GSEC}
-PROMPTPAY_ID=${PPID}
+PROMPTPAY_ID=${PAYID}
 PROMPTPAY_NAME="${PPNAME}"
 RECEIVER_MATCH=${RMATCH}
 EASYSLIP_KEY=${ESKEY}

@@ -64,6 +64,8 @@ services:
       - SELLER_NAME=${SELLER_NAME:-}
       - SELLER_ADDRESS=${SELLER_ADDRESS:-}
       - SELLER_TAX_ID=${SELLER_TAX_ID:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - MCRICH_IMAGE_MODEL=${MCRICH_IMAGE_MODEL:-}
     volumes:
       - aff_data:/data
     networks:

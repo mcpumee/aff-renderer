@@ -100,3 +100,33 @@ CREATE INDEX IF NOT EXISTS topups_user ON topups(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS topups_status ON topups(status, created_at);
 -- โบนัสชวนเพื่อนได้ครั้งเดียวต่อเพื่อน 1 คน
 CREATE UNIQUE INDEX IF NOT EXISTS star_ledger_ref_once ON star_ledger(user_id, kind, ref) WHERE kind = 'referral';
+
+-- ผลงาน (ภาพ/วิดีโอ)
+CREATE TABLE IF NOT EXISTS works (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL,                 -- image | video
+  style       TEXT NOT NULL,
+  title       TEXT NOT NULL DEFAULT '',
+  params      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  tier        TEXT NOT NULL DEFAULT '',
+  versions    INTEGER NOT NULL DEFAULT 1,
+  cost        INTEGER NOT NULL DEFAULT 0,    -- ดาวที่ใช้ (0 = ใช้ภาพฟรี)
+  free        BOOLEAN NOT NULL DEFAULT FALSE,
+  status      TEXT NOT NULL DEFAULT 'queued', -- queued | working | done | failed
+  error       TEXT NOT NULL DEFAULT '',
+  files       JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{name,w,h}]
+  captions    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  hashtags    TEXT[] NOT NULL DEFAULT '{}',
+  events      JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{t,at,detail}] ดาวน์โหลด/โพสต์/ส่ง Drive
+  posted      JSONB NOT NULL DEFAULT '{}'::jsonb,   -- {tiktok:"2026-11-21",...}
+  refs        TEXT[] NOT NULL DEFAULT '{}',          -- ภาพอ้างอิงที่ลูกค้าอัปโหลด
+  purged      BOOLEAN NOT NULL DEFAULT FALSE,       -- ลบไฟล์ออกจากเซิร์ฟเวอร์แล้ว (ครบ 7 วัน)
+  expires_at  TIMESTAMPTZ NOT NULL DEFAULT now() + interval '7 days',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  done_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS works_user ON works(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS works_status ON works(status, created_at);
+-- คืนดาวผลงานเดียวกันได้ครั้งเดียว
+CREATE UNIQUE INDEX IF NOT EXISTS star_ledger_refund_once ON star_ledger(user_id, kind, ref) WHERE kind = 'refund';

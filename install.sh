@@ -89,6 +89,13 @@ if { [ -z "$PAYID" ] || [ "${SET_MCRICH_PAY:-}" = "1" ]; } && [ -r /dev/tty ]; t
   fi
 fi
 
+# ---- AI สร้างภาพ (Gemini ของโปรเจกต์ Mc Rich) ----
+GKEY=$(envget GEMINI_API_KEY)
+if { [ -z "$GKEY" ] || [ "${SET_MCRICH_AI:-}" = "1" ]; } && [ -r /dev/tty ]; then
+  echo ">> ตั้งค่า AI สร้างภาพ (ยังไม่มี กด Enter ข้ามได้)"
+  askkey "   Gemini API key ของโปรเจกต์ Mc Rich (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && GKEY=$REPLY
+fi
+
 cat > .env <<EOF
 PUBLIC_BASE=${PB}
 RENDER_TOKEN=${TOKEN}
@@ -111,6 +118,7 @@ EASYSLIP_KEY=${ESKEY}
 SELLER_NAME="${SNAME}"
 SELLER_ADDRESS="${SADDR}"
 SELLER_TAX_ID=${STAX}
+GEMINI_API_KEY=${GKEY}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"

@@ -1,5 +1,5 @@
 'use strict';
-// Mc Rich — หน้าเว็บแอป (เฟส 2)
+// Mc Rich — หน้าเว็บแอป
 const app = document.getElementById('app');
 const $ = (s) => app.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -59,7 +59,7 @@ const INTEREST_GROUPS = [
 function interestsView(mode) {
   const cur = ME.interests || {};
   const first = mode === 'onboard';
-  app.innerHTML = `${first ? '' : top('ความสนใจ', 'profile')}
+  app.innerHTML = `${first ? '' : topbar('ความสนใจ', 'profile')}
   <main style="padding-bottom:${first ? '24px' : '110px'}">
     ${first ? `<div style="display:flex;flex-direction:column;gap:8px;padding-top:calc(env(safe-area-inset-top) + 12px)">
       <span class="muted" style="font-weight:600">ตั้งค่าครั้งแรก · ใช้เวลา 30 วินาที</span>
@@ -118,7 +118,7 @@ async function homeView() {
   try {
     const t = await api('api/trends');
     $('#th').textContent = t.personalized ? 'ไวรัลตอนนี้ ตรงกับความสนใจคุณ' : 'ไวรัลตอนนี้';
-    $('#trends').innerHTML = t.items.map((x) => `<a class="trend" href="#create"><div class="thumb" style="background:${esc(x.color)}">${esc(x.badge)}</div>
+    $('#trends').innerHTML = t.items.map((x) => `<a class="trend" href="#create?style=${esc(x.style)}&kind=${esc(x.kind)}"><div class="thumb" style="background:${esc(x.color)}">${esc(x.badge)}</div>
       <b style="font-size:13px;line-height:1.3">${esc(x.title)}</b><span class="muted">${esc(x.price)}</span></a>`).join('');
   } catch (e) { if (e.message !== 'login') $('#trends').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
 }
@@ -321,6 +321,291 @@ async function starsView() {
     <b class="num" style="color:${x.delta >= 0 ? 'var(--ok)' : 'var(--bad)'}">${x.delta >= 0 ? '+' : '−'}${num(Math.abs(x.delta))}</b></div>`).join('') || '<div class="muted">ยังไม่มีรายการ</div>';
 }
 
+// ---------- สร้างผลงาน (ภาพ) ----------
+let CAT = null;
+let D = null;        // ร่างงานที่กำลังสร้าง
+let REFS = [];       // ไฟล์ภาพอ้างอิง (อยู่ในหน่วยความจำ)
+const STEPS = ['เป้าหมาย', 'แนวงาน', 'รายละเอียด', 'แคปชั่น', 'คุณภาพ', 'ทบทวน'];
+const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0 });
+const saveDraft = () => { try { sessionStorage.setItem('mr_draft', JSON.stringify(D)); } catch {} };
+function loadDraft() { try { const d = JSON.parse(sessionStorage.getItem('mr_draft') || 'null'); if (d && typeof d === 'object') return { ...newDraft(), ...d }; } catch {} return null; }
+
+async function createView(qs) {
+  const params = new URLSearchParams(qs || '');
+  if (!CAT) {
+    app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main><p class="muted">กำลังโหลด…</p></main>${nav('create')}`;
+    CAT = await api('api/create/catalog');
+  }
+  if (params.get('new') || !D) { D = loadDraft() && !params.get('new') ? loadDraft() : newDraft(); REFS = []; }
+  if (params.get('new')) history.replaceState(null, '', '#create');
+  if (params.get('style')) {
+    const s = params.get('kind') !== 'video' && CAT.styles.find((x) => x.id === params.get('style'));
+    if (s) { D = { ...newDraft(), style: s.id, ratio: s.ratio, step: 0 }; REFS = []; }
+    else { D = newDraft(); REFS = []; toast('แนวคลิปนี้จะเปิดในเฟสวิดีโอ ตอนนี้สร้างภาพได้ก่อน'); }
+    history.replaceState(null, '', '#create');
+  }
+  drawStep();
+}
+
+function stepShell(inner, { next = 'ถัดไป', nextId = 'next', disabled = false } = {}) {
+  const s = D.step;
+  app.innerHTML = `${topbar('สร้างผลงาน', s ? '' : 'home')}<main>
+    <div class="row between"><span class="muted" style="font-weight:600">ขั้น ${s + 1}/${STEPS.length} · ${STEPS[s]}</span>
+      <button type="button" class="chip" id="reset" style="min-height:34px;padding:4px 12px">เริ่มใหม่</button></div>
+    <div class="steps" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i <= s ? 'on' : ''}"></i>`).join('')}</div>
+    ${inner}
+    <div class="grid2" style="margin-top:4px">${s ? '<button type="button" class="btn dark" id="prev">ย้อนกลับ</button>' : '<span></span>'}
+      <button type="button" class="btn" id="${nextId}" ${disabled ? 'disabled' : ''}>${next}</button></div>
+  </main>${nav('create')}`;
+  if (s) { const b = app.querySelector('header .back'); if (b) b.onclick = (e) => { e.preventDefault(); D.step--; drawStep(); }; }
+  const p = $('#prev'); if (p) p.onclick = () => { D.step--; drawStep(); };
+  $('#reset').onclick = () => { D = newDraft(); REFS = []; saveDraft(); drawStep(); };
+}
+const chipRow = (items, sel, key, multi) => `<div class="chips">${items.map((v) => {
+  const id = typeof v === 'object' ? v.id : v; const label = typeof v === 'object' ? v.label : v;
+  const on = multi ? sel.includes(id) : sel === id;
+  return `<button type="button" class="chip" data-k="${key}" data-v="${esc(id)}" aria-pressed="${on}">${esc(label)}</button>`;
+}).join('')}</div>`;
+function bindChips(multi, onChange) {
+  app.querySelectorAll('.chip[data-k]').forEach((b) => b.onclick = () => {
+    const k = b.dataset.k, v = b.dataset.v;
+    if (multi.includes(k)) { const a = D[k]; const i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); b.setAttribute('aria-pressed', String(i < 0)); }
+    else { D[k] = v; app.querySelectorAll(`.chip[data-k="${k}"]`).forEach((x) => x.setAttribute('aria-pressed', String(x === b))); }
+    saveDraft(); onChange?.(k);
+  });
+}
+const readInputs = (ids) => ids.forEach((k) => { const el = $('#' + k); if (el) D[k] = el.type === 'checkbox' ? el.checked : el.value; });
+
+function drawStep() {
+  saveDraft(); window.scrollTo(0, 0);
+  if (!CAT.ready) {
+    app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main><div class="soon card"><span class="badge b-warn">กำลังตั้งค่า</span><h2>ระบบสร้างภาพกำลังเปิด</h2><p class="muted">ระหว่างนี้ตั้งค่าชุดแบรนด์และแฮชแท็กรอไว้ได้เลย</p><a class="btn" href="#brand">ตั้งค่าชุดแบรนด์</a></div></main>${nav('create')}`;
+    return;
+  }
+  const s = D.step;
+  if (s === 0) {
+    stepShell(`<h1 style="font-size:22px">สร้างไปเพื่ออะไร?</h1>
+      <div class="grid2">${CAT.goals.map((g) => `<button type="button" class="card opt" data-goal="${g.id}" aria-pressed="${D.goal === g.id}"><b>${esc(g.label)}</b><span class="muted">${esc(g.hint)}</span></button>`).join('')}</div>
+      <label class="f" for="link">${D.goal === 'aff' ? 'ลิงก์ Affiliate (Shopee / Lazada / TikTok)' : 'ลิงก์สินค้าหรือร้าน (ไม่บังคับ)'}
+        <input id="link" type="url" inputmode="url" placeholder="https://" value="${esc(D.link || (D.goal !== 'aff' ? ME.brand?.shopLink || '' : ''))}"></label>
+      <span class="muted">ลิงก์จะใส่ในแคปชั่นให้อัตโนมัติ</span>`);
+    app.querySelectorAll('[data-goal]').forEach((b) => b.onclick = () => { readInputs(['link']); D.goal = b.dataset.goal; drawStep(); });
+    $('#next').onclick = () => {
+      readInputs(['link']);
+      if (D.link && !/^https?:\/\/\S+$/i.test(D.link)) return toast('ลิงก์ต้องขึ้นต้นด้วย https://');
+      if (D.goal === 'aff' && !D.link) return toast('ใส่ลิงก์ Affiliate ก่อน');
+      D.step = 1; drawStep();
+    };
+  } else if (s === 1) {
+    stepShell(`<div class="grid2" role="group" aria-label="ประเภทผลงาน">
+        <button type="button" class="card opt" aria-pressed="true"><b>ภาพ</b><span class="muted">โปสเตอร์ ภาพสินค้า ป้ายโปร</span></button>
+        <button type="button" class="card opt" id="vid" aria-disabled="true" style="opacity:.55"><b>คลิปวิดีโอ</b><span class="muted">เปิดเฟสถัดไป</span></button></div>
+      <h2>เลือกแนวภาพ</h2>
+      <div class="grid2">${CAT.styles.map((x) => `<button type="button" class="stylecard" data-style="${x.id}" aria-pressed="${D.style === x.id}">
+        <span class="sw" style="background:${esc(x.color)}">${x.emoji}</span><b>${esc(x.label)}</b><span class="muted">${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}</span></button>`).join('')}</div>`, { disabled: !D.style });
+    $('#vid').onclick = () => toast('คลิปวิดีโอจะเปิดในเฟสถัดไป');
+    app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => { D.style = b.dataset.style; D.ratio = CAT.styles.find((x) => x.id === D.style).ratio; drawStep(); });
+    $('#next').onclick = () => { D.step = 2; drawStep(); };
+  } else if (s === 2) {
+    const st = CAT.styles.find((x) => x.id === D.style);
+    stepShell(`<p class="muted">แนว: <b style="color:var(--fg)">${esc(st.label)}</b></p>
+      <section class="card">
+        <label class="f" for="product">ชื่อสินค้า / เรื่อง<input id="product" type="text" maxlength="120" placeholder="เช่น ข้าวมันไก่ต้ม, เซรั่มวิตซี" value="${esc(D.product)}"></label>
+        ${st.text ? `<label class="f" for="headline">ข้อความหลักบนภาพ (สั้นๆ)<input id="headline" type="text" maxlength="60" placeholder="เช่น เปิดใหม่! อร่อยต้องลอง" value="${esc(D.headline)}"></label>
+        <label class="f" for="price">ราคา / โปร (ไม่บังคับ)<input id="price" type="text" maxlength="40" placeholder="เช่น 59.- หรือ ซื้อ 1 แถม 1" value="${esc(D.price)}"></label>` : ''}
+        <label class="f" for="details">รายละเอียดเพิ่ม (ไม่บังคับ)<textarea id="details" rows="3" maxlength="600" placeholder="จุดเด่น วัตถุดิบ กลุ่มลูกค้า บรรยากาศที่อยากได้">${esc(D.details)}</textarea></label>
+        <div id="warn"></div>
+      </section>
+      <section class="card"><b>ภาพสินค้าจริง (ไม่บังคับ แต่แนะนำ)</b><span class="muted">ใส่ได้ 3 รูป AI จะใช้สินค้าจริงของคุณ ไม่แต่งสินค้าใหม่</span>
+        <div class="refs">${REFS.map((f, i) => `<button type="button" class="ref" data-rm="${i}" aria-label="ลบรูปที่ ${i + 1}"><img src="${URL.createObjectURL(f)}" alt=""><span>✕</span></button>`).join('')}
+          ${REFS.length < 3 ? '<label class="ref add" for="refin" style="cursor:pointer">+ เพิ่มรูป<input id="refin" type="file" accept="image/*" multiple hidden></label>' : ''}</div>
+        ${D.fromWork && !REFS.length ? '<span class="muted">ใช้รูปสินค้าจากงานเดิม</span>' : ''}</section>
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>คอนเซปต์ (เลือกได้ 5)</h2>${chipRow(CAT.concepts, D.concepts, 'concepts', true)}</section>
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>ขนาดภาพ</h2>${chipRow(CAT.ratios, D.ratio || st.ratio, 'ratio', false)}</section>
+      <section class="card">
+        <label class="row between" for="useLogo"><span><b>ใส่โลโก้ร้านมุมขวาบน</b><br><span class="muted">${ME.brand?.logo ? 'ใช้โลโก้จากชุดแบรนด์' : 'ยังไม่มีโลโก้ · ตั้งค่าในโปรไฟล์ > ชุดแบรนด์'}</span></span>
+          <input id="useLogo" type="checkbox" class="sw-in" ${D.useLogo && ME.brand?.logo ? 'checked' : ''} ${ME.brand?.logo ? '' : 'disabled'}></label>
+        ${st.text && ME.brand?.shopName ? `<label class="row between" for="showShop"><span><b>ใส่ชื่อร้านบนภาพ</b><br><span class="muted">${esc(ME.brand.shopName)}</span></span><input id="showShop" type="checkbox" class="sw-in" ${D.showShop ? 'checked' : ''}></label>` : ''}
+      </section>`);
+    bindChips(['concepts'], (k) => { if (k === 'concepts' && D.concepts.length > 5) { D.concepts.pop(); drawStep(); toast('เลือกได้สูงสุด 5'); } });
+    const fields = ['product', 'headline', 'price', 'details', 'useLogo', 'showShop'];
+    const ri = $('#refin'); if (ri) ri.onchange = (e) => { readInputs(fields); REFS = [...REFS, ...[...e.target.files].filter((f) => f.type.startsWith('image/'))].slice(0, 3); drawStep(); };
+    app.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { readInputs(fields); REFS.splice(Number(b.dataset.rm), 1); drawStep(); });
+    $('#next').onclick = () => {
+      readInputs(fields);
+      if (!D.product.trim() && !D.headline?.trim() && !D.details.trim()) return toast('ใส่ชื่อสินค้าหรือรายละเอียดอย่างน้อย 1 อย่าง');
+      D.step = 3; drawStep();
+    };
+  } else if (s === 3) {
+    const saved = ME.hashtags || [];
+    stepShell(`<h1 style="font-size:22px">แคปชั่นโทนไหน?</h1>
+      <p class="muted">AI เขียนให้ 4 แบบ: Facebook, Instagram, TikTok, Shopee${D.link ? ' พร้อมใส่ลิงก์' : ''}</p>
+      ${chipRow(CAT.tones, D.tone || CAT.tones[0], 'tone', false)}
+      <section style="display:flex;flex-direction:column;gap:10px"><div class="row between"><h2>แฮชแท็กประจำ</h2><a href="#tags" style="font-size:14px">จัดการ</a></div>
+        ${saved.length ? chipRow(saved, D.hashtags, 'hashtags', true) : '<p class="muted">ยังไม่มีแฮชแท็กประจำ</p>'}</section>
+      <label class="f" for="extraTags">แท็กเพิ่มเฉพาะงานนี้<input id="extraTags" type="text" placeholder="#โปรเดือนนี้ #ของมันต้องมี" value="${esc(D.extraTags)}"></label>
+      <span class="muted">AI จะเติมแท็กที่เกี่ยวข้องให้อีก 5–8 แท็ก</span>`);
+    if (!D.tone) D.tone = CAT.tones[0];
+    bindChips(['hashtags']);
+    $('#next').onclick = () => { readInputs(['extraTags']); D.step = 4; drawStep(); };
+  } else if (s === 4) {
+    const free = CAT.free.today + CAT.free.welcome;
+    if (D.tier === 'free' && !free) D.tier = 'std';
+    const cost = (t) => t.free ? 0 : t.stars * D.versions;
+    stepShell(`<h1 style="font-size:22px">เลือกคุณภาพ</h1>
+      <div style="display:flex;flex-direction:column;gap:10px">${CAT.tiers.map((t) => {
+        const dis = t.free && !free;
+        return `<button type="button" class="card opt tier" data-tier="${t.id}" aria-pressed="${D.tier === t.id}" ${dis ? 'disabled' : ''}>
+          <span class="row between" style="width:100%"><b>${esc(t.label)} <span class="muted">${esc(t.size)}</span></b>
+          <b class="num" style="color:var(--lime)">${t.free ? `ฟรี · เหลือ ${free}` : `${ICON.star}${cost(t)} ดาว`}</b></span>
+          <span class="muted">${esc(t.note)}${dis ? ' · ภาพฟรีหมดแล้ว (ได้ใหม่พรุ่งนี้ 1 ภาพ)' : ''}</span></button>`;
+      }).join('')}</div>
+      ${D.tier !== 'free' ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>จำนวนภาพ (ได้หลายแบบให้เลือก)</h2>
+        <div class="chips">${[1, 2, 3, 4].map((n) => `<button type="button" class="chip" data-n="${n}" aria-pressed="${D.versions === n}">${n} แบบ</button>`).join('')}</div></section>` : ''}
+      <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะกดยืนยันหน้าถัดไป</p>`);
+    app.querySelectorAll('[data-tier]').forEach((b) => b.onclick = () => { D.tier = b.dataset.tier; if (D.tier === 'free') D.versions = 1; drawStep(); });
+    app.querySelectorAll('[data-n]').forEach((b) => b.onclick = () => { D.versions = Number(b.dataset.n); drawStep(); });
+    $('#next').onclick = () => { D.step = 5; drawStep(); };
+  } else if (s === 5) reviewStep().catch((e) => toast(e.message));
+}
+
+const payload = () => ({ ...D, hashtags: [...D.hashtags, ...String(D.extraTags || '').split(/[\s,]+/).filter(Boolean)] });
+async function reviewStep() {
+  stepShell('<p class="muted">กำลังคำนวณ…</p>', { next: 'ยืนยัน', disabled: true });
+  const qt = await api('api/works/quote', { method: 'POST', body: payload() });
+  const st = CAT.styles.find((x) => x.id === D.style);
+  const tier = CAT.tiers.find((t) => t.id === D.tier);
+  const goal = CAT.goals.find((g) => g.id === D.goal);
+  const row = (k, v) => v ? `<div><span class="muted">${k}</span><span style="text-align:right">${esc(v)}</span></div>` : '';
+  const label = qt.blocked ? 'สร้างไม่ได้' : qt.free ? 'ยืนยัน สร้างภาพฟรี' : qt.enough ? `ยืนยัน สร้าง · ${qt.cost} ดาว` : 'ดาวไม่พอ · เติมดาว';
+  stepShell(`<h1 style="font-size:22px">ทบทวนก่อนสร้าง</h1>
+    ${qt.blocked ? `<p role="alert" class="card" style="background:var(--bad-bg);color:var(--bad)">${esc(qt.blocked)}</p>` : ''}
+    ${qt.warnings.length ? `<p role="alert" class="card" style="background:var(--warn-bg);color:var(--warn)">ระวังผิดกฎ อย./โฆษณาเกินจริง: ${esc(qt.warnings.join(', '))} · AI จะเลี่ยงคำเหล่านี้ในแคปชั่น แนะนำแก้ข้อความบนภาพ</p>` : ''}
+    <div class="list kv">
+      ${row('เป้าหมาย', goal.label)}${row('ลิงก์', D.link)}${row('แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
+      ${row('คอนเซปต์', D.concepts.join(', '))}${row('ขนาด', D.ratio)}${row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
+      ${row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
+      ${row('คุณภาพ', `${tier.label} ${tier.size} × ${qt.versions} แบบ`)}
+    </div>
+    <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">${qt.free ? 'ใช้ภาพฟรี' : 'ดาวที่ใช้'}</span>
+      <b class="num" style="font-size:28px">${qt.free ? 'ฟรี' : `${ICON.star.replace('17', '24').replace('17', '24')} ${qt.cost}`}</b></div>
+      <span class="muted">${qt.free ? `ภาพฟรีเหลือ ${qt.freeLeft.today + qt.freeLeft.welcome} ภาพ · มีลายน้ำเล็กๆ` : `ยอดคงเหลือหลังสร้าง ${num(qt.stars - qt.cost)} ดาว`} · สร้างไม่สำเร็จคืนให้อัตโนมัติ</span></section>
+    <p class="muted">ใช้เวลาประมาณ 20–60 วินาที · ไฟล์เก็บบนเซิร์ฟเวอร์ ${CAT.keepDays} วัน ดาวน์โหลดเก็บไว้ด้วย</p>`, { next: label, nextId: 'go', disabled: !!qt.blocked });
+  $('#go').onclick = async () => {
+    if (!qt.free && !qt.enough) return go('topup');
+    const b = $('#go'); b.disabled = true; b.textContent = 'กำลังส่งงาน…';
+    const fd = new FormData(); fd.append('data', JSON.stringify(payload())); REFS.forEach((f) => fd.append('refs', f));
+    try {
+      const r = await api('api/works', { method: 'POST', body: fd });
+      ME = r.me; CAT = null; D = null; REFS = []; try { sessionStorage.removeItem('mr_draft'); } catch {}
+      go(`work?id=${r.id}`);
+    } catch (e) { toast(e.message); b.disabled = false; b.textContent = label; }
+  };
+}
+
+// ---------- ผลงานของฉัน ----------
+const PLAT = [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', 'TikTok'], ['shopee', 'Shopee'], ['lazada', 'Lazada'], ['line', 'LINE']];
+const daysLeft = (d) => Math.max(0, Math.ceil((new Date(d) - Date.now()) / 864e5));
+const WSTAT = { queued: ['รอคิว', 'b-lime'], working: ['กำลังสร้าง', 'b-lime'], done: ['เสร็จแล้ว', 'b-ok'], failed: ['ไม่สำเร็จ', 'b-warn'] };
+async function worksView() {
+  app.innerHTML = `${topbar()}<main><div class="row between"><h1 style="font-size:22px">ผลงานของฉัน</h1><a class="btn sm" href="#create?new=1">+ สร้าง</a></div>
+    <div id="wl" class="grid2"><p class="muted">กำลังโหลด…</p></div></main>${nav('works')}`;
+  const { items } = await api('api/works');
+  if (!items.length) { $('#wl').outerHTML = `<div class="soon card"><h2>ยังไม่มีผลงาน</h2><p class="muted">สร้างภาพแรกได้เลย มีภาพฟรีให้ ${ME.freeImages.today + ME.freeImages.welcome} ภาพ</p><a class="btn" href="#create?new=1">สร้างภาพแรก</a></div>`; return; }
+  $('#wl').innerHTML = items.map((w) => `<a class="wcard" href="#work?id=${w.id}">
+    <div class="wthumb">${w.files[0] ? `<img src="${w.files[0].thumb}" alt="" loading="lazy">` : `<span class="muted">${w.purged ? 'ไฟล์ถูกลบแล้ว' : WSTAT[w.status]?.[0] || ''}</span>`}
+      ${w.files.length > 1 ? `<span class="cnt">${w.files.length}</span>` : ''}</div>
+    <b style="font-size:14px;line-height:1.3">${esc(w.title)}</b>
+    <span class="row between"><span class="badge ${WSTAT[w.status]?.[1]}">${WSTAT[w.status]?.[0]}</span>
+      <span class="muted">${w.purged ? 'หมดอายุ' : Object.keys(w.posted || {}).length ? `โพสต์ ${Object.keys(w.posted).length} ที่` : `เหลือ ${daysLeft(w.expiresAt)} วัน`}</span></span></a>`).join('');
+  if (items.some((w) => ['queued', 'working'].includes(w.status))) setTimeout(() => { if (location.hash.startsWith('#works')) worksView().catch(() => {}); }, 5000);
+}
+
+async function workView(qs) {
+  const id = Number(new URLSearchParams(qs || '').get('id'));
+  if (!id) return go('works');
+  app.innerHTML = `${topbar('ผลงาน', 'works')}<main><p class="muted">กำลังโหลด…</p></main>${nav('works')}`;
+  let w = await api(`api/works/${id}`);
+  if (['queued', 'working'].includes(w.status)) {
+    $('main').innerHTML = `<section class="hero" style="align-items:center;text-align:center;gap:14px;padding:32px 18px">
+      <div class="spin" aria-hidden="true"></div><h2>${w.status === 'queued' ? 'รอคิวสร้าง…' : 'AI กำลังสร้างภาพ…'}</h2>
+      <p class="muted">${esc(w.styleLabel)} · ${w.versions} แบบ · ประมาณ 20–60 วินาที<br>ออกจากหน้านี้ได้ เสร็จแล้วดูที่เมนูผลงาน</p></section>`;
+    const t0 = Date.now();
+    const poll = async () => {
+      if (location.hash !== `#work?id=${id}`) return;
+      try { w = await api(`api/works/${id}`); } catch { return; }
+      if (['queued', 'working'].includes(w.status)) return setTimeout(poll, Date.now() - t0 > 60000 ? 5000 : 2500);
+      ME = await api('api/me').catch(() => ME);
+      workView(qs);
+    };
+    setTimeout(poll, 2500);
+    return;
+  }
+  if (w.status === 'failed') {
+    $('main').innerHTML = `<section class="card" style="background:var(--bad-bg)"><b style="color:var(--bad)">สร้างไม่สำเร็จ</b><span>${esc(w.error)}</span></section>
+      <button type="button" class="btn" id="again">ลองใหม่ (แก้รายละเอียดได้)</button><button type="button" class="btn ghost" id="del">ลบรายการนี้</button>`;
+  } else {
+    const caps = PLAT.slice(0, 4).filter(([k]) => w.captions?.[k]);
+    const tags = (w.hashtags || []).join(' ');
+    $('main').innerHTML = `
+      ${w.purged ? `<section class="card"><b>ไฟล์ถูกลบจากเซิร์ฟเวอร์แล้ว</b><span class="muted">ครบ ${CAT?.keepDays || 7} วัน · แคปชั่นยังคัดลอกได้ · กด "สร้างแบบนี้อีก" เพื่อทำใหม่</span></section>`
+        : `<div class="gallery">${w.files.map((f, i) => `<figure><img src="${f.url}" alt="ภาพที่ ${i + 1}" width="${f.w}" height="${f.h}">
+          <figcaption class="grid2"><button type="button" class="btn sm" data-save="${i}">บันทึกลงเครื่อง</button><a class="btn dark sm" href="${f.url}?dl=1" download>ดาวน์โหลด</a></figcaption></figure>`).join('')}</div>
+        <p class="muted">ไฟล์อยู่บนเซิร์ฟเวอร์อีก ${daysLeft(w.expiresAt)} วัน · ${w.free ? 'ภาพฟรี (มีลายน้ำ)' : `ใช้ ${w.cost} ดาว`}</p>`}
+      ${caps.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>แคปชั่น</h2>
+        <div class="chips" role="tablist">${caps.map(([k, l], i) => `<button type="button" class="chip" role="tab" data-cap="${k}" aria-pressed="${i === 0}">${l}</button>`).join('')}</div>
+        <textarea id="cap" rows="7" aria-label="แคปชั่น">${esc(w.captions[caps[0][0]] + (tags ? '\n\n' + tags : ''))}</textarea>
+        <button type="button" class="btn dark" id="copyCap">คัดลอกแคปชั่น + แฮชแท็ก</button></section>` : ''}
+      <section class="card"><b>โพสต์ไปที่ไหนแล้ว</b><span class="muted">ติ๊กไว้ จะได้รู้ว่างานไหนโพสต์แล้ว (โพสต์ตรงจากแอปจะเปิดเร็วๆ นี้)</span>
+        <div class="chips">${PLAT.map(([k, l]) => `<button type="button" class="chip" data-post="${k}" aria-pressed="${!!w.posted?.[k]}">${l}${w.posted?.[k] ? ' · ' + new Date(w.posted[k]).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : ''}</button>`).join('')}</div></section>
+      <div class="list">${historyRows(w)}</div>
+      <button type="button" class="btn" id="again">สร้างแบบนี้อีก</button>
+      <button type="button" class="btn ghost" id="del">ลบผลงานนี้</button>`;
+    app.querySelectorAll('[data-cap]').forEach((b) => b.onclick = () => {
+      app.querySelectorAll('[data-cap]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      $('#cap').value = w.captions[b.dataset.cap] + (tags ? '\n\n' + tags : '');
+    });
+    const cc = $('#copyCap'); if (cc) cc.onclick = async () => {
+      try { await navigator.clipboard.writeText($('#cap').value); toast('คัดลอกแล้ว'); } catch { $('#cap').select(); toast('กดค้างเพื่อคัดลอก'); }
+      api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'copy', p: app.querySelector('[data-cap][aria-pressed="true"]')?.dataset.cap } }).catch(() => {});
+    };
+    app.querySelectorAll('[data-save]').forEach((b) => b.onclick = () => saveImage(w, Number(b.dataset.save)));
+    app.querySelectorAll('[data-post]').forEach((b) => b.onclick = async () => {
+      const on = b.getAttribute('aria-pressed') !== 'true';
+      try { await api(`api/works/${w.id}/posted`, { method: 'POST', body: { platform: b.dataset.post, on } }); workView(qs); } catch (e) { toast(e.message); }
+    });
+  }
+  $('#again').onclick = () => {
+    const p = w.params || {};
+    D = { ...newDraft(), goal: p.goal, link: p.link, style: w.style, product: p.product, price: p.price, headline: p.headline, details: p.details, concepts: p.concepts || [], ratio: p.ratio, useLogo: p.useLogo, showShop: p.showShop, tone: p.tone, hashtags: p.hashtags || [], tier: w.tier, versions: w.versions, fromWork: w.id, step: 2 };
+    REFS = []; saveDraft(); go('create');
+  };
+  $('#del').onclick = async () => {
+    if (!confirm('ลบผลงานนี้? ไฟล์บนเซิร์ฟเวอร์จะหายทันที (ดาวไม่คืน)')) return;
+    try { await api(`api/works/${w.id}`, { method: 'DELETE' }); toast('ลบแล้ว'); go('works'); } catch (e) { toast(e.message); }
+  };
+}
+function historyRows(w) {
+  const ev = [...(w.events || [])].reverse().slice(0, 8);
+  const lab = { download: 'ดาวน์โหลด', share: 'บันทึก/แชร์', copy: 'คัดลอกแคปชั่น' };
+  const d = (x) => new Date(x).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+  return `<div><span class="muted">สร้างเมื่อ</span><span>${d(w.createdAt)}</span></div>` + ev.map((e) => `<div><span class="muted">${lab[e.t] || e.t}${e.t !== 'copy' ? ` ภาพที่ ${(e.n || 0) + 1}` : ''}</span><span>${d(e.at)}</span></div>`).join('');
+}
+// มือถือ: เปิดหน้าแชร์ของเครื่อง → "บันทึกภาพ" ลงคลังรูป / ส่ง LINE ได้เลย
+async function saveImage(w, i) {
+  const f = w.files[i];
+  try {
+    const blob = await (await fetch(f.url, { credentials: 'same-origin' })).blob();
+    const file = new File([blob], `mcrich-${w.id}-${i + 1}.jpg`, { type: 'image/jpeg' });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'share', n: i } }).catch(() => {});
+      return;
+    }
+  } catch (e) { if (e.name === 'AbortError') return; }
+  location.href = `${f.url}?dl=1`;
+}
+
 // ---------- เส้นทาง ----------
 async function route() {
   const [name, qs] = location.hash.replace(/^#/, '').split('?');
@@ -340,8 +625,9 @@ async function route() {
     case 'stars': return starsView().catch((e) => toast(e.message));
     case 'topup': return topupView().catch((e) => toast(e.message));
     case 'admin': return ME.admin ? adminView().catch((e) => toast(e.message)) : go('home');
-    case 'create': return soon('create', 'สร้างผลงาน', 'สร้างภาพโปสเตอร์ เมนู และคลิปแบบต่างๆ จะเปิดในเฟสถัดไป ตอนนี้ตั้งค่าชุดแบรนด์และแฮชแท็กรอไว้ได้เลย');
-    case 'works': return soon('works', 'ผลงานของฉัน', 'ประวัติผลงาน ดาวน์โหลด ส่งเข้า Google Drive และสถิติยอดวิว จะอยู่ที่นี่');
+    case 'create': return createView(qs).catch((e) => toast(e.message));
+    case 'works': return worksView().catch((e) => toast(e.message));
+    case 'work': return workView(qs).catch((e) => toast(e.message));
     case 'chat': return soon('chat', 'แชทผู้ช่วย AI', 'ถามเรื่องดาว ผลงาน หรือขอไอเดียคลิปได้ตลอด 24 ชม.');
     default: return homeView();
   }

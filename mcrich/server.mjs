@@ -8,6 +8,7 @@ import pg from 'pg';
 import multer from 'multer';
 import sharp from 'sharp';
 import { registerPay } from './pay.mjs';
+import { registerCreate } from './create.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3200);
@@ -315,7 +316,9 @@ app.get('/api/trends', auth, wrap(async (req, res) => {
 
 // ---------- เติมดาว ----------
 const pay = registerPay(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand });
-app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready() }));
+// ---------- สร้างภาพ ----------
+const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand });
+app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready(), create: create.ready() }));
 
 // ---------- หน้าเว็บ ----------
 // index.html ห้ามจำ (ให้ได้เวอร์ชันใหม่ทุกครั้ง) ส่วน js/css ใส่เลขเวอร์ชันในลิงก์
@@ -325,5 +328,5 @@ app.get(['/', '/index.html'], (_q, res) => { res.setHeader('cache-control', 'no-
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 app.get(['/privacy', '/terms'], (req, res) => res.sendFile(path.join(__dir, 'public', `${req.path.slice(1)}.html`)));
 
-migrate().then(() => app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY}`)))
+migrate().then(() => { create.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()}`)); })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

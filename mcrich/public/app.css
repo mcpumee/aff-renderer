@@ -79,3 +79,33 @@ nav.tab .plus { width: 52px; height: 52px; border-radius: 16px; background: var(
 .logo-prev { width: 64px; height: 64px; border-radius: 14px; background: var(--s2); object-fit: contain; border: 1px solid var(--line); }
 @media (prefers-reduced-motion: no-preference) { .btn, .chip { transition: background .15s, transform .1s; } .btn:active, .chip:active { transform: scale(.98); } }
 .btn[aria-disabled="true"] { opacity: .45; pointer-events: none; }
+
+/* ---------- สร้างผลงาน ---------- */
+.steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.steps i { height: 4px; border-radius: 4px; background: var(--s3); }
+.steps i.on { background: var(--lime); }
+.opt { text-align: left; cursor: pointer; color: var(--fg); gap: 4px; }
+.opt[aria-pressed="true"], .stylecard[aria-pressed="true"] { border: 2px solid var(--lime); background: #1C2410; }
+.opt[disabled] { opacity: .45; cursor: not-allowed; }
+.stylecard { display: flex; flex-direction: column; gap: 6px; text-align: left; background: var(--s1); border: 1px solid var(--line); border-radius: var(--r); padding: 10px; color: var(--fg); cursor: pointer; }
+.stylecard .sw { aspect-ratio: 16/10; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 30px; }
+.stylecard b { font-size: 14px; line-height: 1.3; }
+textarea { resize: vertical; line-height: 1.5; }
+.refs { display: flex; gap: 8px; flex-wrap: wrap; }
+.ref { position: relative; width: 84px; height: 84px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--s2); padding: 0; cursor: pointer; }
+.ref img { width: 100%; height: 100%; object-fit: cover; }
+.ref span { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.7); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.ref.add { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; border-style: dashed; }
+.sw-in { width: 24px; height: 24px; accent-color: var(--lime); flex: none; }
+.kv > div { font-size: 14px; }
+.kv > div > :last-child { max-width: 62%; overflow-wrap: anywhere; }
+.wcard { display: flex; flex-direction: column; gap: 6px; text-decoration: none; color: var(--fg); }
+.wthumb { position: relative; aspect-ratio: 4/5; border-radius: 14px; overflow: hidden; background: var(--s2); display: flex; align-items: center; justify-content: center; }
+.wthumb img { width: 100%; height: 100%; object-fit: cover; }
+.wthumb .cnt { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.7); color: #fff; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 8px; }
+.gallery { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 0 16px; }
+.gallery figure { margin: 0; flex: 0 0 88%; scroll-snap-align: center; display: flex; flex-direction: column; gap: 8px; }
+.gallery figure:only-child { flex-basis: 100%; }
+.gallery img { width: 100%; height: auto; border-radius: 14px; background: var(--s2); }
+.spin { width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--s3); border-top-color: var(--lime); animation: sp 0.9s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }

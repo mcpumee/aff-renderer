@@ -14,15 +14,53 @@ const RENDER_OUT = process.env.RENDER_OUT || '/data/out';
 
 // แนวคลิป (ฉากเปิดเป็นแอนิเมชันของเรา ไม่เสียค่า AI วิดีโอ)
 export const VIDEO_STYLES = [
-  { id: 'v_gift', label: 'ระเบิดกล่องของขวัญ', emoji: '🎁', color: '#A3192A', reveal: 'gift', open: 'ระเบิดกล่องของขวัญ', hook: 'ระเบิดกล่อง\nของขวัญ!' },
-  { id: 'v_mystery', label: 'เปิดกล่องสุ่ม / กล่องจุ่ม', emoji: '❓', color: '#2B1B4A', reveal: 'mystery', theme: 'mystery', open: 'เปิดกล่องสุ่ม', hook: 'เปิดกล่องสุ่ม\nได้อะไร?' },
-  { id: 'v_egg', label: 'ทุบไข่ปริศนา', emoji: '🥚', color: '#9C7410', reveal: 'egg', theme: 'gold', open: 'ทุบไข่ปริศนา', hook: 'ทุบไข่ทองคำ\nข้างในคือ…' },
-  { id: 'v_gacha', label: 'เปิดกาชาปอง', emoji: '🔮', color: '#C2335C', reveal: 'gacha', theme: 'candy', open: 'เปิดกาชาปอง', hook: 'สุ่มกาชา\nลุ้นของดี!' },
-  { id: 'v_chest', label: 'เปิดหีบสมบัติ', emoji: '🪙', color: '#6B3E19', reveal: 'chest', theme: 'navy', open: 'เปิดหีบสมบัติ', hook: 'เปิดหีบสมบัติ\nเจอของดี!' },
-  { id: 'v_scratch', label: 'ขูดบัตรลุ้นโชค', emoji: '🎟️', color: '#5A2CA0', reveal: 'scratch', theme: 'purple', open: 'ขูดบัตรลุ้นโชค', hook: 'ขูดบัตร\nลุ้นรางวัล!' },
-  { id: 'v_wheel', label: 'หมุนวงล้อนำโชค', emoji: '🎡', color: '#EE4D2D', reveal: 'wheel', theme: 'orange', open: 'หมุนวงล้อนำโชค', hook: 'หมุนวงล้อ\nลุ้นของดี!' },
-  { id: 'v_sell', label: 'ขายของ / รีวิวสินค้า', emoji: '🛍️', color: '#17694A', reveal: 'none', open: '', hook: 'ของมันต้องมี\nบอกต่อ!' },
+  { id: 'v_gift', label: 'ระเบิดกล่องของขวัญ', emoji: '🎁', color: '#A3192A', reveal: 'gift', themes: ['goldRed', 'emerald', 'pink', 'navy', 'purple'], open: 'ระเบิดกล่องของขวัญ', hook: 'ระเบิดกล่อง\nของขวัญ!',
+    variants: [{ id: 'explode', label: 'สั่นแล้วระเบิด' }, { id: 'drop', label: 'ตกจากฟ้า ตูม!', open: 'กล่องของขวัญตกจากฟ้า' }] },
+  { id: 'v_mystery', label: 'เปิดกล่องสุ่ม / กล่องจุ่ม', emoji: '❓', color: '#2B1B4A', reveal: 'mystery', themes: ['mystery', 'navy', 'purple'], open: 'เปิดกล่องสุ่ม', hook: 'เปิดกล่องสุ่ม\nได้อะไร?',
+    variants: [{ id: 'explode', label: 'สั่นแล้วระเบิด' }, { id: 'drop', label: 'ตกจากฟ้า ตูม!', open: 'กล่องสุ่มตกจากฟ้า' }] },
+  { id: 'v_egg', label: 'ไข่ปริศนา', emoji: '🥚', color: '#9C7410', reveal: 'egg', themes: ['gold', 'navy', 'emerald'], open: 'ไข่ปริศนากำลังจะแตก', hook: 'ไข่ปริศนา\nข้างในคือ…',
+    variants: [{ id: 'crack', label: 'ร้าวเองแล้วแตก', open: 'ไข่ปริศนากำลังจะแตก' }, { id: 'smash', label: 'ค้อนทุบ ป๊อก!', open: 'ทุบไข่ปริศนา', hook: 'ทุบไข่ปริศนา\nข้างในคือ…' },
+      { id: 'hen', label: 'ไก่ออกไข่ร่วงแตก', open: 'แม่ไก่ออกไข่ปริศนา', hook: 'แม่ไก่ออกไข่\nข้างในคือ…' }, { id: 'dino', label: 'ไดโนเสาร์เหยียบ', open: 'ไดโนเสาร์เหยียบไข่ปริศนา', hook: 'ไดโนเหยียบไข่\nได้อะไร?' }] },
+  { id: 'v_gacha', label: 'เปิดกาชาปอง', emoji: '🔮', color: '#C2335C', reveal: 'gacha', themes: ['candy', 'purple', 'orange'], open: 'เปิดกาชาปอง', hook: 'สุ่มกาชา\nลุ้นของดี!',
+    variants: [{ id: 'bounce', label: 'แคปซูลเด้งดึ๋ง' }, { id: 'machine', label: 'หมุนตู้กาชา', open: 'หมุนตู้กาชาปอง' }] },
+  { id: 'v_chest', label: 'เปิดหีบสมบัติ', emoji: '🪙', color: '#6B3E19', reveal: 'chest', themes: ['navy', 'gold', 'emerald'], open: 'เปิดหีบสมบัติ', hook: 'เปิดหีบสมบัติ\nเจอของดี!',
+    variants: [{ id: 'glow', label: 'แสงทองพุ่ง' }, { id: 'key', label: 'ไขกุญแจทอง', open: 'ไขกุญแจหีบสมบัติ' }] },
+  { id: 'v_scratch', label: 'ขูดบัตรลุ้นโชค', emoji: '🎟️', color: '#5A2CA0', reveal: 'scratch', themes: ['purple', 'navy', 'emerald'], open: 'ขูดบัตรลุ้นโชค', hook: 'ขูดบัตร\nลุ้นรางวัล!', variants: [] },
+  { id: 'v_wheel', label: 'หมุนวงล้อนำโชค', emoji: '🎡', color: '#EE4D2D', reveal: 'wheel', themes: ['orange', 'purple', 'candy'], open: 'หมุนวงล้อนำโชค', hook: 'หมุนวงล้อ\nลุ้นของดี!', variants: [] },
+  { id: 'v_sell', label: 'ขายของ / รีวิวสินค้า', emoji: '🛍️', color: '#17694A', reveal: 'none', open: '', hook: 'ของมันต้องมี\nบอกต่อ!', variants: [] },
 ];
+// สูตรเล่าเรื่อง — rec = เป้าหมายที่แนะนำ
+export const FORMULAS = [
+  { id: 'direct', label: 'ป้ายยาตรงๆ', desc: 'ฮุค → ดียังไง → ราคา → ชวนซื้อ', rec: ['aff', 'sell'],
+    guide: 'โครง: ฮุคแรง 1 ประโยค → จุดเด่น 2-3 ข้อแบบเห็นภาพ → ราคา/โปร → ชวนซื้อชัดๆ' },
+  { id: 'pas', label: 'ปัญหา → ทางแก้', desc: 'เปิดด้วยปัญหาที่ลูกค้าเจอทุกวัน', rec: ['sell', 'aff'],
+    guide: 'โครง: เปิดด้วยปัญหาที่กลุ่มลูกค้าเจอจริง (ให้รู้สึกว่า "ใช่ เลย") → ขยายความรำคาญ 1 ประโยค → เฉลยสินค้าเป็นทางออก → ผลลัพธ์ที่สมจริง → ชวนซื้อ' },
+  { id: 'honest', label: 'รีวิวจริงใจ', desc: 'ข้อดี + ข้อสังเกต น่าเชื่อถือ', rec: ['content', 'aff'],
+    guide: 'โครง: บอกว่าซื้อมาลองเอง → ข้อดีที่ชอบจริง 2 ข้อ → ข้อสังเกต 1 ข้อแบบตรงไปตรงมาแต่ไม่ทำลายการขาย → เหมาะกับใคร → ชวนลอง' },
+  { id: 'top3', label: '3 เหตุผลที่ต้องมี', desc: 'นับ 1-2-3 คนดูอยู่จนจบ', rec: ['aff', 'sell'],
+    guide: 'โครง: "3 เหตุผลที่ต้องมี ..." → เหตุผลที่ 1, 2, 3 (ข้อ 3 แรงสุด) → ราคา → ชวนซื้อ' },
+  { id: 'story', label: 'เล่าเรื่องชีวิตจริง', desc: 'Storytime อบอุ่น คนแชร์เยอะ', rec: ['content', 'promo'],
+    guide: 'โครง: เล่าเหตุการณ์สั้นๆ ในชีวิตประจำวันเหมือนเล่าให้เพื่อนฟัง → จุดพลิกที่สินค้าช่วยได้ → ความรู้สึกหลังใช้ → ปิดแบบอบอุ่นชวนลอง' },
+  { id: 'value', label: 'คุ้มไหม? เทียบให้ดู', desc: 'เน้นความคุ้มค่า ราคาต่อชิ้น/ต่อวัน', rec: ['sell', 'aff'],
+    guide: 'โครง: ตั้งคำถาม "แพงไปไหม?" → เทียบให้เห็นความคุ้ม (ต่อวัน/ต่อครั้ง/เทียบของที่ใช้อยู่) โดยไม่กล่าวหาแบรนด์อื่น → สรุปว่าคุ้ม → ชวนซื้อ' },
+  { id: 'secret', label: 'ทริคที่คนไม่รู้', desc: 'ให้ความรู้ คนกดเซฟเยอะ', rec: ['content', 'promo'],
+    guide: 'โครง: "รู้ไหมว่า..." ทริค/วิธีใช้ที่คนส่วนใหญ่ทำผิด → วิธีที่ถูก → สินค้าช่วยให้ง่ายขึ้นยังไง → ชวนเซฟคลิปและลองใช้' },
+  { id: 'urgency', label: 'โปรด่วน ห้ามพลาด', desc: 'เร่งให้ตัดสินใจ (ตามจริงเท่านั้น)', rec: ['sell', 'promo'],
+    guide: 'โครง: เปิดด้วยโปร/ราคาพิเศษ → ของดียังไงแบบเร็วๆ → เงื่อนไขโปรตามข้อมูลที่ผู้ขายให้เท่านั้น ห้ามแต่งวันหมดเขตหรือจำนวนเอง → ชวนรีบสั่ง' },
+  { id: 'friend', label: 'เพื่อนป้ายยาเพื่อน', desc: 'บทคุยกัน 2 คน สนุก เป็นธรรมชาติ', rec: ['aff', 'content'], dialogue: true,
+    guide: 'โครง: บทสนทนา 2 คน A คือคนที่ใช้แล้วชอบ B คือเพื่อนขี้สงสัย/ไม่เชื่อ → B ถามหรือแซว → A ตอบพร้อมจุดเด่น → B เริ่มสนใจถามราคา → A บอกราคาและชวนกดสั่ง' },
+];
+export const MUSIC = [
+  { id: 'auto', label: 'อัตโนมัติ' }, { id: 'fun', label: 'สนุก สดใส' }, { id: 'hype', label: 'มันส์ เร้าใจ' },
+  { id: 'suspense', label: 'ลุ้นระทึก' }, { id: 'chill', label: 'ชิลๆ' }, { id: 'luxury', label: 'หรูหรา' }, { id: 'none', label: 'ไม่มีเพลง' },
+];
+export function pickMusic(m, style, tone) {
+  if (m && m !== 'auto') return m === 'none' ? '' : m;
+  if (tone === 'หรูหรา พรีเมียม') return 'luxury';
+  if (tone === 'อบอุ่น ใส่ใจ' || tone === 'ให้ความรู้') return 'chill';
+  if (style.reveal === 'none') return tone === 'ขายตรง ปิดการขาย' ? 'hype' : 'fun';
+  return ['suspense', 'hype', 'fun'][Math.floor(Math.random() * 3)];
+}
 export const LENGTHS = [{ id: 15, label: '15 วิ' }, { id: 30, label: '30 วิ' }, { id: 45, label: '45 วิ' }];
 // ราคา (ดาว) — ปรับได้ที่นี่ที่เดียว
 export const VIDEO_PRICE = { 15: 12, 30: 15, 45: 20 };
@@ -48,6 +86,12 @@ export const EL_VOICES = [
 ];
 try { EL_VOICES.push(...JSON.parse(process.env.EL_VOICES_EXTRA || '[]')); } catch { /* ไม่สนใจ */ }
 export const premiumReady = () => !!EL_KEY();
+/** เสียงคู่สนทนา: เพศตรงข้ามกับเสียงหลัก */
+export function partnerVoice(id) {
+  const v = VOICES.find((x) => x.id === id) || VOICES[0];
+  const pool = VOICES.filter((x) => x.gender !== v.gender);
+  return (pool[0] || VOICES[1]).id;
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function gpost(url, body, timeoutMs) {
@@ -68,8 +112,12 @@ const partsText = (j) => (j.candidates?.[0]?.content?.parts || []).map((p) => p.
 export async function writeScript(p, style, brand, goalLabel) {
   const len = Number(p.length) || 30;
   const chars = Math.round(len * 11.5);
+  const f = FORMULAS.find((x) => x.id === p.formula) || FORMULAS[0];
+  const dlg = !!p.dialogue;
   const prompt = `คุณคือครีเอเตอร์ TikTok ไทยที่ทำคลิปขายของยอดวิวสูง เขียนบทพากย์คลิปแนว "${style.label}" ยาวประมาณ ${len} วินาที
 ${style.open ? `ประโยคแรกระบบใส่ให้แล้วคือ "${style.open}" (ตอนนี้ภาพกำลังเปิด/ลุ้น) ห้ามเขียนซ้ำ ให้เริ่มที่ประโยคถัดไปซึ่งต้องเฉลยว่าได้สินค้าอะไร แบบตื่นเต้น` : 'ประโยคแรกต้องเป็นฮุคหยุดนิ้วภายใน 2 วินาที'}
+สูตรการเล่า: ${f.label} — ${f.guide}
+${dlg ? 'รูปแบบ: บทสนทนาระหว่าง A กับ B สลับกัน ทุกประโยคต้องขึ้นต้นด้วย "A:" หรือ "B:"' + (style.open ? ' (ประโยคเปิดเป็นของ A)' : '') : 'รูปแบบ: คนเดียวพูดกับคนดู'}
 เป้าหมาย: ${goalLabel}
 สินค้า: ${p.product || '-'}
 จุดเด่น/รายละเอียด: ${p.details || '-'}
@@ -86,11 +134,18 @@ ${p.link ? 'มีลิงก์สินค้า: ใส่ {LINK} ในแ�
   }, 90000);
   const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
   const clean = (s) => String(s || '').replace(/[\u{1F000}-\u{1FFFF}☀-➿()[\]{}*#"]/gu, '').replace(/\s+/g, ' ').trim();
-  let lines = (Array.isArray(o.lines) ? o.lines : []).map(clean).filter(Boolean).slice(0, 16);
+  const raw = (Array.isArray(o.lines) ? o.lines : []).map((l) => String(l || '')).filter((l) => l.trim()).slice(0, 18);
+  let speakers = raw.map((l, i) => (dlg ? (/^\s*B\s*[:：]/i.test(l) ? 'B' : /^\s*A\s*[:：]/i.test(l) ? 'A' : (i % 2 ? 'B' : 'A')) : 'A'));
+  let lines = raw.map((l) => clean(l.replace(/^\s*[AB]\s*[:：]\s*/i, '')));
+  const keep = lines.map((l) => !!l);
+  lines = lines.filter((_, i) => keep[i]); speakers = speakers.filter((_, i) => keep[i]);
   if (!lines.length) throw new Error('script_empty');
-  if (style.open) lines = [style.open, ...lines.filter((l, i) => !(i === 0 && l.startsWith(style.open)))];
+  if (style.open) {
+    if (lines[0].startsWith(style.open)) { lines.shift(); speakers.shift(); }
+    lines.unshift(style.open); speakers.unshift('A');
+  }
   return {
-    lines,
+    lines, speakers,
     // แนวเปิดกล่อง: ใช้หัวข้อที่ตรงกับแอนิเมชันเสมอ / แนวขายของ: ให้ AI คิดฮุค
     hookText: style.open ? style.hook : (String(o.hookText || '').slice(0, 40) || style.hook),
     cta: String(o.cta || '').slice(0, 24),
@@ -150,12 +205,12 @@ async function ttsLine(text, voice, tone) {
   throw last;
 }
 const TONE_EN = { 'เป็นกันเอง': 'friendly casual', 'ขายตรง ปิดการขาย': 'energetic persuasive salesperson', 'ตลก ขำๆ': 'funny playful', 'หรูหรา พรีเมียม': 'calm premium elegant', 'ให้ความรู้': 'clear informative', 'อบอุ่น ใส่ใจ': 'warm caring' };
-export async function voiceGemini(lines, voice, tone) {
+export async function voiceGemini(lines, voice, tone, speakers = [], voiceB = '') {
   const tEn = TONE_EN[tone] || 'friendly';
   const out = new Array(lines.length);
   let idx = 0;
   await Promise.all(Array.from({ length: Math.min(4, lines.length) }, async () => {
-    while (idx < lines.length) { const i = idx++; out[i] = await ttsLine(lines[i], voice, i === 0 ? 'very excited, suspenseful' : tEn); }
+    while (idx < lines.length) { const i = idx++; out[i] = await ttsLine(lines[i], speakers[i] === 'B' && voiceB ? voiceB : voice, i === 0 ? 'very excited, suspenseful' : tEn); }
   }));
   const rate = out[0].rate;
   const chunks = [], characters = [], st = [], en = [];

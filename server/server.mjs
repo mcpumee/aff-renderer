@@ -292,7 +292,9 @@ async function buildProps(id, req, stage = () => {}) {
       const at = txt.indexOf(phrase);
       if (at >= 0 && at < 5) burstSec = alN.character_end_times_seconds[at + phrase.length - 1] + 0.1;
     }
-    burstSec = Math.min(req.reveal === 'wheel' ? 3.6 : 3, Math.max(req.reveal === 'wheel' ? 2.4 : 1.1, burstSec));
+    // แบบที่มีเรื่องเล่าก่อนเปิด (ค้อน ไก่ ไดโนเสาร์ ตู้กาชา กุญแจ) ต้องมีเวลามากขึ้น
+    const longIntro = req.reveal === 'wheel' || ['smash', 'hen', 'dino', 'machine', 'key', 'drop'].includes(req.revealVariant);
+    burstSec = Math.min(longIntro ? 3.6 : 3, Math.max(longIntro ? 2.4 : 1.1, burstSec));
     const nRev = Math.min(3, reviewUrls.length);
     const introSec = burstSec + 1.4 + nRev * 0.75 + 1.2;
     const durationSec = Math.max(introSec + END_SEC + 2, speechEnd + 0.8);
@@ -301,7 +303,8 @@ async function buildProps(id, req, stage = () => {}) {
       props: {
         durationSec, audioUrl, captions,
         hookText: req.hookText || 'ระเบิดกล่องสินค้า\nแนะนำ!',
-        burstSec, introSec, products, theme: noIntro ? undefined : theme, reveal: req.reveal || 'gift',
+        burstSec, introSec, products, theme: noIntro ? undefined : theme, reveal: req.reveal || 'gift', revealVariant: String(req.revealVariant || ''),
+        music: ['fun', 'hype', 'suspense', 'chill', 'luxury'].includes(req.music) ? req.music : undefined, musicVolume: Math.min(0.3, Math.max(0, Number(req.musicVolume) || 0.12)),
         snapshotSec: burstSec + 1.1,
         heroUrl: hero || shotUrls[0] || reviewUrls[0] || '',
         reviewUrls, shotUrls, sizes,

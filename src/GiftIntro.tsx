@@ -27,6 +27,7 @@ type Props = {
   burstSec: number;
   introSec: number;
   kind?: RevealKind;
+  variant?: string;
 };
 
 /** ตำแหน่งสินค้าหลังระเบิด */
@@ -36,8 +37,10 @@ function layout(n: number) {
   return [{ x: 540, y: 770, h: 720, rot: 0, maxW: 520 }, { x: 240, y: 930, h: 520, rot: -12, maxW: 360 }, { x: 850, y: 930, h: 520, rot: 12, maxW: 360 }];
 }
 
-export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookText, burstSec, introSec, kind = 'gift' }) => {
+export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookText, burstSec, introSec, kind = 'gift', variant = '' }) => {
   const isBox = kind === 'gift' || kind === 'mystery';
+  // แบบ "ตกจากฟ้า": กล่องร่วงลงมากระแทกพื้น เด้ง แล้วระเบิด
+  const dropV = isBox && variant === 'drop';
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const B = Math.round(burstSec * fps);
@@ -52,7 +55,10 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
   const shakeX = frame < B ? Math.sin(frame * 2.3) * amp * 2.2 : 0;
   const swell = frame < B ? 1 + 0.17 * easeOut(Math.max(0, (p - 0.45) / 0.55)) : 1.17;
   const squash = frame < B ? 1 + 0.05 * Math.sin(frame * 1.1) * p : 1;
-  const lidHop = frame < B ? -Math.abs(Math.sin(frame * 0.9)) * 22 * p : 0;
+  const landF = Math.round(B * 0.45);
+  const skyY = dropV && frame < B ? (frame < landF ? interpolate(frame, [0, landF], [-1700, 0], { ...clamp, easing: Easing.in(Easing.quad) })
+    : -Math.abs(Math.sin((frame - landF) * 0.45)) * 90 * Math.exp(-(frame - landF) / 10)) : 0;
+  const lidHop = (frame < B ? -Math.abs(Math.sin(frame * 0.9)) * 22 * p : 0) + skyY;
 
   // หลังระเบิด: ฝาปลิว / ตัวกล่องลงล่าง
   const lidK = interpolate(t, [0, 18], [0, 1], { ...clamp, easing: easeOut });
@@ -96,7 +102,7 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
         background: 'radial-gradient(ellipse, rgba(0,0,0,0.35), transparent 70%)' }} />
 
       {/* ตัวกล่อง (หลังระเบิดเปิดฝาอ้า) */}
-      <div style={{ position: 'absolute', left: 540 - BOX_W / 2 + shakeX, top: BOX_TOP + bodyDrop + boxAway, width: BOX_W, height: BOX_H,
+      <div style={{ position: 'absolute', left: 540 - BOX_W / 2 + shakeX, top: BOX_TOP + bodyDrop + boxAway + skyY, width: BOX_W, height: BOX_H,
         transform: `rotate(${shakeRot}deg) scale(${swell * (2 - squash)}, ${swell * squash})`, transformOrigin: '50% 100%' }}>
         {t >= 0 ? (
           <>
@@ -122,7 +128,7 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
         </div>
       ) : null}
 
-      </>) : <RevealContainer kind={kind} frame={frame} B={B} theme={theme} boxAway={boxAway} />}
+      </>) : <RevealContainer kind={kind} frame={frame} B={B} theme={theme} boxAway={boxAway} variant={variant} />}
 
       {/* สินค้าพุ่งออกจากกล่อง */}
       {t >= 0 ? order.map((i) => {
@@ -179,7 +185,8 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
       <AbsoluteFill style={{ background: '#fff', opacity: flash }} />
 
       {/* เสียงเอฟเฟกต์ */}
-      {isBox ? <Sequence from={0} durationInFrames={Math.max(1, B)}><Audio src={staticFile('sfx/shake.mp3')} volume={(f) => interpolate(f, [0, B], [0.35, 0.8], clamp)} /></Sequence> : null}
+      {dropV ? <Sequence from={Math.max(0, landF - 2)} durationInFrames={20}><Audio src={staticFile('sfx/boom.mp3')} volume={0.45} /></Sequence> : null}
+      {isBox && !dropV ? <Sequence from={0} durationInFrames={Math.max(1, B)}><Audio src={staticFile('sfx/shake.mp3')} volume={(f) => interpolate(f, [0, B], [0.35, 0.8], clamp)} /></Sequence> : null}
       <Sequence from={Math.max(0, B - 1)} durationInFrames={Math.round(1.4 * fps)}><Audio src={staticFile('sfx/boom.mp3')} volume={0.75} /></Sequence>
       <Sequence from={B + 6} durationInFrames={Math.round(1.1 * fps)}><Audio src={staticFile('sfx/sparkle.mp3')} volume={0.55} /></Sequence>
     </AbsoluteFill>

@@ -2,6 +2,7 @@ import React from 'react';
 import {
   AbsoluteFill, Audio, Img, Sequence, interpolate, useCurrentFrame, useVideoConfig,
 } from 'remotion';
+import { staticFile } from 'remotion';
 import { Caption, Captions, FONT, PriceChip, YELLOW, outline, usePop } from './common';
 import { GiftIntro, Product, Theme } from './GiftIntro';
 import type { RevealKind } from './Reveals';
@@ -20,6 +21,9 @@ export type ReviewProps = {
   products?: Product[];  // รูปสินค้าที่ตัดพื้นหลังแล้ว / แบบการ์ด
   theme?: Theme;
   reveal?: RevealKind | 'none';
+  revealVariant?: string;
+  music?: string;          // ชื่อเพลงใน public/music
+  musicVolume?: number;
   price: string;         // "฿184"
   cta: string;           // "กดตะกร้าได้เลย 👇"
 };
@@ -105,7 +109,7 @@ export const ReviewClip: React.FC<ReviewProps> = (p) => {
       {gift ? (
         <Sequence from={0} durationInFrames={hookF}>
           <GiftIntro theme={p.theme!} products={p.products!} reviewUrls={p.reviewUrls} hookText={p.hookText}
-            burstSec={p.burstSec || 1.6} introSec={p.introSec || HOOK_SEC} kind={(p.reveal && p.reveal !== 'none' ? p.reveal : 'gift') as RevealKind} />
+            burstSec={p.burstSec || 1.6} introSec={p.introSec || HOOK_SEC} kind={(p.reveal && p.reveal !== 'none' ? p.reveal : 'gift') as RevealKind} variant={p.revealVariant || ''} />
         </Sequence>
       ) : (
       <Sequence from={0} durationInFrames={hookF}>
@@ -148,6 +152,7 @@ export const ReviewClip: React.FC<ReviewProps> = (p) => {
       {/* ซับล่างจอ ตลอดคลิป */}
       <Captions captions={p.captions} bottom={330} />
       {p.audioUrl ? <Audio src={p.audioUrl} /> : null}
+      {p.music ? <Audio src={staticFile(`music/${p.music}.mp3`)} volume={p.musicVolume ?? 0.12} loop /> : null}
     </AbsoluteFill>
   );
 };

@@ -230,11 +230,16 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       link: /^https?:\/\/\S+$/i.test(link) ? link : '',
       product: clean(b.product, 120), details: clean(b.details, 600), price: clean(b.price, 40),
       tone: TONES.includes(b.tone) ? b.tone : TONES[0], length, premium,
+      formula: V.FORMULAS.some((f) => f.id === b.formula) ? b.formula : (V.FORMULAS.find((f) => f.rec.includes(b.goal)) || V.FORMULAS[0]).id,
+      variant: style.variants.some((x) => x.id === b.variant) ? b.variant : 'random',
+      music: V.MUSIC.some((m) => m.id === b.music) ? b.music : 'auto',
       voice: voices.some((v) => v.id === b.voice) ? b.voice : voices[0].id,
       hashtags: (Array.isArray(b.hashtags) ? b.hashtags : []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, '').slice(0, 40)).filter((t) => t.length > 1).slice(0, 20),
       nProducts: 0,
     };
     if (!p.product) return { error: 'ใส่ชื่อสินค้าก่อน' };
+    // บทคุยกัน 2 คน ใช้เสียงมาตรฐาน (เสียงพรีเมียมเป็นเสียงเดียว)
+    p.dialogue = !!V.FORMULAS.find((f) => f.id === p.formula)?.dialogue && !premium;
     const c = checkContent([p.product, p.details, p.price].join(' '));
     const cost = V.VIDEO_PRICE[length] + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
     return { video: true, style, tier: { id: premium ? 'video_premium' : 'video', free: false, stars: cost }, versions: 1, p, cost, ...c };
@@ -254,7 +259,9 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       tiers: TIERS.map(({ id, label, note, stars, free, size }) => ({ id, label, note, stars, free: !!free, size })),
       stars: m.stars, free: m.freeImages, keepDays: KEEP_DAYS,
       video: {
-        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal }) => ({ id, label, emoji, color, reveal })),
+        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal, variants }) => ({ id, label, emoji, color, reveal, variants })),
+        formulas: V.FORMULAS.map(({ id, label, desc, rec, dialogue }) => ({ id, label, desc, rec, dialogue: !!dialogue })),
+        music: V.MUSIC,
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
         voices: V.VOICES.map(({ id, label, gender }) => ({ id, label, gender })),
         premiumVoices: V.premiumReady() ? V.EL_VOICES.map(({ id, label, gender }) => ({ id, label, gender })) : [],
@@ -418,7 +425,10 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   // ---------- คลิปวิดีโอ ----------
   const CTA = { aff: 'กดตะกร้าได้เลย 👇', sell: 'ทักแชทสั่งเลย 👇', promo: 'แวะมาที่ร้านเลย 📍', content: 'กดติดตามไว้เลย ❤️' };
   async function processVideo(w) {
-    const style = V.VIDEO_STYLES.find((s) => s.id === w.style);
+    const base0 = V.VIDEO_STYLES.find((s) => s.id === w.style);
+    // ลูกเล่นฉากเปิด: เลือก/สุ่มก่อนเขียนบท เพื่อให้คำเปิดตรงกับภาพ
+    const vr = w.params.variant === 'random' || !w.params.variant ? base0.variants[Math.floor(Math.random() * base0.variants.length)] : base0.variants.find((x) => x.id === w.params.variant);
+    const style = { ...base0, open: vr?.open || base0.open, hook: vr?.hook || base0.hook, variantId: vr?.id || '' };
     const brand = (await q('SELECT brand FROM profiles WHERE user_id=$1', [w.user_id])).rows[0]?.brand || {};
     const p = w.params;
     const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
@@ -428,7 +438,8 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       stage('AI กำลังเขียนบท', 5);
       script = await V.writeScript(p, style, brand, GOALS.find((g) => g.id === p.goal)?.label || '');
       stage('กำลังพากย์เสียง', 20);
-      voice = p.premium ? await V.voiceEleven(script.lines, p.voice) : await V.voiceGemini(script.lines, p.voice, p.tone);
+      voice = p.premium ? await V.voiceEleven(script.lines, p.voice)
+        : await V.voiceGemini(script.lines, p.voice, p.tone, script.speakers, p.dialogue ? V.partnerVoice(p.voice) : '');
     } catch (e) {
       log('video prep fail', w.id, e.message);
       PROG.delete(w.id);
@@ -441,7 +452,10 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     try {
       stage('กำลังตัดต่อ', 35);
       out = await V.render({
-        type: 'review', reveal: style.reveal, themeName: style.theme, openPhrase: style.open || undefined,
+        type: 'review', reveal: style.reveal, openPhrase: style.open || undefined,
+        themeName: style.themes ? style.themes[Math.floor(Math.random() * style.themes.length)] : undefined,
+        revealVariant: style.variantId,
+        music: V.pickMusic(p.music, style, p.tone) || undefined, musicVolume: 0.12,
         voiceover: { ...voice, text: script.lines.join(' ') },
         hero: prods[0], shots: prods, reviews: revs,
         hookText: script.hookText || style.hook, price: p.price, cta: script.cta && script.cta.length <= 18 ? script.cta : CTA[p.goal] || CTA.sell,
@@ -460,7 +474,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     const { captions, tags } = await finalizeCaptions(w, p, script.captions);
     const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
     await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
-      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: script.lines })]);
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: script.lines.map((l, i) => (p.dialogue ? `${script.speakers[i]}: ${l}` : l)) })]);
     PROG.delete(w.id);
     if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
     log('video done', w.id, style.id, p.premium ? 'elevenlabs' : 'gemini-tts', `${((Date.now() - t0) / 1000).toFixed(1)}s`);
@@ -508,7 +522,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       const w = (await q(`UPDATE works SET status='working' WHERE id = (SELECT id FROM works WHERE status='queued' ${videoRunning ? "AND kind <> 'video'" : ''} ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *`)).rows[0];
       if (!w) return;
       running++; if (w.kind === 'video') videoRunning++;
-      process1(w).catch(async (e) => { log('work error', w.id, e.message); PROG.delete(w.id); await refund(w, 'ระบบขัดข้อง · คืนดาวแล้ว').catch(() => {}); })
+      process1(w).catch(async (e) => { log('work error', w.id, e.stack || e.message); PROG.delete(w.id); await refund(w, 'ระบบขัดข้อง · คืนดาวแล้ว').catch(() => {}); })
         .finally(() => { running--; if (w.kind === 'video') videoRunning--; kick().catch(() => {}); });
     }
   }

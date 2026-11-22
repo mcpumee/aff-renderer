@@ -385,21 +385,38 @@ ${list}
       updatedAt: rows.reduce((m, r) => (r.fetched_at > m ? r.fetched_at : m), null), personalized: mine.size > 0 });
   }));
   // หน้าคลิปไวรัลทั้งหมด: กรองตามสไตล์/หมวด และแพลตฟอร์ม
+  // หน้าไวรัล: ผู้ใช้เลือกแพลตฟอร์ม (TikTok / YouTube Shorts / Google Trends) แล้วแสดงเฉพาะสไตล์ของตัวเอง
+  const PF_PREF = { TikTok: 'tiktok', YouTube: 'youtube', Instagram: 'instagram', Facebook: 'facebook' };
   app.get('/api/viral/clips', auth, wrap(async (req, res) => {
-    const { groups: myGroups } = await interestsOf(req.uid);
-    const rows = (await rowsNow()).filter(isClip);
+    const p = (await q('SELECT interests FROM profiles WHERE user_id=$1', [req.uid])).rows[0]?.interests || {};
+    const mine = new Set([...(p.categories || []), ...(p.styles || [])]);
+    const myGroups = GROUPS.filter((g) => mine.has(g.interest)).map((g) => g.key);
+    const all = await rowsNow();
+    const clipsOf = (pf) => all.filter((r) => isClip(r) && view(r).platform === pf && (r.pinned || isSocial(r)));
+    const tabs = [{ key: 'tiktok', label: 'TikTok' }, { key: 'youtube', label: 'YouTube Shorts' }, { key: 'google', label: 'Google Trends' },
+      ...['instagram', 'facebook'].filter((k) => clipsOf(k).length).map((k) => ({ key: k, label: k === 'instagram' ? 'Instagram' : 'Facebook' }))];
+    const prefPf = (p.platforms || []).map((x) => PF_PREF[x]).find((k) => tabs.some((t) => t.key === k)) || 'tiktok';
+    const pf = tabs.some((t) => t.key === req.query.platform) ? req.query.platform : prefPf;
     const g = String(req.query.group || 'mine');
-    const pf = String(req.query.platform || 'all');
-    const sort = req.query.sort === 'new' ? 'new' : 'hot';
-    let list = rows.filter((r) => pf === 'all' || view(r).platform === pf);
-    if (g === 'mine') list = list.filter((r) => r.pinned || (r.meta?.groups || []).some((x) => myGroups.includes(x)));
-    else if (g === 'picked') list = list.filter((r) => r.source === 'curated');
-    else if (g !== 'all') list = list.filter((r) => (r.meta?.groups || []).includes(g));
-    list.sort(sort === 'new' ? (a, b) => new Date(b.meta?.posted || b.first_seen) - new Date(a.meta?.posted || a.first_seen) : byScore);
+    const limit = Math.min(48, Math.max(1, Number(req.query.limit) || 24));
     const page = Math.max(0, Number(req.query.page) || 0);
-    const platforms = ['tiktok', 'instagram', 'youtube', 'facebook'].map((p) => ({ key: p, n: rows.filter((r) => view(r).platform === p).length }));
-    res.json({ items: list.slice(page * 24, page * 24 + 24).map(view), total: list.length, groups: groupsOf(rows.filter(isSocial)), myGroups, platforms,
-      picked: rows.filter((r) => r.source === 'curated').length });
+    let list, general = false;
+    if (pf === 'google') {
+      const tr = all.filter((r) => r.source === 'gtrends').sort((x, y) => x.rank - y.rank);
+      const match = (r) => (r.tags || []).some((t) => (g === 'mine' ? mine.has(t) : GROUPS.find((x) => x.key === g)?.interest === t));
+      list = tr.filter(match);
+      if (list.length < 3) { list = tr; general = true; } // กระแสทั่วไปของวันนี้ ถ้ายังไม่มีกระแสตรงสไตล์
+    } else {
+      const base = clipsOf(pf);
+      if (g === 'mine') list = myGroups.length ? base.filter((r) => r.pinned || (r.meta?.groups || []).some((x) => myGroups.includes(x))) : base;
+      else list = base.filter((r) => (r.meta?.groups || []).includes(g));
+      list.sort(req.query.sort === 'new' ? (x, y) => new Date(y.meta?.posted || y.first_seen) - new Date(x.meta?.posted || x.first_seen) : byScore);
+    }
+    // ชิปสไตล์: เฉพาะสไตล์ของผู้ใช้ที่มีคลิปในแพลตฟอร์มนี้
+    const myChips = GROUPS.filter((x) => myGroups.includes(x.key)).map((x) => ({ key: x.key, label: x.label, emoji: x.emoji,
+      n: pf === 'google' ? all.filter((r) => r.source === 'gtrends' && (r.tags || []).includes(x.interest)).length : clipsOf(pf).filter((r) => (r.meta?.groups || []).includes(x.key)).length })).filter((x) => x.n);
+    res.json({ platform: pf, tabs, items: list.slice(page * limit, page * limit + limit).map(view), total: list.length, general,
+      myChips, needStyles: !myGroups.length });
   }));
   app.get('/api/viral/:id/thumb', auth, wrap(async (req, res) => {
     const r = (await q('SELECT thumb_file FROM viral_items WHERE id=$1', [Number(req.params.id) || 0])).rows[0];

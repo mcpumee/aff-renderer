@@ -110,9 +110,7 @@ async function homeView() {
       <a class="btn" href="#create">+ สร้างผลงานใหม่</a>
       <div class="row between muted"><span>ภาพฟรีวันนี้ เหลือ ${ME.freeImages.today}</span><span>ภาพฟรีต้อนรับ เหลือ ${ME.freeImages.welcome}/10</span></div>
     </section>
-    <section id="vIdeas" style="display:flex;flex-direction:column;gap:10px"></section>
-    <section id="vTrends" style="display:flex;flex-direction:column;gap:10px"><h2>🔥 กระแสวันนี้ในไทย</h2><p class="muted">กำลังโหลด…</p></section>
-    <section id="vClips" style="display:flex;flex-direction:column;gap:10px"></section>
+    <section id="vBox" style="display:flex;flex-direction:column;gap:10px"><h2>🔥 ไวรัลสไตล์คุณ</h2><p class="muted">กำลังโหลด…</p></section>
     <section style="display:flex;flex-direction:column;gap:10px"><div class="row between"><h2 id="th">แนวงานฮิต</h2><a href="#interests" style="font-size:14px">ปรับความสนใจ</a></div>
       <div class="grid3" id="trends"><p class="muted">กำลังโหลด…</p></div></section>
     ${!ME.brand?.shopName ? `<a class="card" href="#brand" style="text-decoration:none;color:var(--fg)"><b>ตั้งค่าชุดแบรนด์ให้เสร็จ</b><span class="muted">ใส่ชื่อร้าน โลโก้ สี และช่องทางสั่งซื้อครั้งเดียว ทุกผลงานจะออกมาเป็นสไตล์ร้านคุณ</span></a>` : ''}
@@ -123,28 +121,7 @@ async function homeView() {
     $('#trends').innerHTML = t.items.map((x) => `<a class="trend" href="#create?style=${esc(x.style)}&kind=${esc(x.kind)}"><div class="thumb" style="background:${esc(x.color)}">${esc(x.badge)}</div>
       <b style="font-size:13px;line-height:1.3">${esc(x.title)}</b><span class="muted">${esc(x.price)}</span></a>`).join('');
   }).catch((e) => { if (e.message !== 'login' && $('#trends')) $('#trends').innerHTML = `<p class="muted">${esc(e.message)}</p>`; });
-  let v;
-  try { v = await api('api/viral'); } catch (e) { if (e.message !== 'login' && $('#vTrends')) $('#vTrends').innerHTML = ''; return; }
-  if (!$('#vTrends')) return; // ผู้ใช้เปลี่ยนหน้าไปแล้ว
-  const all = [...v.ideas, ...v.trends, ...v.clips];
-  const byId = (id) => all.find((x) => String(x.id) === String(id));
-  const when = v.updatedAt ? `อัปเดต ${new Date(v.updatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.` : '';
-  $('#vIdeas').innerHTML = v.ideas.length ? `<div class="row between"><h2>💡 ไอเดียเกาะกระแส${v.personalized ? 'สำหรับคุณ' : ''}</h2><span class="muted" style="font-size:12px">${when}</span></div>
-    ${v.ideas.slice(0, 3).map((x) => `<div class="icard"><span class="em" aria-hidden="true">${esc(x.idea.emoji)}</span>
-      <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><b>${esc(x.idea.hook || x.title)}</b>
-        <span class="muted" style="font-size:13px">${esc(x.idea.angle)}</span>
-        <span class="muted" style="font-size:12px">${x.source === 'gtrends' ? '🔥 กระแส' : `🎬 ${PF[x.platform] || 'คลิป'}`}: ${esc(x.title)} · ${esc(x.idea.label)}</span>
-        <span class="row" style="gap:8px;margin-top:4px"><button type="button" class="btn sm" data-make="${x.id}">ทำเลย</button><button type="button" class="btn dark sm" data-open="${x.id}">ดูกระแส</button></span></span></div>`).join('')}` : '';
-  $('#vTrends').innerHTML = v.trends.length ? `<div class="row between"><h2>🔥 กระแสวันนี้ในไทย</h2><span class="muted" style="font-size:12px">Google Trends</span></div>
-    <div class="hs">${v.trends.map((x, i) => `<button type="button" class="tcard" data-open="${x.id}">
-      ${x.thumb ? `<img src="${x.thumb}" alt="" loading="lazy">` : ''}<span class="rk">#${i + 1}${x.traffic ? ` · ค้นหา ${esc(x.traffic)}` : ''}</span>
-      <span class="tt">${esc(x.title)}</span>${x.idea?.summary ? `<span class="hk">${esc(x.idea.summary)}</span>` : x.news ? `<span class="hk">${esc(x.news.title)}</span>` : ''}</button>`).join('')}</div>` : '';
-  $('#vClips').innerHTML = v.clips.length ? `<div class="row between"><h2>🎬 คลิปไวรัล${v.forYou ? 'สไตล์คุณ' : 'ตอนนี้'}</h2><a href="#viral" style="font-size:14px">ดูทั้งหมด ›</a></div>
-    ${v.groups.length ? `<div class="hs" style="padding-bottom:0">${v.groups.map((g) => `<a class="chip" href="#viral?g=${g.key}" style="text-decoration:none;white-space:nowrap;flex:none" aria-pressed="${v.myGroups.includes(g.key)}">${g.emoji} ${esc(g.label)}</a>`).join('')}</div>` : ''}
-    <div class="hs">${v.clips.map(clipCard).join('')}</div>` : '';
-  const make = makeFromViral;
-  app.querySelectorAll('[data-make]').forEach((b) => b.onclick = () => make(byId(b.dataset.make)));
-  app.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => viralSheet(byId(b.dataset.open), make));
+  viralBox($('#vBox'), { home: true }).catch((e) => { if (e.message !== 'login' && $('#vBox')) $('#vBox').innerHTML = ''; });
 }
 const PF = { tiktok: 'TikTok', youtube: 'YouTube', facebook: 'Facebook', instagram: 'IG', web: 'คลิป' };
 const views = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : n ? String(n) : '');
@@ -156,32 +133,48 @@ function makeFromViral(x) {
   openDraft({ kind: i.kind, style: i.style, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', product: ME.brand?.shopName ? '' : i.product,
     headline: i.kind === 'image' ? i.hook : '', hookText: i.kind === 'video' ? i.hook : '', details: `เกาะกระแส "${x.title}": ${i.angle}${i.kind === 'video' ? ` · ฮุกเปิดคลิป: ${i.hook}` : ''}` });
 }
-async function viralView(qs) {
-  const ps = new URLSearchParams(qs || '');
-  const st = { g: ps.get('g') || 'mine', pf: ps.get('pf') || 'all', sort: ps.get('sort') || 'hot', page: 0, items: [] };
-  app.innerHTML = `${topbar('คลิปไวรัล', 'home')}<main><div id="vf"></div><div id="vg" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 10px"><p class="muted">กำลังโหลด…</p></div>
-    <button type="button" class="btn dark" id="vmore" hidden>ดูเพิ่ม</button></main>${nav('home')}`;
+const prefPf = () => { try { return localStorage.getItem('mr_vpf') || ''; } catch { return ''; } };
+const savePf = (v) => { try { localStorage.setItem('mr_vpf', v); } catch {} };
+const trendRow = (x, i) => `<button type="button" class="tcard" data-open="${x.id}" style="width:auto;flex-direction:row;align-items:center;gap:12px">
+  ${x.thumb ? `<img src="${x.thumb}" alt="" loading="lazy" style="width:64px;height:64px;aspect-ratio:1;flex:none">` : ''}
+  <span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="rk">#${i + 1}${x.traffic ? ` · ค้นหา ${esc(x.traffic)}` : ''}</span>
+  <span class="tt">${esc(x.title)}</span>${x.idea?.hook ? `<span class="hk">💡 ${esc(x.idea.hook)}</span>` : ''}</span></button>`;
+// กล่องไวรัล: แท็บแพลตฟอร์ม + ชิปเฉพาะสไตล์ของผู้ใช้ (ใช้ทั้งหน้าแรกและหน้าคลิปไวรัล)
+async function viralBox(el, o = {}) {
+  const st = { pf: o.pf || prefPf(), g: o.g || 'mine', sort: o.sort || 'hot', page: 0, items: [] };
+  const limit = o.home ? 6 : 24;
   async function load(reset) {
     if (reset) { st.page = 0; st.items = []; }
-    const d = await api(`api/viral/clips?group=${encodeURIComponent(st.g)}&platform=${st.pf}&sort=${st.sort}&page=${st.page}`);
-    if (!$('#vf')) return;
-    st.items = [...st.items, ...d.items];
-    const chip = (k, v, label, on) => `<button type="button" class="chip" data-${k}="${esc(v)}" aria-pressed="${on}" style="white-space:nowrap;flex:none">${label}</button>`;
-    $('#vf').innerHTML = `<div class="hs" style="padding-bottom:8px">${chip('g', 'mine', '✨ สไตล์ฉัน', st.g === 'mine')}${chip('g', 'all', 'ทั้งหมด', st.g === 'all')}${d.picked ? chip('g', 'picked', '⭐ คัดพิเศษ', st.g === 'picked') : ''}
-      ${d.groups.map((g) => chip('g', g.key, `${g.emoji} ${esc(g.label)}`, st.g === g.key)).join('')}</div>
-      <div class="hs" style="padding-bottom:12px">${chip('pf', 'all', 'ทุกแพลตฟอร์ม', st.pf === 'all')}${d.platforms.filter((p) => p.n).map((p) => chip('pf', p.key, PF[p.key], st.pf === p.key)).join('')}
-      ${chip('sort', 'hot', '🔥 มาแรง', st.sort === 'hot')}${chip('sort', 'new', '🆕 ใหม่สุด', st.sort === 'new')}</div>
-      ${st.g === 'mine' && !d.myGroups.length ? '<a class="card" href="#interests" style="text-decoration:none;color:var(--fg)"><b>เลือกสไตล์ที่ชอบก่อน</b><span class="muted">ตั้งหมวดสินค้าและสไตล์คลิป แล้วระบบจะคัดคลิปไวรัลให้ตรงกับคุณ</span></a>' : ''}`;
-    $('#vg').innerHTML = st.items.length ? st.items.map((x) => clipCard(x).replace('class="vcard"', 'class="vcard" style="width:auto"')).join('') : '<p class="muted">ยังไม่มีคลิปในหมวดนี้ ลองหมวดอื่น หรือกลับมาใหม่อีกสักพัก</p>';
-    $('#vmore').hidden = st.items.length >= d.total;
-    app.querySelectorAll('[data-g]').forEach((b) => b.onclick = () => { st.g = b.dataset.g; load(true); });
-    app.querySelectorAll('[data-pf]').forEach((b) => b.onclick = () => { st.pf = b.dataset.pf; load(true); });
-    app.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { st.sort = b.dataset.sort; load(true); });
-    app.querySelectorAll('#vg [data-open]').forEach((b) => b.onclick = () => viralSheet(st.items.find((x) => String(x.id) === b.dataset.open), makeFromViral));
-    history.replaceState(null, '', `#viral?g=${st.g}&pf=${st.pf}&sort=${st.sort}`);
+    const d = await api(`api/viral/clips?platform=${encodeURIComponent(st.pf)}&group=${encodeURIComponent(st.g)}&sort=${st.sort}&page=${st.page}&limit=${limit}`);
+    if (!el.isConnected) return;
+    st.pf = d.platform; st.items = [...st.items, ...d.items];
+    const google = st.pf === 'google';
+    const tab = (t) => `<button type="button" class="chip" data-vpf="${t.key}" aria-pressed="${t.key === st.pf}" style="white-space:nowrap;flex:none">${esc(t.label)}</button>`;
+    const chip = (k, label) => `<button type="button" class="chip" data-vg="${k}" aria-pressed="${st.g === k}" style="white-space:nowrap;flex:none;min-height:32px;padding:4px 12px;font-size:13px">${label}</button>`;
+    el.innerHTML = `${o.home ? `<div class="row between"><h2>🔥 ไวรัลสไตล์คุณ</h2><a href="#viral?pf=${st.pf}&g=${st.g}" style="font-size:14px">ดูทั้งหมด ›</a></div>` : ''}
+      <div class="hs" role="tablist" aria-label="แพลตฟอร์ม" style="padding-bottom:0">${d.tabs.map(tab).join('')}</div>
+      ${d.myChips.length > 1 ? `<div class="hs" style="padding-bottom:0">${chip('mine', '✨ ทุกสไตล์ของฉัน')}${d.myChips.map((c) => chip(c.key, `${c.emoji} ${esc(c.label)}`)).join('')}</div>` : ''}
+      ${d.needStyles ? '<a class="card" href="#interests" style="text-decoration:none;color:var(--fg);padding:12px"><b>เลือกสไตล์ของคุณก่อน</b><span class="muted" style="font-size:13px">ตั้งหมวดสินค้าและสไตล์คลิป ระบบจะคัดเฉพาะไวรัลที่ตรงกับคุณ</span></a>' : ''}
+      ${google && d.general && st.items.length ? '<span class="muted" style="font-size:13px">ยังไม่มีกระแสตรงสไตล์คุณวันนี้ · นี่คือกระแสยอดนิยมในไทย</span>' : ''}
+      ${!o.home && !google ? `<div class="row" style="gap:8px">${['hot', 'new'].map((k) => `<button type="button" class="chip" data-vs="${k}" aria-pressed="${st.sort === k}" style="min-height:32px;padding:4px 12px;font-size:13px">${k === 'hot' ? '🔥 มาแรง' : '🆕 ใหม่สุด'}</button>`).join('')}</div>` : ''}
+      <div class="vgrid" style="display:grid;grid-template-columns:${google ? '1fr' : `repeat(auto-fill,minmax(${o.home ? 104 : 150}px,1fr))`};gap:12px 10px">
+        ${st.items.length ? st.items.map((x, i) => (google ? trendRow(x, i) : clipCard(x).replace('class="vcard"', 'class="vcard" style="width:auto"'))).join('')
+          : `<p class="muted">ยังไม่มีคลิป${d.myChips.length ? 'ในสไตล์นี้' : ''}บน ${esc(d.tabs.find((t) => t.key === st.pf)?.label || '')} ลองแพลตฟอร์มอื่น หรือกลับมาใหม่อีกสักพัก</p>`}</div>
+      ${!o.home && st.items.length < d.total ? '<button type="button" class="btn dark" data-vmore>ดูเพิ่ม</button>' : ''}`;
+    el.querySelectorAll('[data-vpf]').forEach((b) => b.onclick = () => { st.pf = b.dataset.vpf; savePf(st.pf); load(true).catch((e) => toast(e.message)); });
+    el.querySelectorAll('[data-vg]').forEach((b) => b.onclick = () => { st.g = b.dataset.vg; load(true).catch((e) => toast(e.message)); });
+    el.querySelectorAll('[data-vs]').forEach((b) => b.onclick = () => { st.sort = b.dataset.vs; load(true).catch((e) => toast(e.message)); });
+    const more = el.querySelector('[data-vmore]'); if (more) more.onclick = () => { st.page++; load(false).catch((e) => toast(e.message)); };
+    el.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => viralSheet(st.items.find((x) => String(x.id) === b.dataset.open), makeFromViral));
+    if (!o.home) history.replaceState(null, '', `#viral?pf=${st.pf}&g=${st.g}`);
   }
-  $('#vmore').onclick = () => { st.page++; load(false).catch((e) => toast(e.message)); };
   await load(true);
+}
+async function viralView(qs) {
+  const ps = new URLSearchParams(qs || '');
+  app.innerHTML = `${topbar('ไวรัลสไตล์คุณ', 'home')}<main><section id="vAll" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></section></main>${nav('home')}`;
+  if (ps.get('pf')) savePf(ps.get('pf'));
+  await viralBox($('#vAll'), { pf: ps.get('pf') || '', g: ps.get('g') || 'mine' });
 }
 function viralSheet(x, make) {
   if (!x) return;

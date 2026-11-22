@@ -352,15 +352,62 @@ async function buildProps(id, req, stage = () => {}) {
   }
   if (req.type === 'self') {
     const dest = path.join(TMP, `${id}-v.mp4`);
+    stage('เตรียมคลิป');
     await download(req.videoUrl, dest);
     const videoSec = await probeSeconds(dest);
     if (!videoSec) throw new Error('อ่านความยาวคลิปไม่ได้ (ไฟล์อาจเสีย)');
+    // ขนาด/การหมุนของคลิป → ตัดสินว่าแนวตั้งไหม
+    let vertical = true;
+    try {
+      const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height:stream_side_data=rotation:stream_tags=rotate', '-of', 'json', dest]);
+      const st = JSON.parse(stdout).streams?.[0] || {};
+      const rot = Math.abs(Number(st.side_data_list?.[0]?.rotation ?? st.tags?.rotate ?? 0)) % 180;
+      const w = rot === 90 ? st.height : st.width, h = rot === 90 ? st.width : st.height;
+      vertical = !(w && h) || w / h < 0.7;
+    } catch (e) { log('probe ขนาดคลิปไม่สำเร็จ', e.message.slice(0, 100)); }
+    let posterUrl;
+    if (!vertical) {
+      const poster = path.join(TMP, `${id}-poster.jpg`);
+      await run('ffmpeg', ['-y', '-v', 'error', '-ss', String(Math.min(1, videoSec / 2)), '-i', dest, '-frames:v', '1', '-vf', 'scale=540:-2', poster]).catch(() => {});
+      if (fs.existsSync(poster)) posterUrl = `${LOCAL}/tmp/${id}-poster.jpg`;
+    }
+    // ซับ: จากท่อนที่ถอดเสียงแล้ว (segments) หรือจากเสียงพากย์ AI (voiceover.alignment)
+    let captions = (req.captions || []).filter((c) => c && c.text && c.end > c.start);
+    let audioUrl, mainSec = videoSec;
+    const toAlign = (segs) => {
+      const characters = [], st = [], en = [];
+      segs.forEach((g, i) => {
+        const ch = [...String(g.text)]; const d = Math.max(0.2, g.end - g.start);
+        ch.forEach((c, k) => { characters.push(c); st.push(g.start + (k / ch.length) * d); en.push(g.start + ((k + 1) / ch.length) * d); });
+        if (i < segs.length - 1) { characters.push('\n'); st.push(g.end); en.push(g.end); }
+      });
+      return { characters, character_start_times_seconds: st, character_end_times_seconds: en };
+    };
+    if (Array.isArray(req.segments) && req.segments.length) {
+      const segs = req.segments.map((g) => ({ start: Math.max(0, Number(g.start) || 0), end: Number(g.end) || 0, text: String(g.text || '').trim() }))
+        .filter((g) => g.text && g.end > g.start).sort((a, b) => a.start - b.start);
+      captions = captionsFromAlignment(toAlign(segs));
+    }
+    if (req.voiceover?.audio_base64) {
+      const vext = req.voiceover.format === 'wav' ? 'wav' : 'mp3';
+      fs.writeFileSync(path.join(TMP, `${id}-vo.${vext}`), Buffer.from(req.voiceover.audio_base64, 'base64'));
+      audioUrl = `${LOCAL}/tmp/${id}-vo.${vext}`;
+      const voSec = await probeSeconds(path.join(TMP, `${id}-vo.${vext}`));
+      captions = captionsFromAlignment(req.voiceover.normalized_alignment || req.voiceover.alignment);
+      mainSec = Math.max(videoSec, voSec + 0.4);
+    }
     return {
       comp: 'SelfClip',
       props: {
-        durationSec: videoSec + OUTRO_SEC, videoSec, videoUrl: `${LOCAL}/tmp/${id}-v.mp4`,
-        captions: (req.captions || []).filter((c) => c && c.text && c.end > c.start),
-        price: req.price || '', cta: req.cta || 'กดตะกร้าได้เลย\n👇',
+        durationSec: mainSec + OUTRO_SEC, videoSec, mainSec, videoUrl: `${LOCAL}/tmp/${id}-v.mp4`, vertical, posterUrl,
+        captions, price: req.price || '', cta: req.cta || 'กดตะกร้าได้เลย\n👇',
+        captionStyle: ['pop', 'box', 'karaoke', 'big'].includes(req.captionStyle) ? req.captionStyle : 'pop',
+        accent: /^#[0-9a-f]{6}$/i.test(req.accent || '') ? req.accent : '#C8F94A',
+        hookText: String(req.hookText || '').slice(0, 60) || undefined,
+        audioUrl, origVolume: Math.min(1, Math.max(0, req.origVolume ?? (audioUrl ? 0.15 : 1))),
+        music: ['fun', 'hype', 'suspense', 'chill', 'luxury'].includes(req.music) ? req.music : undefined,
+        musicVolume: Math.min(0.3, Math.max(0, Number(req.musicVolume) || (audioUrl ? 0.1 : 0.07))),
+        logoUrl: req.logoUrl ? await (async () => { const f = path.join(TMP, `${id}-logo.png`); await download(req.logoUrl, f); return `${LOCAL}/tmp/${id}-logo.png`; })() : undefined,
       },
     };
   }

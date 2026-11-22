@@ -1,5 +1,8 @@
 // Mc Rich — คลิปวิดีโอ: บท (Gemini) → เสียงพากย์ (Gemini TTS / ElevenLabs) → ตัดต่อ (aff-renderer, Remotion)
 import fs from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const run = promisify(execFile);
 import path from 'node:path';
 
 const API = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
@@ -27,6 +30,7 @@ export const VIDEO_STYLES = [
     variants: [{ id: 'glow', label: 'แสงทองพุ่ง' }, { id: 'key', label: 'ไขกุญแจทอง', open: 'ไขกุญแจหีบสมบัติ' }] },
   { id: 'v_scratch', label: 'ขูดบัตรลุ้นโชค', emoji: '🎟️', color: '#5A2CA0', reveal: 'scratch', themes: ['purple', 'navy', 'emerald'], open: 'ขูดบัตรลุ้นโชค', hook: 'ขูดบัตร\nลุ้นรางวัล!', variants: [] },
   { id: 'v_wheel', label: 'หมุนวงล้อนำโชค', emoji: '🎡', color: '#EE4D2D', reveal: 'wheel', themes: ['orange', 'purple', 'candy'], open: 'หมุนวงล้อนำโชค', hook: 'หมุนวงล้อ\nลุ้นของดี!', variants: [] },
+  { id: 'v_self', label: 'ใส่ซับคลิปที่ถ่ายเอง', emoji: '🎬', color: '#1F4E79', reveal: 'self', open: '', hook: '', variants: [] },
   { id: 'v_sell', label: 'ขายของ / รีวิวสินค้า', emoji: '🛍️', color: '#17694A', reveal: 'none', open: '', hook: 'ของมันต้องมี\nบอกต่อ!', variants: [] },
 ];
 // สูตรเล่าเรื่อง — rec = เป้าหมายที่แนะนำ
@@ -258,3 +262,38 @@ export async function render(req, onProgress) {
 }
 export const fileUrl = (f) => `file://${f}`;
 export const moveFile = (src, dst) => { try { fs.renameSync(src, dst); } catch { fs.copyFileSync(src, dst); fs.rmSync(src, { force: true }); } };
+
+// ---------- คลิปถ่ายเอง: ซับอัตโนมัติ / AI พากย์ทับ ----------
+export const SELF_MAX_SEC = 180;
+export const CAPTION_STYLES = [
+  { id: 'pop', label: 'ขาวขอบดำ' }, { id: 'box', label: 'กล่องสี' }, { id: 'karaoke', label: 'คาราโอเกะ' }, { id: 'big', label: 'ตัวโตกลางจอ' },
+];
+export const selfPrice = (sec, mode) => (sec <= 60 ? 6 : sec <= 120 ? 9 : 12) + (mode === 'voice' ? 5 : 0);
+export async function probe(file) {
+  const { stdout } = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', file], { timeout: 30000 });
+  const j = JSON.parse(stdout);
+  return { sec: Number(j.format?.duration) || 0, hasVideo: (j.streams || []).some((x) => x.codec_type === 'video'), hasAudio: (j.streams || []).some((x) => x.codec_type === 'audio') };
+}
+export async function extractAudio(file) {
+  const out = `${file}.m4a.mp3`;
+  await run('ffmpeg', ['-y', '-v', 'error', '-i', file, '-vn', '-ac', '1', '-ar', '16000', '-b:a', '32k', out], { timeout: 120000 });
+  const b = fs.readFileSync(out); fs.rmSync(out, { force: true });
+  return b;
+}
+/** ถอดเสียงพูดไทยเป็นท่อนพร้อมเวลา (วินาที) */
+export async function transcribe(mp3, hint, durSec) {
+  const prompt = `ถอดเสียงพูดภาษาไทยในไฟล์เสียงนี้ทุกคำตามที่พูดจริง เพื่อทำซับไตเติล
+- แบ่งเป็นท่อนสั้น ท่อนละไม่เกิน 3 วินาที หรือไม่เกิน 20 ตัวอักษร
+- เวลาเป็นวินาทีทศนิยม 1 ตำแหน่ง นับจากต้นไฟล์ ไฟล์ยาว ${durSec.toFixed(1)} วินาที ห้ามเกินนี้
+- คำเฉพาะที่อาจได้ยิน: ${hint || '-'} (สะกดให้ถูก)
+- ไม่ต้องใส่เสียงดนตรี เสียงหัวเราะ หรือคำที่ไม่ได้พูด ถ้าไม่มีเสียงพูดเลยให้ส่ง segments ว่าง
+ตอบเป็น JSON เท่านั้น: {"segments":[{"start":0.0,"end":2.4,"text":"ข้อความ"}]}`;
+  const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
+    contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'audio/mp3', data: mp3.toString('base64') } }, { text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.1 },
+  }, 180000);
+  const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
+  return (Array.isArray(o.segments) ? o.segments : [])
+    .map((g) => ({ start: Math.max(0, Math.min(durSec, Number(g.start) || 0)), end: Math.max(0, Math.min(durSec, Number(g.end) || 0)), text: String(g.text || '').replace(/\s+/g, ' ').trim().slice(0, 80) }))
+    .filter((g) => g.text && g.end > g.start).sort((a, b) => a.start - b.start).slice(0, 200);
+}

@@ -93,3 +93,46 @@ export const Captions: React.FC<{ captions: Caption[]; bottom?: number }> = ({ c
     </div>
   );
 };
+
+/** ซับหลายสไตล์: pop (ขอบดำ) · box (กล่องสี) · karaoke (ไฮไลต์ไล่สี) · big (ตัวโตกลางจอ) */
+export type CaptionStyle = 'pop' | 'box' | 'karaoke' | 'big';
+export const StyledCaptions: React.FC<{ captions: Caption[]; style?: CaptionStyle; accent?: string; bottom?: number }> = ({ captions, style = 'pop', accent = '#C8F94A', bottom = 330 }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  if (style === 'pop') return <Captions captions={captions} bottom={bottom} />;
+  const t = frame / fps;
+  const cur = captions.find((c) => t >= c.start && t < c.end);
+  if (!cur) return null;
+  const local = (t - cur.start) * fps;
+  const k = Math.min(1, Math.max(0, (t - cur.start) / Math.max(0.2, cur.end - cur.start - 0.15)));
+  if (style === 'box') {
+    const hex = /^#[0-9a-f]{6}$/i.test(accent) ? accent : '#C8F94A';
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const ink = lum > 0.55 ? '#0B0B0D' : '#FFFFFF';
+    const pop = interpolate(local, [0, 5], [0.7, 1], { extrapolateRight: 'clamp' });
+    return (
+      <div style={{ position: 'absolute', left: 50, right: 50, bottom, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ fontFamily: FONT, fontWeight: 800, fontSize: 62, lineHeight: 1.25, color: ink, background: hex, padding: '12px 30px', borderRadius: 20, border: '4px solid rgba(255,255,255,0.85)',
+          textAlign: 'center', transform: `scale(${pop}) rotate(${(cur.start * 7) % 2 > 1 ? -1.5 : 1.5}deg)`, boxShadow: '0 10px 26px rgba(0,0,0,0.35)' }}>{cur.text}</div>
+      </div>
+    );
+  }
+  if (style === 'karaoke') {
+    return (
+      <div style={{ position: 'absolute', left: 60, right: 60, bottom, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ position: 'relative', fontFamily: FONT, fontWeight: 800, fontSize: 68, lineHeight: 1.25, textAlign: 'center' }}>
+          <div style={{ color: '#FFFFFF', ...outline(10) }}>{cur.text}</div>
+          <div style={{ position: 'absolute', inset: 0, color: '#FFD23F', clipPath: `inset(0 ${100 - k * 100}% 0 0)`, ...outline(10) }}>{cur.text}</div>
+        </div>
+      </div>
+    );
+  }
+  // big
+  const pop = interpolate(local, [0, 3, 6], [1.4, 0.95, 1], { extrapolateRight: 'clamp' });
+  return (
+    <div style={{ position: 'absolute', left: 40, right: 40, top: 1080, display: 'flex', justifyContent: 'center' }}>
+      <div style={{ fontFamily: FONT, fontWeight: 800, fontSize: 96, lineHeight: 1.15, color: '#FFD23F', textAlign: 'center', transform: `scale(${pop})`, ...outline(14) }}>{cur.text}</div>
+    </div>
+  );
+};

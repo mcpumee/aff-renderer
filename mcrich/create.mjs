@@ -192,7 +192,10 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   fs.mkdirSync(WORK_DIR, { recursive: true });
   fs.mkdirSync(REF_DIR, { recursive: true });
   const ready = () => !!KEY();
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 6 } });
+  const UP_TMP = path.join(DATA_DIR, 'tmp'), VID_DIR = path.join(DATA_DIR, 'uploads');
+  fs.mkdirSync(UP_TMP, { recursive: true }); fs.mkdirSync(VID_DIR, { recursive: true });
+  const upload = multer({ dest: UP_TMP, limits: { fileSize: 400 * 1024 * 1024, files: 7 } });
+  const rmTmp = (req) => Object.values(req.files || {}).flat().forEach((f) => fs.rm(f.path, { force: true }, () => {}));
   const PROG = new Map(); // ความคืบหน้างานวิดีโอ {stage, pct}
   const thaiToday = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
 
@@ -223,7 +226,9 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (!style) return { error: 'เลือกแนวคลิปก่อน' };
     const link = clean(b.link, 300);
     const length = V.LENGTHS.some((l) => l.id === Number(b.length)) ? Number(b.length) : 30;
-    const premium = !!b.premiumVoice && V.premiumReady();
+    const isSelf = style.id === 'v_self';
+    const mode = isSelf && b.selfMode === 'voice' ? 'voice' : 'subs';
+    const premium = !!b.premiumVoice && V.premiumReady() && (!isSelf || mode === 'voice');
     const voices = premium ? V.EL_VOICES : V.VOICES;
     const p = {
       goal: GOALS.some((g) => g.id === b.goal) ? b.goal : 'sell',
@@ -237,6 +242,18 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       hashtags: (Array.isArray(b.hashtags) ? b.hashtags : []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, '').slice(0, 40)).filter((t) => t.length > 1).slice(0, 20),
       nProducts: 0,
     };
+    if (isSelf) {
+      Object.assign(p, {
+        selfMode: mode, videoSec: Math.min(V.SELF_MAX_SEC, Math.max(1, Number(b.videoSec) || 30)),
+        captionStyle: V.CAPTION_STYLES.some((c) => c.id === b.captionStyle) ? b.captionStyle : 'pop',
+        hookText: clean(b.hookText, 40), useLogo: !!b.useLogo && !!brand.logo, keepAudio: b.keepAudio !== false,
+      });
+      if (mode === 'voice' && !p.product) return { error: 'โหมด AI พากย์ทับ ต้องใส่ชื่อสินค้า' };
+      p.dialogue = mode === 'voice' && !!V.FORMULAS.find((f) => f.id === p.formula)?.dialogue && !premium;
+      const c0 = checkContent([p.product, p.details, p.price, p.hookText].join(' '));
+      const cost = V.selfPrice(p.videoSec, mode) + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
+      return { video: true, self: true, style, tier: { id: mode === 'voice' ? 'self_voice' : 'self_subs', free: false, stars: cost }, versions: 1, p, cost, ...c0 };
+    }
     if (!p.product) return { error: 'ใส่ชื่อสินค้าก่อน' };
     // บทคุยกัน 2 คน ใช้เสียงมาตรฐาน (เสียงพรีเมียมเป็นเสียงเดียว)
     p.dialogue = !!V.FORMULAS.find((f) => f.id === p.formula)?.dialogue && !premium;
@@ -263,6 +280,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         formulas: V.FORMULAS.map(({ id, label, desc, rec, dialogue }) => ({ id, label, desc, rec, dialogue: !!dialogue })),
         music: V.MUSIC,
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
+        captionStyles: V.CAPTION_STYLES, selfMaxSec: V.SELF_MAX_SEC, selfPrices: { subs: [V.selfPrice(60, 'subs'), V.selfPrice(120, 'subs'), V.selfPrice(180, 'subs')], voiceExtra: 5 },
         voices: V.VOICES.map(({ id, label, gender }) => ({ id, label, gender })),
         premiumVoices: V.premiumReady() ? V.EL_VOICES.map(({ id, label, gender }) => ({ id, label, gender })) : [],
       },
@@ -279,19 +297,41 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }));
 
   // ยืนยันสร้าง: ตัดดาว (หรือภาพฟรี) แล้วเข้าคิว
-  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 3 }, { name: 'revs', maxCount: 3 }]), wrap(async (req, res) => {
+  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 3 }, { name: 'revs', maxCount: 3 }, { name: 'video', maxCount: 1 }]), wrap(async (req, res) => {
+    res.on('finish', () => rmTmp(req));
     if (!ready()) return res.status(503).json({ error: 'ระบบสร้างภาพกำลังตั้งค่า' });
     let body; try { body = JSON.parse(req.body?.data || '{}'); } catch { return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' }); }
     const m = await me(req.uid);
+    // คลิปถ่ายเอง: ตรวจไฟล์และความยาวจริงก่อนคิดราคา
+    let videoName = '';
+    if (body.style === 'v_self') {
+      const vf = req.files?.video?.[0];
+      let info = null;
+      if (vf) info = await V.probe(vf.path).catch(() => null);
+      else if (body.fromWork) {
+        const old = (await q('SELECT params FROM works WHERE id=$1 AND user_id=$2 AND NOT purged', [Number(body.fromWork) || 0, req.uid])).rows[0];
+        if (old?.params?.video && fs.existsSync(path.join(VID_DIR, old.params.video))) { videoName = old.params.video; info = await V.probe(path.join(VID_DIR, videoName)).catch(() => null); }
+      }
+      if (!info || !info.hasVideo) return res.status(400).json({ error: 'แนบคลิปวิดีโอก่อน (ไฟล์อาจเสียหรือไม่รองรับ)' });
+      if (info.sec > V.SELF_MAX_SEC + 1) return res.status(400).json({ error: `คลิปยาวเกิน ${V.SELF_MAX_SEC / 60} นาที ตัดให้สั้นลงก่อน` });
+      if (body.selfMode !== 'voice' && !info.hasAudio) return res.status(400).json({ error: 'คลิปนี้ไม่มีเสียงพูด เลือกโหมด "AI พากย์ทับ" แทน' });
+      body.videoSec = info.sec;
+      if (vf) {
+        videoName = `${req.uid}-${Date.now().toString(36)}${rand(5).toLowerCase()}${(path.extname(vf.originalname || '') || '.mp4').toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 6)}`;
+        fs.renameSync(vf.path, path.join(VID_DIR, videoName));
+      }
+    }
     const n = normalize(body, m.brand || {});
-    if (n.error) return res.status(400).json({ error: n.error });
-    if (n.blocked) return res.status(400).json({ error: n.blocked });
+    const dropVideo = () => { if (videoName && req.files?.video?.[0]) fs.rm(path.join(VID_DIR, videoName), { force: true }, () => {}); };
+    if (n.error) { dropVideo(); return res.status(400).json({ error: n.error }); }
+    if (n.blocked) { dropVideo(); return res.status(400).json({ error: n.blocked }); }
+    if (n.self) n.p.video = videoName;
 
     // ภาพอ้างอิง: อัปโหลดใหม่ หรือใช้ของงานเดิม
     const refs = [];
     const saveRef = async (f) => {
       const name = `${req.uid}-${Date.now().toString(36)}${rand(5).toLowerCase()}.jpg`;
-      await sharp(f.buffer).rotate().resize({ width: 1536, height: 1536, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toFile(path.join(REF_DIR, name));
+      await sharp(f.path).rotate().resize({ width: 1536, height: 1536, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 88 }).toFile(path.join(REF_DIR, name));
       refs.push(name);
     };
     try {
@@ -309,33 +349,55 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       }
     }
 
-    if (n.video && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
+    if (n.video && !n.self && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
       await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [req.uid]);
       const active = (await c.query("SELECT count(*)::int n FROM works WHERE user_id=$1 AND status IN ('queued','working')", [req.uid])).rows[0].n;
-      if (active >= MAX_ACTIVE) { await c.query('ROLLBACK'); return res.status(429).json({ error: `มีงานกำลังสร้างอยู่ ${active} งาน รอสักครู่` }); }
+      if (active >= MAX_ACTIVE) { await c.query('ROLLBACK'); dropVideo(); return res.status(429).json({ error: `มีงานกำลังสร้างอยู่ ${active} งาน รอสักครู่` }); }
       let freeSrc = '';
       if (n.tier.free) {
         const fl = await freeLeft(c, req.uid, true);
         if (fl.today > 0) { await c.query('UPDATE free_quota SET daily_date=$2, daily_used=CASE WHEN daily_date=$2 THEN daily_used+1 ELSE 1 END WHERE user_id=$1', [req.uid, thaiToday()]); freeSrc = 'daily'; }
         else if (fl.welcome > 0) { await c.query('UPDATE free_quota SET welcome_left=welcome_left-1 WHERE user_id=$1', [req.uid]); freeSrc = 'welcome'; }
-        else { await c.query('ROLLBACK'); return res.status(402).json({ error: 'ภาพฟรีหมดแล้ว เลือกระดับมาตรฐาน (5 ดาว) ได้เลย' }); }
+        else { await c.query('ROLLBACK'); dropVideo(); return res.status(402).json({ error: 'ภาพฟรีหมดแล้ว เลือกระดับมาตรฐาน (5 ดาว) ได้เลย' }); }
       } else {
         const bal = (await c.query('SELECT COALESCE(sum(delta),0)::int s FROM star_ledger WHERE user_id=$1', [req.uid])).rows[0].s;
-        if (bal < n.cost) { await c.query('ROLLBACK'); return res.status(402).json({ error: `ดาวไม่พอ ต้องใช้ ${n.cost} ดาว มีอยู่ ${bal} ดาว` }); }
+        if (bal < n.cost) { await c.query('ROLLBACK'); dropVideo(); return res.status(402).json({ error: `ดาวไม่พอ ต้องใช้ ${n.cost} ดาว มีอยู่ ${bal} ดาว` }); }
       }
       const title = n.p.product || n.p.headline || n.style.label;
       const w = (await c.query(`INSERT INTO works(user_id,kind,style,title,params,tier,versions,cost,free,refs,expires_at)
         VALUES($1,$10,$2,$3,$4,$5,$6,$7,$8,$9, now() + interval '${KEEP_DAYS} days') RETURNING id`,
       [req.uid, n.style.id, title.slice(0, 80), { ...n.p, freeSrc, warnings: n.warnings }, n.tier.id, n.versions, n.cost, !!n.tier.free, refs, n.video ? 'video' : 'image'])).rows[0];
-      if (n.cost > 0) await c.query("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'spend',$3,$4)", [req.uid, -n.cost, `work:${w.id}`, n.video ? `สร้างคลิป ${n.style.label} ${n.p.length} วิ` : `สร้างภาพ ${n.style.label} ×${n.versions}`]);
+      if (n.cost > 0) await c.query("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'spend',$3,$4)", [req.uid, -n.cost, `work:${w.id}`, n.self ? `${n.style.label} ${Math.round(n.p.videoSec)} วิ` : n.video ? `สร้างคลิป ${n.style.label} ${n.p.length} วิ` : `สร้างภาพ ${n.style.label} ×${n.versions}`]);
       await c.query("INSERT INTO audit_log(user_id,action,detail,ip) VALUES($1,'work_create',$2,$3)", [req.uid, { id: w.id, style: n.style.id, tier: n.tier.id, cost: n.cost }, req.ip || '']);
       await c.query('COMMIT');
       kick();
       res.json({ id: w.id, me: await me(req.uid) });
-    } catch (e) { await c.query('ROLLBACK').catch(() => {}); refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); throw e; } finally { c.release(); }
+    } catch (e) { await c.query('ROLLBACK').catch(() => {}); refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); dropVideo(); throw e; } finally { c.release(); }
+  }));
+
+  // คลิปถ่ายเอง: แก้ซับ แล้วสั่งตัดต่อ
+  app.put('/api/works/:id/segments', auth, wrap(async (req, res) => {
+    const w = await own(req); if (!w || w.style !== 'v_self') return res.status(404).json({ error: 'ไม่พบผลงาน' });
+    if (!['review', 'done'].includes(w.status)) return res.status(409).json({ error: 'ยังแก้ไม่ได้ตอนนี้' });
+    const segs = (Array.isArray(req.body?.segments) ? req.body.segments : []).slice(0, 200)
+      .map((g) => ({ start: Math.max(0, Number(g.start) || 0), end: Number(g.end) || 0, text: clean(g.text, 80) })).filter((g) => g.text && g.end > g.start);
+    await q('UPDATE works SET params = params || $2::jsonb WHERE id=$1', [w.id, JSON.stringify({ segments: segs })]);
+    res.json({ ok: true, n: segs.length });
+  }));
+  app.post('/api/works/:id/render', auth, wrap(async (req, res) => {
+    const w = await own(req); if (!w || w.style !== 'v_self') return res.status(404).json({ error: 'ไม่พบผลงาน' });
+    if (w.purged) return res.status(410).json({ error: 'ไฟล์ถูกลบแล้ว' });
+    if (w.status === 'review') {
+      await q("UPDATE works SET status='queued', params = params || '{\"phase\":\"render\"}'::jsonb WHERE id=$1", [w.id]);
+    } else if (w.status === 'done') {
+      if ((w.params.rerenders || 0) >= 1) return res.status(402).json({ error: 'แก้ซับฟรีครบ 1 ครั้งแล้ว สร้างใหม่ได้ที่ "สร้างแบบนี้อีก"' });
+      await q("UPDATE works SET status='queued', params = params || jsonb_build_object('phase','render','rerenders',$2::int) WHERE id=$1", [w.id, (w.params.rerenders || 0) + 1]);
+    } else return res.status(409).json({ error: 'ยังสั่งตัดต่อไม่ได้ตอนนี้' });
+    kick();
+    res.json({ ok: true });
   }));
 
   const view = (w) => ({
@@ -480,7 +542,75 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     log('video done', w.id, style.id, p.premium ? 'elevenlabs' : 'gemini-tts', `${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
 
+  // ---------- คลิปถ่ายเอง ----------
+  async function processSelf(w) {
+    const p = w.params;
+    const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    const vfile = path.join(VID_DIR, path.basename(p.video || ''));
+    if (!p.video || !fs.existsSync(vfile)) { PROG.delete(w.id); return refund(w, 'ไม่พบไฟล์คลิป · คืนดาวแล้ว'); }
+    const brand = (await q('SELECT brand FROM profiles WHERE user_id=$1', [w.user_id])).rows[0]?.brand || {};
+    // ขั้นที่ 1 (โหมดซับ): ถอดเสียง → ให้ลูกค้าตรวจ/แก้ก่อนตัดต่อ
+    if (p.selfMode === 'subs' && p.phase !== 'render') {
+      try {
+        stage('AI กำลังฟังและถอดเสียง', 15);
+        const segs = await V.transcribe(await V.extractAudio(vfile), [p.product, brand.shopName].filter(Boolean).join(', '), p.videoSec);
+        await q("UPDATE works SET status='review', params = params || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ segments: segs })]);
+        log('self transcribed', w.id, segs.length);
+      } catch (e) { log('transcribe fail', w.id, e.message); PROG.delete(w.id); return refund(w, 'ถอดเสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+      PROG.delete(w.id);
+      return;
+    }
+    const style = V.VIDEO_STYLES.find((s) => s.id === 'v_sell');
+    // ตัดใหม่หลังแก้ซับ (ฟรี) ถ้าพลาด กลับไปสถานะเสร็จพร้อมคลิปเดิม ไม่คืนดาวซ้ำ
+    const fail = async (msg) => {
+      PROG.delete(w.id);
+      if ((p.rerenders || 0) > 0 && (w.files || []).length) return q("UPDATE works SET status='done', error=$2 WHERE id=$1", [w.id, 'ตัดใหม่ไม่สำเร็จ ลองอีกครั้งได้']).then(() => q("UPDATE works SET params = params || jsonb_build_object('rerenders', $2::int) WHERE id=$1", [w.id, (p.rerenders || 1) - 1]));
+      return refund(w, msg);
+    };
+    let voice, script;
+    try {
+      if (p.selfMode === 'voice') {
+        stage('AI กำลังเขียนบท', 10);
+        script = await V.writeScript({ ...p, length: Math.max(10, Math.round(p.videoSec * 0.85)) }, style, brand, GOALS.find((g) => g.id === p.goal)?.label || '');
+        stage('กำลังพากย์เสียง', 25);
+        voice = p.premium ? await V.voiceEleven(script.lines, p.voice) : await V.voiceGemini(script.lines, p.voice, p.tone, script.speakers, p.dialogue ? V.partnerVoice(p.voice) : '');
+      } else {
+        stage('เขียนแคปชั่น', 10);
+        script = { captions: await genCaptions(captionPrompt({ ...p, details: [p.details, (p.segments || []).map((g) => g.text).join(' ')].filter(Boolean).join(' / ').slice(0, 600) }, { label: 'คลิปรีวิวที่ถ่ายเอง' }, brand)).catch(() => ({})) };
+      }
+    } catch (e) { log('self prep fail', w.id, e.message); return fail('AI เขียนบท/พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    let out;
+    try {
+      stage('กำลังตัดต่อ', 35);
+      out = await V.render({
+        type: 'self', videoUrl: V.fileUrl(vfile), price: p.price, cta: CTA[p.goal] || CTA.sell,
+        segments: p.selfMode === 'subs' ? p.segments || [] : undefined,
+        voiceover: voice ? { ...voice, text: script.lines.join(' ') } : undefined,
+        origVolume: p.selfMode === 'voice' ? (p.keepAudio ? 0.15 : 0) : 1,
+        captionStyle: p.captionStyle, accent: /^#[0-9a-f]{6}$/i.test(brand.color || '') ? brand.color : undefined,
+        hookText: p.hookText || undefined, music: V.pickMusic(p.music, { reveal: 'none' }, p.tone) || undefined,
+        logoUrl: p.useLogo && brand.logo ? V.fileUrl(path.join(LOGO_DIR, path.basename(brand.logo))) : undefined,
+        metadata: { mcrich: w.id },
+      }, (s) => stage(s.status === 'queued' ? 'รอคิวตัดต่อ' : s.stage || 'กำลังตัดต่อ', 35 + Math.round((s.progress || 0) * 0.6)));
+    } catch (e) { log('self render fail', w.id, e.message); return fail('ตัดต่อคลิปไม่สำเร็จ · คืนดาวแล้ว'); }
+    stage('เกือบเสร็จ', 97);
+    for (const f of w.files || []) { fs.rm(path.join(WORK_DIR, path.basename(f.name)), () => {}); if (f.thumb) fs.rm(path.join(WORK_DIR, path.basename(f.thumb)), () => {}); }
+    const base = `${w.user_id}-${w.id}-s-${rand(6).toLowerCase()}`;
+    V.moveFile(out.mp4, path.join(WORK_DIR, `${base}.mp4`));
+    let thumb = '';
+    if (fs.existsSync(out.jpg)) { await sharp(out.jpg).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); thumb = `${base}.webp`; fs.rm(out.jpg, () => {}); }
+    const { captions, tags } = Object.keys(w.captions || {}).length && p.phase === 'render' && (p.rerenders || 0) > 0
+      ? { captions: w.captions, tags: w.hashtags } : await finalizeCaptions(w, p, script.captions || {});
+    const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
+    await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify(script.lines ? { script: script.lines.map((l, i) => (p.dialogue ? `${script.speakers[i]}: ${l}` : l)) } : {})]);
+    PROG.delete(w.id);
+    if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
+    log('self done', w.id, p.selfMode);
+  }
+
   async function process1(w) {
+    if (w.style === 'v_self') return processSelf(w);
     if (w.kind === 'video') return processVideo(w);
     const style = STYLES.find((s) => s.id === w.style);
     const tier = TIERS.find((t) => t.id === w.tier) || TIERS[1];
@@ -531,9 +661,10 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   function purgeFiles(w) {
     for (const f of w.files || []) { fs.rm(path.join(WORK_DIR, path.basename(f.name)), () => {}); if (f.thumb) fs.rm(path.join(WORK_DIR, path.basename(f.thumb)), () => {}); }
     for (const r of w.refs || []) fs.rm(path.join(REF_DIR, path.basename(r)), () => {});
+    if (w.params?.video) fs.rm(path.join(VID_DIR, path.basename(w.params.video)), { force: true }, () => {});
   }
   async function sweep() {
-    const { rows } = await q("SELECT * FROM works WHERE NOT purged AND expires_at < now() AND status IN ('done','failed') LIMIT 200");
+    const { rows } = await q("SELECT * FROM works WHERE NOT purged AND expires_at < now() AND status IN ('done','failed','review') LIMIT 200");
     for (const w of rows) { purgeFiles(w); await q('UPDATE works SET purged=TRUE WHERE id=$1', [w.id]); }
     if (rows.length) log('ลบไฟล์ผลงานหมดอายุ', rows.length);
   }

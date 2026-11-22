@@ -170,7 +170,7 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
   }
 
   // ---------- คลิปไวรัลหลายแพลตฟอร์ม (ScrapeCreators) แยกตามสไตล์ลูกค้า ----------
-  const DEF_CFG = { daily: 240, platforms: { tiktok: true, instagram: true, youtube: true, facebook: true }, perQuery: 6 };
+  const DEF_CFG = { daily: 100, platforms: { tiktok: true, instagram: false, youtube: false, facebook: false }, perQuery: 6, ytShorts: true, ytDaily: 72 };
   async function cfg() {
     const r = (await q("SELECT value FROM app_settings WHERE key='viral_cfg'")).rows[0]?.value || {};
     return { ...DEF_CFG, ...r, platforms: { ...DEF_CFG.platforms, ...(r.platforms || {}) } };
@@ -184,6 +184,50 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
   }
   const saveUsage = (u) => q("INSERT INTO app_settings(key,value) VALUES('viral_usage',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", [u]);
   const samples = {};
+  async function saveClip(p, g, kw, it) {
+    const ageH = it.posted ? Math.max(1, (Date.now() - it.posted) / 3600e3) : 72;
+    const score = Math.round((it.views || it.likes * 20) / Math.pow(ageH + 6, 0.7));
+    await q(`INSERT INTO viral_items(source,ext_id,title,url,thumb_url,meta,tags,rank,fetched_at) VALUES($1,$2,$3,$4,$5,$6,$7,0,now())
+      ON CONFLICT (source,ext_id) DO UPDATE SET title=EXCLUDED.title, fetched_at=now(),
+        meta = viral_items.meta || jsonb_build_object('views', GREATEST((viral_items.meta->>'views')::bigint, (EXCLUDED.meta->>'views')::bigint), 'likes', EXCLUDED.meta->'likes', 'score', EXCLUDED.meta->'score',
+          'groups', (SELECT jsonb_agg(DISTINCT x) FROM jsonb_array_elements_text(COALESCE(viral_items.meta->'groups','[]'::jsonb) || (EXCLUDED.meta->'groups')) x)),
+        tags = ARRAY(SELECT DISTINCT unnest(viral_items.tags || EXCLUDED.tags)),
+        thumb_url = CASE WHEN viral_items.thumb_file='' AND EXCLUDED.thumb_url<>'' THEN EXCLUDED.thumb_url ELSE viral_items.thumb_url END`,
+    [p, it.id, it.title, it.url, it.thumb, { platform: p, views: it.views, likes: it.likes, author: it.author, posted: it.posted, score, groups: [g.key], kw, vertical: true }, [g.interest]]);
+  }
+  // YouTube Shorts ตามสไตล์ ผ่าน YouTube Data API (ฟรี โควตา 10,000 หน่วย/วัน · ค้น 1 ครั้ง ≈ 101 หน่วย)
+  async function fetchYtShorts() {
+    if (!YT_KEY()) return 0;
+    const c = await cfg();
+    if (!c.ytShorts) return 'ปิดอยู่';
+    const u = (await q("SELECT value FROM app_settings WHERE key='viral_yt'")).rows[0]?.value || {};
+    const day = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+    const used = u.day === day ? u.used || 0 : 0;
+    const per = Math.max(0, Math.min(c.ytDaily - used, Math.ceil(c.ytDaily / 12)));
+    let cursor = u.cursor || 0, n = 0, calls = 0;
+    const after = new Date(Date.now() - 7 * 864e5).toISOString();
+    for (let k = 0; k < per; k++, cursor++) {
+      const g = GROUPS[cursor % GROUPS.length];
+      const kw = g.q[Math.floor(cursor / GROUPS.length) % g.q.length];
+      try {
+        const sr = await get(`${YT_API()}/search?part=snippet&type=video&videoDuration=short&order=viewCount&maxResults=15&regionCode=TH&relevanceLanguage=th&publishedAfter=${encodeURIComponent(after)}&q=${encodeURIComponent(kw + ' #shorts')}&key=${encodeURIComponent(YT_KEY())}`, 'json');
+        calls++;
+        const ids = (sr.items || []).map((x) => x.id?.videoId).filter(Boolean);
+        if (!ids.length) continue;
+        const vr = await get(`${YT_API()}/videos?part=snippet,statistics,contentDetails&id=${ids.join(',')}&key=${encodeURIComponent(YT_KEY())}`, 'json');
+        const items = (vr.items || []).map((v) => {
+          const sn = v.snippet || {};
+          const m = String(v.contentDetails?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+          const sec = m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
+          return { id: v.id, sec, title: ent(sn.title || ''), url: `https://www.youtube.com/shorts/${v.id}`, thumb: safeUrl(sn.thumbnails?.high?.url || sn.thumbnails?.medium?.url || ''),
+            views: Number(v.statistics?.viewCount || 0), likes: Number(v.statistics?.likeCount || 0), author: sn.channelTitle || '', posted: sn.publishedAt ? new Date(sn.publishedAt) : null };
+        }).filter((x) => x.sec > 0 && x.sec <= 180).sort((a, b) => b.views - a.views).slice(0, c.perQuery);
+        for (const it of items) { await saveClip('youtube', g, kw, it); n++; }
+      } catch (e) { log('yt shorts', kw, e.message); if (/403/.test(e.message)) { lastErr = 'YouTube API: โควตาเต็มหรือคีย์ยังไม่เปิด YouTube Data API v3'; break; } }
+    }
+    await q("INSERT INTO app_settings(key,value) VALUES('viral_yt',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", [{ day, used: used + calls, cursor: cursor % (GROUPS.length * 3) }]);
+    return `${n} คลิป / ค้น ${calls} ครั้ง`;
+  }
   async function fetchSocial() {
     if (!SC_KEY()) return 0;
     const c = await cfg();
@@ -211,18 +255,7 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
         const items = arr.map((x) => normalize(p, x)).filter(Boolean)
           .filter((x) => !x.posted || Date.now() - x.posted < 21 * 864e5)
           .sort((a, b) => b.views - a.views || b.likes - a.likes).slice(0, c.perQuery);
-        for (const it of items) {
-          const ageH = it.posted ? Math.max(1, (Date.now() - it.posted) / 3600e3) : 72;
-          const score = Math.round((it.views || it.likes * 20) / Math.pow(ageH + 6, 0.7));
-          await q(`INSERT INTO viral_items(source,ext_id,title,url,thumb_url,meta,tags,rank,fetched_at) VALUES($1,$2,$3,$4,$5,$6,$7,0,now())
-            ON CONFLICT (source,ext_id) DO UPDATE SET title=EXCLUDED.title, fetched_at=now(),
-              meta = viral_items.meta || jsonb_build_object('views', GREATEST((viral_items.meta->>'views')::bigint, (EXCLUDED.meta->>'views')::bigint), 'likes', EXCLUDED.meta->'likes', 'score', EXCLUDED.meta->'score',
-                'groups', (SELECT jsonb_agg(DISTINCT x) FROM jsonb_array_elements_text(COALESCE(viral_items.meta->'groups','[]'::jsonb) || (EXCLUDED.meta->'groups')) x)),
-              tags = ARRAY(SELECT DISTINCT unnest(viral_items.tags || EXCLUDED.tags)),
-              thumb_url = CASE WHEN viral_items.thumb_file='' AND EXCLUDED.thumb_url<>'' THEN EXCLUDED.thumb_url ELSE viral_items.thumb_url END`,
-          [p, it.id, it.title, it.url, it.thumb, { platform: p, views: it.views, likes: it.likes, author: it.author, posted: it.posted, score, groups: [g.key], kw, vertical: true }, [g.interest]]);
-          n++;
-        }
+        for (const it of items) { await saveClip(p, g, kw, it); n++; }
       } catch (e) { log('sc error', p, kw, e.message); }
     }
     u = await usage(calls, u.remaining); u.cursor = (cursor + per) % combos.length; await saveUsage(u);
@@ -299,7 +332,7 @@ ${list}
     if (running) return running;
     running = (async () => {
       const out = {};
-      for (const [k, fn] of [['trends', fetchTrends], ['youtube', fetchYouTube], ['social', fetchSocial], ['thumbs', cacheThumbs], ['ideas', enrich], ['cleanup', cleanup]]) {
+      for (const [k, fn] of [['trends', fetchTrends], ['youtube', fetchYouTube], ['ytShorts', fetchYtShorts], ['social', fetchSocial], ['thumbs', cacheThumbs], ['ideas', enrich], ['cleanup', cleanup]]) {
         try { out[k] = await fn(); } catch (e) { out[k] = `ERR ${e.message}`; lastErr = `${k}: ${e.message}`; log('viral', k, e.message); }
       }
       lastRun = new Date(); log('viral refresh', JSON.stringify(out));
@@ -381,12 +414,13 @@ ${list}
     const counts = (await q(`SELECT source, count(*)::int n, count(*) FILTER (WHERE idea IS NOT NULL)::int ideas, count(*) FILTER (WHERE NOT safe)::int hidden
       FROM viral_items WHERE fetched_at > now() - interval '7 days' GROUP BY source`)).rows;
     res.json({ items: rows.map((r) => ({ ...view(r), active: r.active, safe: r.safe })), youtube: !!YT_KEY(), sc: !!SC_KEY(), ai: !!GKEY(), lastRun, lastErr, running: !!running,
-      cfg: await cfg(), usage: await usage(), samples, counts, groups: GROUPS.map(({ key, label, emoji, q: kws }) => ({ key, label, emoji, q: kws })) });
+      cfg: await cfg(), usage: await usage(), ytUsage: (await q("SELECT value FROM app_settings WHERE key='viral_yt'")).rows[0]?.value || {}, samples, counts, groups: GROUPS.map(({ key, label, emoji, q: kws }) => ({ key, label, emoji, q: kws })) });
   }));
   app.put('/api/admin/viral/cfg', auth, admin, wrap(async (req, res) => {
     const b = req.body || {};
     const v = { daily: Math.min(5000, Math.max(0, Math.trunc(Number(b.daily) || 0))), perQuery: Math.min(20, Math.max(1, Math.trunc(Number(b.perQuery) || 6))),
-      platforms: Object.fromEntries(PLATFORMS.map((p) => [p, b.platforms?.[p] !== false])) };
+      platforms: Object.fromEntries(PLATFORMS.map((p) => [p, b.platforms?.[p] === true])),
+      ytShorts: b.ytShorts !== false, ytDaily: Math.min(95, Math.max(0, Math.trunc(Number(b.ytDaily) || 0))) };
     await q("INSERT INTO app_settings(key,value) VALUES('viral_cfg',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", [v]);
     res.json(v);
   }));

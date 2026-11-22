@@ -1560,7 +1560,10 @@ async function adminViral() {
     <section class="card"><b>ตั้งค่าการดึงคลิปไวรัล</b>
       <div class="grid2"><label class="f" for="vday">งบเครดิตต่อวัน<input id="vday" type="number" min="0" max="5000" value="${d.cfg.daily}"><span class="muted" style="font-size:12px">≈ ${num(d.cfg.daily * 30)} เครดิต/เดือน</span></label>
       <label class="f" for="vpq">เก็บคลิปต่อคำค้น<input id="vpq" type="number" min="1" max="20" value="${d.cfg.perQuery}"></label></div>
-      <div class="chips">${['tiktok', 'instagram', 'youtube', 'facebook'].map((p) => `<button type="button" class="chip" data-vpl="${p}" aria-pressed="${d.cfg.platforms[p] !== false}">${SRC[p]}</button>`).join('')}</div>
+      <span class="muted" style="font-size:13px">ดึงผ่าน ScrapeCreators (เสียเครดิต):</span>
+      <div class="chips">${['tiktok', 'instagram', 'youtube', 'facebook'].map((p) => `<button type="button" class="chip" data-vpl="${p}" aria-pressed="${!!d.cfg.platforms[p]}">${SRC[p]}</button>`).join('')}</div>
+      <label class="row" for="vyt" style="gap:10px"><input id="vyt" type="checkbox" class="sw-in" ${d.cfg.ytShorts ? 'checked' : ''}><span>YouTube Shorts ผ่าน YouTube API (ฟรี)${d.youtube ? '' : ' · ต้องใส่ YOUTUBE_API_KEY'}</span></label>
+      <label class="f" for="vytd">ค้น YouTube ต่อวัน (สูงสุด 95)<input id="vytd" type="number" min="0" max="95" value="${d.cfg.ytDaily}"><span class="muted" style="font-size:12px">วันนี้ค้นไปแล้ว ${num(d.ytUsage?.day === new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10) ? d.ytUsage.used : 0)} ครั้ง</span></label>
       <details><summary class="muted">คำค้นของแต่ละสไตล์ (${d.groups.length} กลุ่ม)</summary><span class="muted" style="font-size:13px">${d.groups.map((g) => `${g.emoji} ${esc(g.label)}: ${g.q.map(esc).join(', ')}`).join('<br>')}</span></details>
       <button type="button" class="btn sm" id="vcfg">บันทึกการตั้งค่า</button>
       ${Object.keys(d.samples || {}).length ? `<details><summary class="muted">ตัวอย่างข้อมูลดิบล่าสุด (สำหรับตรวจระบบ)</summary>${Object.entries(d.samples).map(([k, v]) => `<p class="muted" style="font-size:12px;overflow-wrap:anywhere"><b>${k}</b> "${esc(v.kw)}" · ${v.count} รายการ · keys: ${esc(v.keys.join(', '))}<br>${esc(v.first)}</p>`).join('')}</details>` : ''}</section>
@@ -1582,7 +1585,7 @@ async function adminViral() {
   app.querySelectorAll('[data-vpl]').forEach((b) => b.onclick = () => b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')));
   $('#vcfg').onclick = async () => {
     const platforms = Object.fromEntries([...app.querySelectorAll('[data-vpl]')].map((b) => [b.dataset.vpl, b.getAttribute('aria-pressed') === 'true']));
-    try { await api('api/admin/viral/cfg', { method: 'PUT', body: { daily: Number($('#vday').value), perQuery: Number($('#vpq').value), platforms } }); toast('บันทึกแล้ว'); } catch (x) { toast(x.message); }
+    try { await api('api/admin/viral/cfg', { method: 'PUT', body: { daily: Number($('#vday').value), perQuery: Number($('#vpq').value), platforms, ytShorts: $('#vyt').checked, ytDaily: Number($('#vytd').value) } }); toast('บันทึกแล้ว'); } catch (x) { toast(x.message); }
   };
   $('#vref').onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'กำลังดึง…'; try { await api('api/admin/viral/refresh', { method: 'POST', body: {} }); toast('ดึงข้อมูลแล้ว'); } catch (x) { toast(x.message); } adminViral(); };
   app.querySelectorAll('[data-vp]').forEach((b) => b.onclick = async () => { const o = JSON.parse(b.dataset.vp); await api(`api/admin/viral/${o.id}`, { method: 'PATCH', body: o }).catch((x) => toast(x.message)); adminViral(); });

@@ -164,3 +164,29 @@ CREATE TABLE IF NOT EXISTS drive_accounts (
   auto        BOOLEAN NOT NULL DEFAULT TRUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ตั้งเวลาโพสต์ + แจ้งเตือน
+CREATE TABLE IF NOT EXISTS schedules (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  work_id    BIGINT REFERENCES works(id) ON DELETE CASCADE,
+  platform   TEXT NOT NULL,
+  at         TIMESTAMPTZ NOT NULL,
+  note       TEXT NOT NULL DEFAULT '',
+  status     TEXT NOT NULL DEFAULT 'scheduled',   -- scheduled | due | posted | canceled
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  done_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS schedules_due ON schedules(status, at);
+CREATE INDEX IF NOT EXISTS schedules_user ON schedules(user_id, at);
+CREATE TABLE IF NOT EXISTS push_subs (
+  endpoint   TEXT PRIMARY KEY,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  keys       JSONB NOT NULL,
+  ua         TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS app_settings (
+  key   TEXT PRIMARY KEY,
+  value JSONB NOT NULL
+);

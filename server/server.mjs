@@ -351,6 +351,42 @@ async function buildProps(id, req, stage = () => {}) {
     const endStart = Math.max(3, endAt ?? Math.max(0, speechEnd - 3.5));
     return storyProps(id, req, stage, { captions, segs, endStart, speechEnd });
   }
+  if (req.type === 'info') {
+    if (!req.voiceover?.audio_base64) throw new Error('ต้องมีเสียงพากย์');
+    const vext = req.voiceover.format === 'wav' ? 'wav' : 'mp3';
+    fs.writeFileSync(path.join(TMP, `${id}-vo.${vext}`), Buffer.from(req.voiceover.audio_base64, 'base64'));
+    const audioSec = await probeSeconds(path.join(TMP, `${id}-vo.${vext}`));
+    const al = req.voiceover.normalized_alignment || req.voiceover.alignment;
+    const captions = captionsFromAlignment(al);
+    const speechEnd = Math.max(audioSec || 0, al?.character_end_times_seconds?.at(-1) || 0);
+    stage('เตรียมรูป');
+    const cache = new Map();
+    const slides = [];
+    for (const [i, sl] of (req.slides || []).slice(0, 16).entries()) {
+      let url;
+      if (sl?.url) {
+        if (!cache.has(sl.url)) { const u = await localize(id, sl.url, `i${i}`, 'jpg'); await enhanceImage(path.join(TMP, `${id}-i${i}.jpg`)); cache.set(sl.url, u); }
+        url = cache.get(sl.url);
+      }
+      slides.push({ start: Math.max(0, Number(sl.start) || 0), kind: sl.kind === 'photo' && url ? 'photo' : 'card', url,
+        title: String(sl.title || '').slice(0, 60) || undefined, body: String(sl.body || '').slice(0, 120) || undefined, emoji: String(sl.emoji || '').slice(0, 8) || undefined, n: Number(sl.n) || undefined });
+    }
+    if (!slides.length) throw new Error('ไม่มีเนื้อหา');
+    slides.sort((a, b) => a.start - b.start); slides[0].start = 0;
+    const endStart = speechEnd + 0.3;
+    return {
+      comp: 'InfoClip',
+      props: {
+        durationSec: endStart + 3.2, audioUrl: `${LOCAL}/tmp/${id}-vo.${vext}`, captions,
+        captionStyle: ['pop', 'box', 'karaoke', 'big'].includes(req.captionStyle) ? req.captionStyle : 'pop',
+        accent: /^#[0-9a-f]{6}$/i.test(req.accent || '') ? req.accent : undefined,
+        music: ['fun', 'hype', 'suspense', 'chill', 'luxury'].includes(req.music) ? req.music : undefined, musicVolume: Math.min(0.3, Math.max(0, Number(req.musicVolume) || 0.08)),
+        slides, endStart, endTitle: String(req.endTitle || '').slice(0, 60) || undefined, endLines: (req.endLines || []).map((l) => String(l).slice(0, 70)).filter(Boolean).slice(0, 5),
+        formal: !!req.formal, badge: String(req.badge || '').slice(0, 30) || undefined, total: Number(req.total) || undefined,
+        logoUrl: req.logoUrl ? await (async () => { const f = path.join(TMP, `${id}-logo.png`); await download(req.logoUrl, f); return `${LOCAL}/tmp/${id}-logo.png`; })() : undefined,
+      },
+    };
+  }
   if (req.type === 'show') {
     // คลิปโชว์สินค้า / จัดอันดับ: สไลด์ตามเวลาที่ Mc Rich คำนวณจากเสียงพากย์
     if (!req.voiceover?.audio_base64) throw new Error('ต้องมีเสียงพากย์');

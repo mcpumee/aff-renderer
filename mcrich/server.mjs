@@ -10,6 +10,7 @@ import sharp from 'sharp';
 import { registerPay } from './pay.mjs';
 import { registerCreate } from './create.mjs';
 import { registerExtras } from './extras.mjs';
+import { registerSchedule } from './schedule.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3200);
@@ -322,6 +323,7 @@ app.get('/api/trends', auth, wrap(async (req, res) => {
 const pay = registerPay(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand });
 // ---------- สร้างภาพ ----------
 const extras = registerExtras(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC_URL, SECRET, makeToken, readToken, getCookie, setCookie, G_ID, G_SECRET });
+const sched = registerSchedule(app, { q, auth, wrap, log, PUBLIC_URL });
 const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks: extras.hooks });
 app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready(), create: create.ready(), drive: extras.driveReady() }));
 
@@ -330,8 +332,9 @@ app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), googl
 const BUILD = Date.now().toString(36);
 const INDEX = fs.readFileSync(path.join(__dir, 'public', 'index.html'), 'utf8').replace(/(app\.(?:js|css))"/g, `$1?v=${BUILD}"`);
 app.get(['/', '/index.html'], (_q, res) => { res.setHeader('cache-control', 'no-cache'); res.type('html').send(INDEX); });
+app.get('/sw.js', (_q, r) => { r.setHeader('cache-control', 'no-cache'); r.setHeader('service-worker-allowed', './'); r.sendFile(path.join(__dir, 'public', 'sw.js')); });
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 app.get(['/privacy', '/terms'], (req, res) => res.sendFile(path.join(__dir, 'public', `${req.path.slice(1)}.html`)));
 
-migrate().then(() => { create.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()}`)); })
+migrate().then(() => { create.start(); sched.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()}`)); })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

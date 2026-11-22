@@ -4,6 +4,7 @@ import { ReviewClip, ReviewProps } from './ReviewClip';
 import { SelfClip, SelfProps } from './SelfClip';
 import { StoryClip, StoryProps } from './StoryClip';
 import { ShowClip, ShowProps } from './ShowClip';
+import { InfoClip, InfoProps } from './InfoClip';
 
 const FPS = 30;
 const frames = (sec: number) => Math.max(FPS, Math.ceil(sec * FPS));
@@ -55,6 +56,16 @@ export const Root: React.FC = () => (
       durationInFrames={frames(15)}
       defaultProps={{ durationSec: 15, captions: [], mode: 'show', template: 'kenburns', slides: [{ url: demoImg, start: 0, end: 12 }], endStart: 12 } satisfies ShowProps}
       calculateMetadata={({ props }) => ({ durationInFrames: frames((props as ShowProps).durationSec) })}
+    />
+    <Composition
+      id="InfoClip"
+      component={InfoClip as unknown as React.FC<Record<string, unknown>>}
+      width={1080}
+      height={1920}
+      fps={FPS}
+      durationInFrames={frames(15)}
+      defaultProps={{ durationSec: 15, captions: [], slides: [{ start: 0, kind: 'card', title: 'ทิปน่ารู้', body: 'ตัวอย่าง', emoji: '💡' }], endStart: 12 } satisfies InfoProps}
+      calculateMetadata={({ props }) => ({ durationInFrames: frames((props as InfoProps).durationSec) })}
     />
   </>
 );

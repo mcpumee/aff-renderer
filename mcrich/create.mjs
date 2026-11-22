@@ -28,6 +28,7 @@ export const GOALS = [
   { id: 'aff', label: 'Affiliate', hint: 'ชวนกดลิงก์ตะกร้า' },
   { id: 'promo', label: 'โปรโมตร้าน', hint: 'ให้คนรู้จักและมาที่ร้าน' },
   { id: 'content', label: 'ทำคอนเทนต์', hint: 'เพิ่มยอดติดตาม ยอดแชร์' },
+  { id: 'pr', label: 'ประชาสัมพันธ์องค์กร', hint: 'แจ้งข่าว กิจกรรม สร้างภาพลักษณ์หน่วยงาน' },
 ];
 export const RATIOS = [
   { id: '4:5', label: 'ฟีด 4:5' }, { id: '1:1', label: 'จัตุรัส 1:1' }, { id: '9:16', label: 'สตอรี่ 9:16' }, { id: '16:9', label: 'แนวนอน 16:9' },
@@ -53,6 +54,20 @@ export const STYLES = [
     prompt: 'Friendly shop announcement poster (grand opening, new arrival, opening hours or holiday notice). Inviting storefront or product arrangement, festive but clean design, the headline as large readable typography.' },
   { id: 'knowledge', label: 'คอนเทนต์ความรู้ / ทิป', emoji: '💡', color: '#2B5C6B', ratio: '4:5', text: true,
     prompt: 'Clean infographic-style social media card sharing a useful tip related to the product, simple icons, the headline as the main title, minimal readable layout, educational and trustworthy look.' },
+  { id: 'pr_announce', label: 'ประกาศ / แจ้งข่าว', emoji: '📢', color: '#1F4E79', ratio: '4:5', text: true, pr: true,
+    prompt: 'Formal, trustworthy official announcement poster for an organization. Clean modern layout, organization colors, clear hierarchy: big headline, then date, place and contact as neat info rows with simple icons, subtle relevant background imagery, plenty of whitespace.' },
+  { id: 'pr_event', label: 'โปสเตอร์กิจกรรม / อีเวนต์', emoji: '🎪', color: '#6B2D8C', ratio: '4:5', text: true, pr: true,
+    prompt: 'Eye-catching event poster for an organization activity (seminar, fair, sports day, charity, workshop). Energetic but professional design, relevant illustrations or photo-style scene, the event name as a bold headline, date/time and venue clearly readable.' },
+  { id: 'pr_news', label: 'การ์ดข่าวประชาสัมพันธ์', emoji: '📰', color: '#24476B', ratio: '4:5', text: true, pr: true,
+    prompt: 'News-style public relations card: a strong photo-realistic scene relevant to the news at the top two thirds, a solid color title bar below with the headline, small organization name, clean newspaper-like typography.' },
+  { id: 'pr_congrats', label: 'แสดงความยินดี / ขอบคุณ', emoji: '🎉', color: '#B8860B', ratio: '4:5', text: true, pr: true,
+    prompt: 'Elegant congratulations / thank-you card from an organization, gold and white accents, ribbons or flowers, refined typography, celebratory but formal.' },
+  { id: 'pr_hiring', label: 'รับสมัครงาน', emoji: '🧑‍💼', color: '#0E6E6E', ratio: '4:5', text: true, pr: true,
+    prompt: 'Modern job recruitment poster: friendly professional people at work relevant to the position, headline "รับสมัคร", position title, short qualification rows with check icons, how to apply, organization colors.' },
+  { id: 'pr_festival', label: 'อวยพรวันสำคัญ / เทศกาล', emoji: '🏮', color: '#A3192A', ratio: '4:5', text: true, pr: true,
+    prompt: 'Beautiful greeting card for a Thai national day or festival (e.g. New Year, Songkran, Loy Krathong, Mother\'s Day, Father\'s Day) from an organization, culturally accurate Thai motifs, warm respectful mood, the greeting as elegant headline.' },
+  { id: 'pr_condolence', label: 'ไว้อาลัย / แสดงความเสียใจ', emoji: '🕯️', color: '#2B2B2B', ratio: '4:5', text: true, pr: true,
+    prompt: 'Respectful condolence / mourning message in black, white and grey tones, simple white flowers or candle, calm minimal composition, dignified formal Thai typography, no bright colors.' },
 ];
 
 // ---------- ตัวกรองเนื้อหา ----------
@@ -137,10 +152,15 @@ function buildPrompt(p, style, brand, hasRefs, version) {
     brand.color && `Brand colors: primary ${brand.color}${brand.accent ? `, secondary ${brand.accent}` : ''}. Use them in the design accents.`,
     hasRefs && 'Use the attached reference photo(s) as the real product: keep its exact shape, packaging, label and colors faithful. Do not invent a different product.',
   ];
-  if (style.text && (p.headline || p.price || brand.shopName)) {
+  const inf = p.info || {};
+  if (style.text && (p.headline || p.price || brand.shopName || inf.org)) {
     lines.push('Render this Thai text exactly as written, spelled correctly, large and legible, no other text:');
     if (p.headline) lines.push(`- Headline: "${p.headline}"`);
-    if (p.price) lines.push(`- Price/offer: "${p.price}"`);
+    if (p.price) lines.push(`- ${style.pr ? 'Sub-headline' : 'Price/offer'}: "${p.price}"`);
+    if (inf.date) lines.push(`- Date/time: "${inf.date}"`);
+    if (inf.place) lines.push(`- Place: "${inf.place}"`);
+    if (inf.contact) lines.push(`- Contact: "${inf.contact}"`);
+    if (inf.org) lines.push(`- Organization name: "${inf.org}"`);
     if (brand.shopName && p.showShop !== false) lines.push(`- Shop name (small): "${brand.shopName}"`);
   } else {
     lines.push('Do not add any text, letters, logos or watermarks to the image.');
@@ -158,7 +178,7 @@ function captionPrompt(p, style, brand) {
 ราคา/โปร: ${p.price || '-'}
 ร้าน: ${brand.shopName || '-'} ${brand.line ? `LINE ${brand.line}` : ''} ${brand.phone ? `โทร ${brand.phone}` : ''}
 ลิงก์: ${p.link ? 'มี — เขียน {LINK} ตรงตำแหน่งที่จะใส่ลิงก์ ห้ามเขียน URL เอง' : '-'}
-โทน: ${p.tone || 'เป็นกันเอง'}
+โทน: ${p.goal === 'pr' ? 'ทางการ สุภาพ เป็นข่าวประชาสัมพันธ์ ไม่ขายของ' : p.tone || 'เป็นกันเอง'}
 กฎ: ห้ามอ้างรักษาโรค ห้ามคำเกินจริง (100%, เห็นผลทันที, ดีที่สุดในโลก) ตามกฎหมาย อย. และคุ้มครองผู้บริโภค · ใช้อีโมจิพอดี · ถ้ามีลิงก์ให้ใส่ {LINK} 1 ครั้งต่อแคปชั่น · ถ้าเป็น Affiliate ให้ชวนกดตะกร้า/ลิงก์
 ตอบเป็น JSON เท่านั้น: {"facebook":"แคปชั่นยาว 3-6 บรรทัด","instagram":"กระชับ 2-4 บรรทัด","tiktok":"สั้นมาก 1-2 บรรทัด มีฮุค","shopee":"แคปชั่นขาย สั้น ชัด","hashtags":["#แท็ก", "... 5-8 แท็กภาษาไทย/อังกฤษที่เกี่ยวข้อง"]}`;
 }
@@ -200,6 +220,10 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   const thaiToday = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
 
   // ตรวจและจัดรูปคำขอ (ใช้ทั้งตอนทบทวนและตอนยืนยัน)
+  function cleanInfo(i) {
+    i = i || {};
+    return { org: clean(i.org, 80), date: clean(i.date, 60), place: clean(i.place, 100), contact: clean(i.contact, 80), hours: clean(i.hours, 60) };
+  }
   function normalize(b, brand) {
     if (b.kind === 'video') return normalizeVideo(b, brand);
     const style = STYLES.find((s) => s.id === b.style);
@@ -215,10 +239,11 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       ratio: RATIOS.some((r) => r.id === b.ratio) ? b.ratio : style.ratio,
       tone: TONES.includes(b.tone) ? b.tone : TONES[0],
       hashtags: (Array.isArray(b.hashtags) ? b.hashtags : []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, '').slice(0, 40)).filter((t) => t.length > 1).slice(0, 20),
-      useLogo: !!b.useLogo && !!brand.logo, showShop: b.showShop !== false,
+      useLogo: !!b.useLogo && !!brand.logo, showShop: b.showShop !== false && !style.pr,
+      info: cleanInfo(b.info),
     };
     if (!p.product && !p.details && !p.headline) return { error: 'ใส่ชื่อสินค้าหรือรายละเอียดอย่างน้อย 1 อย่าง' };
-    const c = checkContent([p.product, p.details, p.headline, p.price].join(' '));
+    const c = checkContent([p.product, p.details, p.headline, p.price, ...Object.values(p.info)].join(' '));
     return { style, tier, versions, p, cost: tier.stars * versions, ...c };
   }
   function normalizeVideo(b, brand) {
@@ -255,6 +280,17 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       const c0 = checkContent([p.product, p.details, p.price, p.hookText].join(' '));
       const cost = V.selfPrice(p.videoSec, mode) + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
       return { video: true, self: true, style, tier: { id: mode === 'voice' ? 'self_voice' : 'self_subs', free: false, stars: cost }, versions: 1, p, cost, ...c0 };
+    }
+    if (V.INFO_STYLES.includes(style.id)) {
+      p.info = cleanInfo(b.info);
+      p.count = Number(b.count) === 5 ? 5 : 3;
+      if (style.id === 'v_tips') p.length = p.count === 5 ? 45 : 30;
+      if (!p.product) return { error: style.id === 'v_tips' ? 'ใส่หัวข้อความรู้ก่อน' : 'ใส่ชื่อเรื่อง/ชื่อร้านก่อน' };
+      p.dialogue = false;
+      p.genBg = style.id === 'v_pr_announce' && !b.hasPhotos;
+      const cI = checkContent([p.product, p.details, p.price, ...Object.values(p.info)].join(' '));
+      const cost = V.VIDEO_PRICE[p.length] + (premium ? V.PREMIUM_VOICE_EXTRA : 0) + (p.genBg ? 5 : 0);
+      return { video: true, style, tier: { id: 'info', free: false, stars: cost }, versions: 1, p, cost, ...cI };
     }
     if (style.id === 'v_drama') {
       Object.assign(p, {
@@ -296,11 +332,11 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     const m = await me(req.uid);
     res.json({
       ready: ready(), goals: GOALS, ratios: RATIOS, tones: TONES, concepts: CONCEPTS,
-      styles: STYLES.map(({ id, label, emoji, color, ratio, text }) => ({ id, label, emoji, color, ratio, text: !!text })),
+      styles: STYLES.map(({ id, label, emoji, color, ratio, text, pr }) => ({ id, label, emoji, color, ratio, text: !!text, pr: !!pr })),
       tiers: TIERS.map(({ id, label, note, stars, free, size }) => ({ id, label, note, stars, free: !!free, size })),
       stars: m.stars, free: m.freeImages, keepDays: KEEP_DAYS,
       video: {
-        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal, variants }) => ({ id, label, emoji, color, reveal, variants })),
+        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal, variants, pr }) => ({ id, label, emoji, color, reveal, variants, pr: !!pr })),
         formulas: V.FORMULAS.map(({ id, label, desc, rec, dialogue }) => ({ id, label, desc, rec, dialogue: !!dialogue })),
         music: V.MUSIC,
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
@@ -376,8 +412,9 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
 
     if (n.style.id === 'v_top' && n.p.nProducts !== n.p.items.length) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปให้ครบทุกสินค้าในอันดับ' }); }
     if (n.style.id === 'v_drama' && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ละครต้องมีรูปสินค้า 1 รูป' }); }
-    if (n.style.id !== 'v_show' && n.style.id !== 'v_top' && (req.files?.refs || []).length > 3) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'รูปสินค้าได้สูงสุด 3 รูป' }); }
-    if (n.video && !n.self && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
+    if (['v_shop', 'v_pr_recap'].includes(n.style.id) && n.p.nProducts < 1) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3–8 รูป)' }); }
+    if (n.style.id !== 'v_show' && n.style.id !== 'v_top' && !V.INFO_STYLES.includes(n.style.id) && (req.files?.refs || []).length > 3) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'รูปสินค้าได้สูงสุด 3 รูป' }); }
+    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -513,7 +550,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }
 
   // ---------- คลิปวิดีโอ ----------
-  const CTA = { aff: 'กดตะกร้าได้เลย 👇', sell: 'ทักแชทสั่งเลย 👇', promo: 'แวะมาที่ร้านเลย 📍', content: 'กดติดตามไว้เลย ❤️' };
+  const CTA = { aff: 'กดตะกร้าได้เลย 👇', sell: 'ทักแชทสั่งเลย 👇', promo: 'แวะมาที่ร้านเลย 📍', content: 'กดติดตามไว้เลย ❤️', pr: 'ติดตามข่าวสาร\nจากเรา' };
   async function processVideo(w) {
     const base0 = V.VIDEO_STYLES.find((s) => s.id === w.style);
     // ลูกเล่นฉากเปิด: เลือก/สุ่มก่อนเขียนบท เพื่อให้คำเปิดตรงกับภาพ
@@ -611,6 +648,76 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     PROG.delete(w.id);
     if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
     log('video done', w.id, style.id, p.premium ? 'elevenlabs' : 'gemini-tts', `${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+
+  // ---------- คลิปความรู้ / ร้าน / ประชาสัมพันธ์ ----------
+  async function processInfo(w) {
+    const p = w.params;
+    const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    const fail = (msg) => { PROG.delete(w.id); return refund(w, msg); };
+    const brand = (await q('SELECT brand FROM profiles WHERE user_id=$1', [w.user_id])).rows[0]?.brand || {};
+    const t0 = Date.now();
+    const photos = w.refs.map((r) => path.join(REF_DIR, r)).filter((f) => fs.existsSync(f));
+    const tmpFiles = [];
+    let d, voice;
+    try {
+      stage('AI กำลังดูรูปและเขียนบท', 5);
+      const small = await Promise.all(photos.slice(0, 8).map((f) => sharp(f).resize({ width: 768, height: 768, fit: 'inside' }).jpeg({ quality: 80 }).toBuffer()));
+      d = await V.writeInfo(w.style, p, brand, w.style === 'v_tips' || w.style === 'v_pr_announce' ? [] : small);
+      // ประกาศที่ไม่มีรูป: AI วาดพื้นหลังให้ 2 ภาพ
+      if (p.genBg) {
+        stage('AI กำลังวาดพื้นหลัง', 15);
+        const model = MODEL_OVERRIDE || TIERS[1].model;
+        for (let i = 0; i < 2; i++) {
+          try {
+            const buf = await genImage({ model, prompt: `Clean, formal, professional background image for an official announcement about: ${p.product}. ${p.details || ''}. Relevant scene or symbolic imagery, soft focus, calm colors${/^#[0-9a-f]{6}$/i.test(brand.color || '') ? ` with accents of ${brand.color}` : ''}. Vertical 9:16. No text, no letters, no logos.`, refs: [], ratio: '9:16', size: '1K' });
+            const f = path.join(WORK_DIR, `tmp-${w.id}-bg${i}.jpg`); await sharp(buf).jpeg({ quality: 88 }).toFile(f); tmpFiles.push(f);
+          } catch (e) { log('info bg fail', w.id, e.message); }
+        }
+      }
+      const lines = d.slides.flatMap((sl) => sl.lines);
+      stage('กำลังพากย์เสียง', 25);
+      voice = p.premium ? await V.voiceEleven(lines, p.voice) : await V.voiceGemini(lines, p.voice, p.tone);
+      d.lines = lines;
+    } catch (e) { log('info prep fail', w.id, e.message); tmpFiles.forEach((f) => fs.rm(f, () => {})); return fail('AI เขียนบท/พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    const starts = V.lineStarts(voice.alignment, d.lines);
+    let li = 0;
+    const bgs = [...photos, ...tmpFiles];
+    const mid = d.slides.length - 2;
+    const slides = d.slides.map((sl, i) => {
+      const start = starts[li] ?? 0; li += sl.lines.length;
+      const ph = sl.photo >= 1 && sl.photo <= photos.length ? photos[sl.photo - 1] : null;
+      const usePhoto = (w.style === 'v_shop' || w.style === 'v_pr_recap') && ph;
+      const bg = usePhoto ? ph : w.style === 'v_pr_announce' && bgs.length ? bgs[i % bgs.length] : w.style === 'v_tips' && photos[0] && (i === 0 || i === d.slides.length - 1) ? photos[0] : null;
+      return { start, kind: usePhoto ? 'photo' : 'card', url: bg ? V.fileUrl(bg) : undefined, title: sl.title, body: sl.body, emoji: sl.emoji, n: w.style === 'v_tips' && i > 0 && i <= mid ? i : undefined };
+    });
+    const inf = p.info || {};
+    const endLines = [inf.date && `📅 ${inf.date}`, inf.place && `📍 ${inf.place}`, inf.hours && `🕒 ${inf.hours}`, inf.contact && `☎ ${inf.contact}`, w.style === 'v_shop' && p.price && `🔥 ${p.price}`].filter(Boolean);
+    let out;
+    try {
+      stage('กำลังตัดต่อ', 35);
+      out = await V.render({
+        type: 'info', voiceover: { ...voice, text: d.lines.join(' ') }, slides, formal: d.formal, badge: d.badge, total: d.n || undefined,
+        endTitle: w.style === 'v_tips' ? (brand.shopName || 'กดติดตามไว้เลย') : (inf.org || brand.shopName || p.product), endLines,
+        captionStyle: p.captionStyle || 'pop', accent: /^#[0-9a-f]{6}$/i.test(brand.color || '') ? brand.color : undefined,
+        music: V.pickMusic(p.music === 'auto' && d.formal ? 'chill' : p.music, { reveal: 'none' }, p.tone) || undefined, musicVolume: d.formal ? 0.06 : 0.09,
+        logoUrl: p.useLogo && brand.logo ? V.fileUrl(path.join(LOGO_DIR, path.basename(brand.logo))) : undefined,
+        metadata: { mcrich: w.id },
+      }, (s) => stage(s.status === 'queued' ? 'รอคิวตัดต่อ' : s.stage || 'กำลังตัดต่อ', 35 + Math.round((s.progress || 0) * 0.6)));
+    } catch (e) { log('info render fail', w.id, e.message); return fail('ตัดต่อคลิปไม่สำเร็จ · คืนดาวแล้ว'); }
+    finally { setTimeout(() => tmpFiles.forEach((f) => fs.rm(f, () => {})), 1000); }
+    stage('เกือบเสร็จ', 97);
+    const base = `${w.user_id}-${w.id}-i-${rand(6).toLowerCase()}`;
+    V.moveFile(out.mp4, path.join(WORK_DIR, `${base}.mp4`));
+    let thumb = '';
+    if (fs.existsSync(out.jpg)) { await sharp(out.jpg).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); thumb = `${base}.webp`; fs.rm(out.jpg, () => {}); }
+    const { captions, tags } = await finalizeCaptions(w, p, d.captions);
+    const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
+    await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: d.lines })]);
+    PROG.delete(w.id);
+    if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
+    log('info done', w.id, w.style, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
 
   // ---------- ละครสั้นขายของ ----------
@@ -765,6 +872,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   async function process1(w) {
     if (w.style === 'v_self') return processSelf(w);
     if (w.style === 'v_drama') return processDrama(w);
+    if (V.INFO_STYLES.includes(w.style)) return processInfo(w);
     if (w.kind === 'video') return processVideo(w);
     const style = STYLES.find((s) => s.id === w.style);
     const tier = TIERS.find((t) => t.id === w.tier) || TIERS[1];

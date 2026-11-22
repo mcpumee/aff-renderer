@@ -351,7 +351,7 @@ let REVS = [];       // แคปรีวิว (คลิป)
 let VFILE = null;    // คลิปที่ถ่ายเอง
 let ITEMF = [];      // รูปสินค้าแต่ละอันดับ (Top N)
 const STEPS = ['เป้าหมาย', 'แนวงาน', 'รายละเอียด', 'แคปชั่น', 'คุณภาพ', 'ทบทวน'];
-const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
+const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
 const saveDraft = () => { try { sessionStorage.setItem('mr_draft', JSON.stringify(D)); } catch {} };
 function loadDraft() { try { const d = JSON.parse(sessionStorage.getItem('mr_draft') || 'null'); if (d && typeof d === 'object') return { ...newDraft(), ...d }; } catch {} return null; }
 
@@ -431,12 +431,52 @@ function drawStep() {
     stepShell(`<div class="grid2" role="group" aria-label="ประเภทผลงาน">
         <button type="button" class="card opt" data-kind="image" aria-pressed="${!vid}"><b>ภาพ</b><span class="muted">โปสเตอร์ ภาพสินค้า ป้ายโปร</span></button>
         <button type="button" class="card opt" data-kind="video" aria-pressed="${vid}"><b>คลิปวิดีโอ</b><span class="muted">เปิดกล่อง ลุ้นของ พากย์เสียง</span></button></div>
-      <h2>${vid ? 'เลือกแนวคลิป' : 'เลือกแนวภาพ'}</h2>
-      <div class="grid2">${list.map((x) => `<button type="button" class="stylecard" data-style="${x.id}" aria-pressed="${D.style === x.id}">
-        <span class="sw" style="background:${esc(x.color)}">${x.emoji}</span><b>${esc(x.label)}</b><span class="muted">${vid ? (x.id === 'v_self' ? `เริ่ม ${CAT.video.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ` : x.id === 'v_top' ? `เริ่ม ${CAT.video.prices[30]} ดาว · 2–5 สินค้า` : x.id === 'v_drama' ? `เริ่ม ${CAT.video.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง` : x.id === 'v_show' ? `เริ่ม ${CAT.video.prices[15]} ดาว · 2–8 รูป` : `เริ่ม ${CAT.video.prices[15]} ดาว · 9:16`) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`).join('')}</div>`, { disabled: !D.style || !list.some((x) => x.id === D.style) });
+      ${(() => {
+        const card = (x) => `<button type="button" class="stylecard" data-style="${x.id}" aria-pressed="${D.style === x.id}">
+          <span class="sw" style="background:${esc(x.color)}">${x.emoji}</span><b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`;
+        const biz = list.filter((x) => !x.pr), pr = list.filter((x) => x.pr);
+        const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>`;
+        const g2 = pr.length ? `<h2>ประชาสัมพันธ์องค์กร</h2><div class="grid2">${pr.map(card).join('')}</div>` : '';
+        return D.goal === 'pr' ? g2 + g1 : g1 + g2;
+      })()}`, { disabled: !D.style || !list.some((x) => x.id === D.style) });
     app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
     app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => { D.style = b.dataset.style; if (!vid) D.ratio = CAT.styles.find((x) => x.id === D.style).ratio; drawStep(); });
     $('#next').onclick = () => { D.step = 2; drawStep(); };
+  } else if (s === 2 && INFO_IDS.includes(D.style)) {
+    const id = D.style;
+    const cs = CAT.video.captionStyles;
+    const maxP = id === 'v_tips' ? 1 : id === 'v_pr_announce' ? 4 : 8;
+    const photoTitle = { v_tips: 'รูปประกอบ (ไม่บังคับ 1 รูป)', v_shop: 'รูปร้าน 3–8 รูป (หน้าร้าน เมนู บรรยากาศ)', v_pr_announce: 'รูปประกอบ (ไม่บังคับ ถ้าไม่มี AI วาดพื้นหลังให้ +5 ดาว)', v_pr_recap: 'รูปกิจกรรม 3–8 รูป (AI ดูรูปแล้วเล่าให้)' }[id];
+    const nameLabel = { v_tips: 'หัวข้อความรู้', v_shop: 'ชื่อร้าน', v_pr_announce: 'เรื่องที่ประกาศ', v_pr_recap: 'ชื่อกิจกรรม / ข่าว' }[id];
+    const ph = { v_tips: 'เช่น เก็บเต้าหู้ให้สดนานขึ้น', v_shop: 'เช่น บ้านพรุค้าส่ง', v_pr_announce: 'เช่น ขอเชิญร่วมงานวันเด็ก', v_pr_recap: 'เช่น กิจกรรมปลูกป่าชายเลน' }[id];
+    const keys = { v_tips: [], v_shop: ['place', 'hours', 'contact'], v_pr_announce: ['org', 'date', 'place', 'contact'], v_pr_recap: ['org', 'date', 'place'] }[id];
+    stepShell(`<p class="muted">แนว: <b style="color:var(--fg)">${esc(CAT.video.styles.find((x) => x.id === id).label)}</b></p>
+      <section class="card">
+        <label class="f" for="product">${nameLabel}<input id="product" type="text" maxlength="120" placeholder="${ph}" value="${esc(D.product)}"></label>
+        ${id === 'v_shop' ? `<label class="f" for="price">โปรตอนนี้ (ไม่บังคับ)<input id="price" type="text" maxlength="40" placeholder="เช่น ซื้อครบ 500 ส่งฟรี" value="${esc(D.price)}"></label>` : ''}
+        <label class="f" for="details">${id === 'v_tips' ? 'อยากเล่ามุมไหน (ไม่บังคับ)' : 'รายละเอียด'}<textarea id="details" rows="3" maxlength="600">${esc(D.details)}</textarea></label>
+        ${infoFields(keys)}
+      </section>
+      ${id === 'v_tips' ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>จำนวนทิป</h2>${chipRow([{ id: '3', label: `3 ทิป ~30 วิ · ${CAT.video.prices[30]} ดาว` }, { id: '5', label: `5 ทิป ~45 วิ · ${CAT.video.prices[45]} ดาว` }], String(D.count || 3), 'count', false)}</section>` : ''}
+      <section class="card"><b>${photoTitle}</b>
+        <div class="refs">${REFS.map((f, i) => `<button type="button" class="ref" data-rm="${i}" aria-label="ลบรูป"><img src="${URL.createObjectURL(f)}" alt=""><span>✕</span></button>`).join('')}
+        ${REFS.length < maxP ? '<label class="ref add" for="refin" style="cursor:pointer">+ เพิ่มรูป<input id="refin" type="file" accept="image/*" multiple hidden></label>' : ''}</div></section>
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>สไตล์ซับ</h2>
+        <div class="grid2">${cs.map((c) => `<button type="button" class="card opt" data-cs="${c.id}" aria-pressed="${D.captionStyle === c.id}" style="align-items:center">
+          <span class="capdemo cap-${c.id}">ซับตัวอย่าง</span><span class="muted">${esc(c.label)}</span></button>`).join('')}</div></section>
+      <section class="card"><label class="row between" for="useLogo"><span><b>ใส่โลโก้${id.startsWith('v_pr') ? 'หน่วยงาน' : 'ร้าน'}</b><br><span class="muted">${ME.brand?.logo ? 'มุมขวาบน + ฉากปิด' : 'ยังไม่มีโลโก้ในชุดแบรนด์'}</span></span>
+        <input id="useLogo" type="checkbox" class="sw-in" ${D.useLogo && ME.brand?.logo ? 'checked' : ''} ${ME.brand?.logo ? '' : 'disabled'}></label></section>`);
+    const fields = ['product', 'price', 'details', 'useLogo'];
+    bindChips([], (k) => { if (k === 'count') D.count = Number(D.count); });
+    app.querySelectorAll('[data-cs]').forEach((b) => b.onclick = () => { readInputs(fields); readInfo(); D.captionStyle = b.dataset.cs; drawStep(); });
+    const ri = $('#refin'); if (ri) ri.onchange = (e) => { readInputs(fields); readInfo(); REFS = [...REFS, ...[...e.target.files].filter((f) => f.type.startsWith('image/'))].slice(0, maxP); drawStep(); };
+    app.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { readInputs(fields); readInfo(); REFS.splice(Number(b.dataset.rm), 1); drawStep(); });
+    $('#next').onclick = () => {
+      readInputs(fields); readInfo(); D.count = Number(D.count) || 3;
+      if (!D.product.trim()) return toast(`ใส่${nameLabel}ก่อน`);
+      if ((id === 'v_shop' || id === 'v_pr_recap') && !REFS.length && !D.fromWork) return toast('ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3 รูปขึ้นไป)');
+      D.step = 3; drawStep();
+    };
   } else if (s === 2 && D.style === 'v_drama') {
     const V2 = CAT.video;
     stepShell(`<h1 style="font-size:22px">ละครแนวไหน?</h1>
@@ -604,11 +644,12 @@ function drawStep() {
       <section class="card">
         <label class="f" for="product">ชื่อสินค้า / เรื่อง<input id="product" type="text" maxlength="120" placeholder="เช่น ข้าวมันไก่ต้ม, เซรั่มวิตซี" value="${esc(D.product)}"></label>
         ${st.text ? `<label class="f" for="headline">ข้อความหลักบนภาพ (สั้นๆ)<input id="headline" type="text" maxlength="60" placeholder="เช่น เปิดใหม่! อร่อยต้องลอง" value="${esc(D.headline)}"></label>
-        <label class="f" for="price">ราคา / โปร (ไม่บังคับ)<input id="price" type="text" maxlength="40" placeholder="เช่น 59.- หรือ ซื้อ 1 แถม 1" value="${esc(D.price)}"></label>` : ''}
-        <label class="f" for="details">รายละเอียดเพิ่ม (ไม่บังคับ)<textarea id="details" rows="3" maxlength="600" placeholder="จุดเด่น วัตถุดิบ กลุ่มลูกค้า บรรยากาศที่อยากได้">${esc(D.details)}</textarea></label>
+        <label class="f" for="price">${st.pr ? 'ข้อความรอง (ไม่บังคับ)' : 'ราคา / โปร (ไม่บังคับ)'}<input id="price" type="text" maxlength="40" placeholder="${st.pr ? 'เช่น ขอเชิญร่วมงาน' : 'เช่น 59.- หรือ ซื้อ 1 แถม 1'}" value="${esc(D.price)}"></label>` : ''}
+        <label class="f" for="details">รายละเอียดเพิ่ม (ไม่บังคับ)<textarea id="details" rows="3" maxlength="600" placeholder="${st.pr ? 'เนื้อหาประกาศ ผู้เข้าร่วม เงื่อนไข บรรยากาศที่อยากได้' : 'จุดเด่น วัตถุดิบ กลุ่มลูกค้า บรรยากาศที่อยากได้'}">${esc(D.details)}</textarea></label>
         <div id="warn"></div>
       </section>
-      <section class="card"><b>ภาพสินค้าจริง (ไม่บังคับ แต่แนะนำ)</b><span class="muted">ใส่ได้ 3 รูป AI จะใช้สินค้าจริงของคุณ ไม่แต่งสินค้าใหม่</span>
+      ${st.pr ? `<section class="card"><b>ข้อมูลบนภาพ</b>${infoFields(['org', 'date', 'place', 'contact'])}</section>` : ''}
+      <section class="card"><b>${st.pr ? 'รูปประกอบ (ไม่บังคับ)' : 'ภาพสินค้าจริง (ไม่บังคับ แต่แนะนำ)'}</b><span class="muted">${st.pr ? 'เช่น รูปสถานที่ บุคคล โลโก้งาน ใส่ได้ 3 รูป' : 'ใส่ได้ 3 รูป AI จะใช้สินค้าจริงของคุณ ไม่แต่งสินค้าใหม่'}</span>
         <div class="refs">${REFS.map((f, i) => `<button type="button" class="ref" data-rm="${i}" aria-label="ลบรูปที่ ${i + 1}"><img src="${URL.createObjectURL(f)}" alt=""><span>✕</span></button>`).join('')}
           ${REFS.length < 3 ? '<label class="ref add" for="refin" style="cursor:pointer">+ เพิ่มรูป<input id="refin" type="file" accept="image/*" multiple hidden></label>' : ''}</div>
         ${D.fromWork && !REFS.length ? '<span class="muted">ใช้รูปสินค้าจากงานเดิม</span>' : ''}</section>
@@ -621,10 +662,10 @@ function drawStep() {
       </section>`);
     bindChips(['concepts'], (k) => { if (k === 'concepts' && D.concepts.length > 5) { D.concepts.pop(); drawStep(); toast('เลือกได้สูงสุด 5'); } });
     const fields = ['product', 'headline', 'price', 'details', 'useLogo', 'showShop'];
-    const ri = $('#refin'); if (ri) ri.onchange = (e) => { readInputs(fields); REFS = [...REFS, ...[...e.target.files].filter((f) => f.type.startsWith('image/'))].slice(0, 3); drawStep(); };
-    app.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { readInputs(fields); REFS.splice(Number(b.dataset.rm), 1); drawStep(); });
+    const ri = $('#refin'); if (ri) ri.onchange = (e) => { readInputs(fields); readInfo(); REFS = [...REFS, ...[...e.target.files].filter((f) => f.type.startsWith('image/'))].slice(0, 3); drawStep(); };
+    app.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { readInputs(fields); readInfo(); REFS.splice(Number(b.dataset.rm), 1); drawStep(); });
     $('#next').onclick = () => {
-      readInputs(fields);
+      readInputs(fields); readInfo();
       if (!D.product.trim() && !D.headline?.trim() && !D.details.trim()) return toast('ใส่ชื่อสินค้าหรือรายละเอียดอย่างน้อย 1 อย่าง');
       D.step = 3; drawStep();
     };
@@ -632,14 +673,14 @@ function drawStep() {
     const saved = ME.hashtags || [];
     const vidAll = D.kind === 'video';
     const vid = vidAll && !(D.style === 'v_self' && D.selfMode !== 'voice') && D.style !== 'v_drama'; // มีบทพากย์ (ละคร AI เลือกเสียงเอง)
-    const fm = vid ? CAT.video.formulas.filter((f) => !(D.style === 'v_top' && (f.dialogue || f.id === 'pas' || f.id === 'story'))) : [];
-    if (vid && (!D.formula || !fm.some((f) => f.id === D.formula))) D.formula = (fm.find((f) => f.rec.includes(D.goal)) || fm[0]).id;
+    const fm = vid && !INFO_IDS.includes(D.style) ? CAT.video.formulas.filter((f) => !(D.style === 'v_top' && (f.dialogue || f.id === 'pas' || f.id === 'story'))) : [];
+    if (vid && fm.length && (!D.formula || !fm.some((f) => f.id === D.formula))) D.formula = (fm.find((f) => f.rec.includes(D.goal)) || fm[0]).id;
     const dlg = vid && fm.find((f) => f.id === D.formula)?.dialogue;
     if (dlg) D.premiumVoice = false;
-    stepShell(`${vid ? `<h1 style="font-size:22px">เล่าเรื่องแบบไหน?</h1>
+    stepShell(`${vid && fm.length ? `<h1 style="font-size:22px">เล่าเรื่องแบบไหน?</h1>
       <div class="grid2">${fm.map((f) => `<button type="button" class="card opt" data-formula="${f.id}" aria-pressed="${D.formula === f.id}">
         <b>${esc(f.label)}${f.rec.includes(D.goal) ? ' <span class="badge b-lime">แนะนำ</span>' : ''}</b><span class="muted">${esc(f.desc)}</span></button>`).join('')}</div>
-      <h2>โทน</h2>` : '<h1 style="font-size:22px">แคปชั่นโทนไหน?</h1>'}
+      <h2>โทน</h2>` : `<h1 style="font-size:22px">${D.style?.startsWith('v_pr') || D.goal === 'pr' ? 'โทนแคปชั่น (งานประชาสัมพันธ์ใช้ภาษาทางการให้อัตโนมัติ)' : 'แคปชั่นโทนไหน?'}</h1>`}
       <p class="muted">AI เขียนให้ 4 แบบ: Facebook, Instagram, TikTok, Shopee${D.link ? ' พร้อมใส่ลิงก์' : ''}</p>
       ${chipRow(CAT.tones, D.tone || CAT.tones[0], 'tone', false)}
       <section style="display:flex;flex-direction:column;gap:10px"><div class="row between"><h2>แฮชแท็กประจำ</h2><a href="#tags" style="font-size:14px">จัดการ</a></div>
@@ -662,6 +703,15 @@ function drawStep() {
     }
     bindChips(['hashtags']);
     $('#next').onclick = () => { readInputs(['extraTags']); D.step = 4; drawStep(); };
+  } else if (s === 4 && D.style === 'v_tips') {
+    D.length = D.count === 5 ? 45 : 30;
+    const total = CAT.video.prices[D.length] + (D.premiumVoice ? CAT.video.premiumExtra : 0);
+    stepShell(`<h1 style="font-size:22px">ราคา</h1>
+      <div class="list kv"><div><span class="muted">จำนวนทิป</span><span>${D.count} ทิป (~${D.length} วิ)</span></div></div>
+      <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">รวม</span><b class="num" style="font-size:28px">${ICON.star}${total} ดาว</b></div>
+        <span class="muted">การ์ดความรู้ขยับได้ทีละข้อ + เสียงบรรยาย + ซับ</span></section>
+      <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
+    $('#next').onclick = () => { D.step = 5; drawStep(); };
   } else if (s === 4 && D.style === 'v_drama') {
     const total = CAT.video.dramaPrices[D.scenes] || CAT.video.dramaPrices[4];
     stepShell(`<h1 style="font-size:22px">ราคา</h1>
@@ -733,7 +783,21 @@ function uploadWithProgress(url, fd, onp) {
     x.send(fd);
   });
 }
-const payload = () => ({ ...D, hashtags: [...D.hashtags, ...String(D.extraTags || '').split(/[\s,]+/).filter(Boolean)] });
+function styleNote(x) {
+  const V2 = CAT.video;
+  return { v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`,
+    v_show: `เริ่ม ${V2.prices[15]} ดาว · 2–8 รูป`, v_tips: `เริ่ม ${V2.prices[30]} ดาว · 3 หรือ 5 ทิป`, v_shop: `เริ่ม ${V2.prices[15]} ดาว · รูปร้าน+ข้อมูล`,
+    v_pr_announce: `เริ่ม ${V2.prices[15]} ดาว · เสียงทางการ`, v_pr_recap: `เริ่ม ${V2.prices[15]} ดาว · จากรูปกิจกรรม` }[x.id] || `เริ่ม ${V2.prices[15]} ดาว · 9:16`;
+}
+const INFO_IDS = ['v_tips', 'v_shop', 'v_pr_announce', 'v_pr_recap'];
+const infoFields = (keys) => {
+  const L = { org: ['ชื่อหน่วยงาน / ร้าน', ME.brand?.shopName || ''], date: ['วัน เวลา', 'เช่น 5 ธ.ค. 69 เวลา 09.00 น.'], place: ['สถานที่', 'เช่น หอประชุม อบต.บ้านพรุ'], contact: ['ติดต่อ', 'เช่น โทร 074-xxx-xxx / LINE @...'], hours: ['เวลาเปิด', 'เช่น ทุกวัน 07.00–19.00'] };
+  D.info = D.info || {};
+  if (keys.includes('org') && !D.info.org && ME.brand?.shopName) D.info.org = ME.brand.shopName;
+  return keys.map((k) => `<label class="f" for="info_${k}">${L[k][0]}<input id="info_${k}" type="text" maxlength="100" placeholder="${esc(L[k][1])}" value="${esc(D.info[k] || '')}"></label>`).join('');
+};
+const readInfo = () => { D.info = D.info || {}; app.querySelectorAll('[id^="info_"]').forEach((el) => { D.info[el.id.slice(5)] = el.value; }); };
+const payload = () => ({ ...D, hasPhotos: REFS.length > 0, hashtags: [...D.hashtags, ...String(D.extraTags || '').split(/[\s,]+/).filter(Boolean)] });
 async function reviewStep() {
   stepShell('<p class="muted">กำลังคำนวณ…</p>', { next: 'ยืนยัน', disabled: true });
   const qt = await api('api/works/quote', { method: 'POST', body: payload() });
@@ -751,10 +815,12 @@ async function reviewStep() {
       ${row('เป้าหมาย', goal.label)}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
       ${row('คอนเซปต์', D.concepts.join(', '))}${vid ? '' : row('ขนาด', D.ratio) + row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
       ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
+      ${INFO_IDS.includes(D.style) ? row('รูป', REFS.length ? `${REFS.length} รูป` : (D.style === 'v_pr_announce' ? 'AI วาดพื้นหลังให้ (+5 ดาว)' : '')) + (D.style === 'v_tips' ? row('จำนวนทิป', `${D.count} ทิป`) : '') + Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน/ร้าน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ', hours: 'เวลาเปิด' }[k] || k, v)).join('') + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + (D.style === 'v_tips' ? '' : row('ความยาว', `${D.length} วินาที`)) : ''}
+      ${!vid && st.pr ? Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ' }[k] || k, v)).join('') : ''}
       ${D.style === 'v_drama' ? row('แนวเรื่อง', CAT.video.genres.find((g) => g.id === D.genre)?.label) + row('พล็อต', D.genre === 'free' ? D.plot : '') + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('จำนวนฉาก', `${D.scenes} ฉาก`) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) : ''}
       ${D.style === 'v_top' ? D.items.map((it, i) => row(`#${i + 1}`, `${it.name}${it.price ? ` · ${it.price}` : ''}${it.link ? ' · มีลิงก์' : ''}`)).join('') + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_top').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `~${D.length} วินาที`) : ''}
       ${D.style === 'v_show' ? row('รูปสินค้า', `${REFS.length} รูป`) + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_show').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : ''}
-      ${D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
+      ${D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
         : vid ? row('รูปสินค้า', REFS.length ? `${REFS.length} รูป` : '') + row('แคปรีวิว', REVS.length ? `${REVS.length} รูป` : '') + row('ลูกเล่นตอนเปิด', st.variants?.length ? (st.variants.find((x) => x.id === D.variant)?.label || 'สุ่มให้') : '') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname + (CAT.video.formulas.find((f) => f.id === D.formula)?.dialogue ? ' + คู่สนทนา' : '')) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : row('คุณภาพ', `${tier.label} ${tier.size} × ${qt.versions} แบบ`)}
     </div>
     <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">${qt.free ? 'ใช้ภาพฟรี' : 'ดาวที่ใช้'}</span>
@@ -781,7 +847,7 @@ const PLAT = [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', '
 const daysLeft = (d) => Math.max(0, Math.ceil((new Date(d) - Date.now()) / 864e5));
 const WSTAT = { queued: ['รอคิว', 'b-lime'], working: ['กำลังสร้าง', 'b-lime'], review: ['รอตรวจซับ', 'b-warn'], done: ['เสร็จแล้ว', 'b-ok'], failed: ['ไม่สำเร็จ', 'b-warn'] };
 async function worksView() {
-  app.innerHTML = `${topbar()}<main><div class="row between"><h1 style="font-size:22px">ผลงานของฉัน</h1><a class="btn sm" href="#create?new=1">+ สร้าง</a></div>
+  app.innerHTML = `${topbar()}<main><div class="row between"><h1 style="font-size:22px">ผลงานของฉัน</h1><span class="row" style="gap:8px"><a class="btn dark sm" href="#plan">📅 ปฏิทินโพสต์</a><a class="btn sm" href="#create?new=1">+ สร้าง</a></span></div>
     <div id="wl" class="grid2"><p class="muted">กำลังโหลด…</p></div></main>${nav('works')}`;
   const { items } = await api('api/works');
   if (!items.length) { $('#wl').outerHTML = `<div class="soon card"><h2>ยังไม่มีผลงาน</h2><p class="muted">สร้างภาพแรกได้เลย มีภาพฟรีให้ ${ME.freeImages.today + ME.freeImages.welcome} ภาพ</p><a class="btn" href="#create?new=1">สร้างภาพแรก</a></div>`; return; }
@@ -839,11 +905,13 @@ async function workView(qs) {
         <div class="chips">${PLAT.map(([k, l]) => `<button type="button" class="chip" data-post="${k}" aria-pressed="${!!w.posted?.[k]}">${l}${w.posted?.[k] ? ' · ' + new Date(w.posted[k]).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : ''}</button>`).join('')}</div></section>
       <div id="wstats"></div>
       ${w.purged ? '' : '<button type="button" class="btn dark" id="toDrive">ส่งเข้า Google Drive</button>'}
+      ${w.purged ? '' : '<section class="card" id="sched"><b>ตั้งเวลาโพสต์</b><span class="muted">กำลังโหลด…</span></section>'}
       <div class="list">${historyRows(w)}</div>
       ${w.style === 'v_self' && w.params?.selfMode === 'subs' && !w.purged && (w.params?.rerenders || 0) < 1 ? '<button type="button" class="btn dark" id="fixsubs">แก้ซับแล้วตัดใหม่ (ฟรี 1 ครั้ง)</button>' : ''}
       <button type="button" class="btn" id="again">สร้างแบบนี้อีก</button>
       <button type="button" class="btn ghost" id="del">ลบผลงานนี้</button>`;
     const fx = $('#fixsubs'); if (fx) fx.onclick = () => subsEditor(w, qs);
+    schedCard(w, new URLSearchParams(qs || '').get('post')).catch(() => {});
     app.querySelectorAll('[data-cap]').forEach((b) => b.onclick = () => {
       app.querySelectorAll('[data-cap]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       $('#cap').value = w.captions[b.dataset.cap] + (tags ? '\n\n' + tags : '');
@@ -872,7 +940,7 @@ async function workView(qs) {
   $('#again').onclick = () => {
     const p = w.params || {};
     VFILE = null; ITEMF = [];
-    D = { ...newDraft(), kind: w.kind, items: p.items || newDraft().items, genre: p.genre || 'inlaw', art: p.art || 'cartoon3d', scenes: p.scenes || 4, plot: p.plot || '', selfMode: p.selfMode || 'subs', videoSec: p.videoSec || 0, captionStyle: p.captionStyle || 'pop', hookText: p.hookText || '', keepAudio: p.keepAudio !== false, length: p.length || 30, voice: p.voice || '', premiumVoice: !!p.premium, formula: p.formula || '', variant: p.variant || 'random', music: p.music || 'auto', goal: p.goal, link: p.link, style: w.style, product: p.product, price: p.price, headline: p.headline, details: p.details, concepts: p.concepts || [], ratio: p.ratio, useLogo: p.useLogo, showShop: p.showShop, tone: p.tone, hashtags: p.hashtags || [], tier: w.tier, versions: w.versions, fromWork: w.id, step: 2 };
+    D = { ...newDraft(), kind: w.kind, info: p.info || {}, count: p.count || 3, items: p.items || newDraft().items, genre: p.genre || 'inlaw', art: p.art || 'cartoon3d', scenes: p.scenes || 4, plot: p.plot || '', selfMode: p.selfMode || 'subs', videoSec: p.videoSec || 0, captionStyle: p.captionStyle || 'pop', hookText: p.hookText || '', keepAudio: p.keepAudio !== false, length: p.length || 30, voice: p.voice || '', premiumVoice: !!p.premium, formula: p.formula || '', variant: p.variant || 'random', music: p.music || 'auto', goal: p.goal, link: p.link, style: w.style, product: p.product, price: p.price, headline: p.headline, details: p.details, concepts: p.concepts || [], ratio: p.ratio, useLogo: p.useLogo, showShop: p.showShop, tone: p.tone, hashtags: p.hashtags || [], tier: w.tier, versions: w.versions, fromWork: w.id, step: 2 };
     REFS = []; REVS = []; saveDraft(); go('create');
   };
   $('#del').onclick = async () => {
@@ -936,6 +1004,92 @@ function subsEditor(w, qs) {
   };
 }
 
+
+// ---------- ตั้งเวลาโพสต์ ----------
+const PLAT_S = [['tiktok', 'TikTok'], ['facebook', 'Facebook'], ['instagram', 'Instagram'], ['youtube', 'YouTube'], ['line', 'LINE'], ['shopee', 'Shopee'], ['lazada', 'Lazada']];
+const localDT = (d) => { const x = new Date(d.getTime() - d.getTimezoneOffset() * 60e3); return x.toISOString().slice(0, 16); };
+const fmtWhen = (d) => new Date(d).toLocaleString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+async function schedCard(w, postNow) {
+  const el = $('#sched'); if (!el) return;
+  const { items } = await api(`api/schedules?work=${w.id}`);
+  const pend = items.filter((x) => x.status === 'scheduled' || x.status === 'due');
+  const sel = new Set(['tiktok']);
+  const next = new Date(Date.now() + 3600e3); next.setMinutes(0, 0, 0);
+  const due = postNow ? items.find((x) => x.platform === postNow && x.status === 'due') : null;
+  el.innerHTML = `
+    ${due ? `<div class="card" style="background:#1C2410;border-color:var(--lime)"><b>📣 ถึงเวลาโพสต์ ${esc(due.platformLabel)}</b>
+      <span class="muted">1) บันทึกคลิป/ภาพ 2) คัดลอกแคปชั่น 3) เปิดแอป ${esc(due.platformLabel)} แล้วโพสต์</span>
+      <div class="grid2"><button type="button" class="btn sm" id="dueCopy">คัดลอกแคปชั่น</button><button type="button" class="btn dark sm" id="dueDone">โพสต์แล้ว ✓</button></div></div>` : ''}
+    <div class="row between"><b>ตั้งเวลาโพสต์</b><a href="#plan" style="font-size:14px">ปฏิทินโพสต์</a></div>
+    <span class="muted">ถึงเวลาจะแจ้งเตือนเข้ามือถือ แตะแล้วโพสต์ได้เลย (โพสต์อัตโนมัติจะเปิดเมื่อเชื่อมเพจได้)</span>
+    <div class="chips">${PLAT_S.map(([k, l]) => `<button type="button" class="chip" data-sp="${k}" aria-pressed="${sel.has(k)}">${l}</button>`).join('')}</div>
+    <input id="sat" type="datetime-local" value="${localDT(next)}" min="${localDT(new Date())}" aria-label="วันเวลาโพสต์">
+    <div class="chips">${[['คืนนี้ 20:00', 20, 0], ['พรุ่งนี้ 12:00', 12, 1], ['พรุ่งนี้ 19:00', 19, 1]].map(([l, h, d]) => `<button type="button" class="chip" data-qt="${h}:${d}" style="min-height:34px;font-size:13px">${l}</button>`).join('')}</div>
+    <button type="button" class="btn" id="sadd">ตั้งเวลา</button>
+    ${pend.length ? `<div class="list">${pend.map((x) => `<div><span><b>${esc(x.platformLabel)}</b><br><span class="muted">${fmtWhen(x.at)}${x.status === 'due' ? ' · ถึงเวลาแล้ว' : ''}</span></span>
+      <span class="row" style="gap:6px"><button type="button" class="chip" data-sdone="${x.id}" style="min-height:32px;font-size:12px">โพสต์แล้ว</button><button type="button" class="chip" data-sdel="${x.id}" style="min-height:32px;font-size:12px">ยกเลิก</button></span></div>`).join('')}</div>` : ''}`;
+  el.querySelectorAll('[data-sp]').forEach((b) => b.onclick = () => { const k = b.dataset.sp; if (sel.has(k)) sel.delete(k); else sel.add(k); b.setAttribute('aria-pressed', String(sel.has(k))); });
+  el.querySelectorAll('[data-qt]').forEach((b) => b.onclick = () => { const [h, d] = b.dataset.qt.split(':').map(Number); const t = new Date(); t.setDate(t.getDate() + d); t.setHours(h, 0, 0, 0); if (t < new Date()) t.setDate(t.getDate() + 1); $('#sat').value = localDT(t); });
+  $('#sadd').onclick = async () => {
+    try {
+      const at = new Date($('#sat').value);
+      await api('api/schedules', { method: 'POST', body: { workId: w.id, platforms: [...sel], at: at.toISOString() } });
+      toast(`ตั้งเวลาแล้ว ${fmtWhen(at)}`);
+      await ensurePush(true);
+      schedCard(w);
+    } catch (e) { toast(e.message); }
+  };
+  const mark = async (id, status) => { await api(`api/schedules/${id}`, { method: 'PATCH', body: { status } }); schedCard(w); };
+  el.querySelectorAll('[data-sdone]').forEach((b) => b.onclick = () => mark(b.dataset.sdone, 'posted').then(() => toast('บันทึกว่าโพสต์แล้ว')));
+  el.querySelectorAll('[data-sdel]').forEach((b) => b.onclick = () => mark(b.dataset.sdel, 'canceled'));
+  if (due) {
+    $('#dueCopy').onclick = async () => {
+      const k = ['facebook', 'instagram', 'tiktok', 'shopee'].includes(due.platform) ? due.platform : 'facebook';
+      const txt = (w.captions?.[k] || '') + (w.hashtags?.length ? '\n\n' + w.hashtags.join(' ') : '');
+      try { await navigator.clipboard.writeText(txt); toast('คัดลอกแล้ว'); } catch { prompt('คัดลอกแคปชั่น', txt); }
+    };
+    $('#dueDone').onclick = () => mark(due.id, 'posted').then(() => toast('เยี่ยม! บันทึกว่าโพสต์แล้ว'));
+  }
+}
+// แจ้งเตือนเข้ามือถือ (Web Push) — iPhone ต้อง "เพิ่มไปยังหน้าจอโฮม" ก่อน
+async function ensurePush(ask) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+  const reg = await navigator.serviceWorker.register('sw.js');
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    if (!ask) return 'off';
+    if (Notification.permission === 'denied') return 'denied';
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return 'denied';
+    const { key } = await api('api/push/key');
+    const raw = atob(key.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (key.length % 4)) % 4));
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Uint8Array.from(raw, (c) => c.charCodeAt(0)) });
+  }
+  await api('api/push/subscribe', { method: 'POST', body: sub.toJSON() });
+  return 'on';
+}
+async function planView() {
+  app.innerHTML = `${topbar('ปฏิทินโพสต์', 'works')}<main><p class="muted">กำลังโหลด…</p></main>${nav('works')}`;
+  const { items } = await api('api/schedules');
+  const st = await ensurePush(false).catch(() => 'off');
+  const ios = /iphone|ipad/i.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches;
+  const groups = {};
+  items.forEach((x) => { const d = new Date(x.at).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }); (groups[d] = groups[d] || []).push(x); });
+  const lab = { scheduled: ['รอโพสต์', 'b-lime'], due: ['ถึงเวลาแล้ว', 'b-warn'], posted: ['โพสต์แล้ว', 'b-ok'] };
+  $('main').innerHTML = `
+    <section class="card"><b>แจ้งเตือนเข้ามือถือ</b>
+      ${st === 'on' ? '<span class="muted">เปิดอยู่ ✓ ถึงเวลาโพสต์จะเด้งเตือน</span><button type="button" class="btn dark sm" id="ptest">ทดสอบแจ้งเตือน</button>'
+        : ios ? '<span class="muted">iPhone/iPad: กดปุ่มแชร์ของ Safari → "เพิ่มไปยังหน้าจอโฮม" แล้วเปิด Mc Rich จากไอคอน จากนั้นกลับมากดเปิดแจ้งเตือนที่นี่</span><button type="button" class="btn sm" id="pon">เปิดแจ้งเตือน</button>'
+        : st === 'unsupported' ? '<span class="muted">เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน</span>' : '<button type="button" class="btn sm" id="pon">เปิดแจ้งเตือน</button>'}</section>
+    ${Object.keys(groups).length ? Object.entries(groups).map(([d, xs]) => `<h2>${esc(d)}</h2><div class="list">${xs.map((x) => `<a href="#work?id=${x.workId}${x.status === 'due' ? `&post=${x.platform}` : ''}" style="display:flex;gap:12px;align-items:center;text-decoration:none;color:inherit">
+      ${x.thumb ? `<img src="${x.thumb}" alt="" style="width:48px;height:60px;object-fit:cover;border-radius:8px">` : ''}
+      <span style="flex:1;min-width:0"><b>${new Date(x.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} · ${esc(x.platformLabel)}</b><br><span class="muted" style="overflow-wrap:anywhere">${esc(x.title || '')}</span></span>
+      <span class="badge ${lab[x.status]?.[1] || ''}">${lab[x.status]?.[0] || x.status}</span></a>`).join('')}</div>`).join('')
+      : '<div class="soon card"><h2>ยังไม่มีโพสต์ที่ตั้งเวลา</h2><p class="muted">เปิดผลงาน แล้วกด "ตั้งเวลาโพสต์"</p><a class="btn" href="#works">ไปที่ผลงาน</a></div>'}`;
+  const on = $('#pon'); if (on) on.onclick = async () => { const r = await ensurePush(true).catch((e) => toast(e.message)); if (r === 'on') { toast('เปิดแจ้งเตือนแล้ว'); planView(); } else if (r === 'denied') toast('ถูกปิดสิทธิ์แจ้งเตือน เปิดได้ที่การตั้งค่าเบราว์เซอร์'); };
+  const t = $('#ptest'); if (t) t.onclick = () => api('api/push/test', { method: 'POST', body: {} }).then((r) => toast(r.sent ? 'ส่งแล้ว ดูที่แจ้งเตือน' : 'ยังไม่มีอุปกรณ์ที่เปิดแจ้งเตือน'));
+}
+
 // ---------- ลิงก์สั้น + สถิติคลิก ----------
 const bars = (days) => {
   const max = Math.max(1, ...days.map((d) => d.n));
@@ -987,6 +1141,7 @@ async function route() {
     case 'interests': return interestsView('edit');
     case 'profile': return profileView(qs);
     case 'links': return linksView().catch((e) => toast(e.message));
+    case 'plan': return planView().catch((e) => toast(e.message));
     case 'brand': return brandView();
     case 'tags': return tagsView();
     case 'stars': return starsView().catch((e) => toast(e.message));
@@ -1000,4 +1155,5 @@ async function route() {
   }
 }
 window.addEventListener('hashchange', route);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 fetch('api/config').then((r) => r.json()).then((c) => { CFG = c; }).catch(() => {}).finally(route);

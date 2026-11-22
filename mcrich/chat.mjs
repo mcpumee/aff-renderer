@@ -13,6 +13,17 @@ const OA_ID = () => (process.env.LINEOA_ID || '').trim();
 const LINE_API = () => (process.env.LINE_API_URL || 'https://api.line.me').replace(/\/+$/, '');
 const LINE_DATA = () => (process.env.LINE_DATA_URL || process.env.LINE_API_URL || 'https://api-data.line.me').replace(/\/+$/, '');
 const RM_VERSION = 'v2';
+// บังคับรูปแบบคำตอบ (กันโมเดลตอบนอกรูปแบบ)
+const CHAT_SCHEMA = {
+  type: 'OBJECT', required: ['reply'],
+  properties: {
+    reply: { type: 'STRING' },
+    draft: { type: 'OBJECT', nullable: true, properties: {
+      kind: { type: 'STRING' }, style: { type: 'STRING' }, goal: { type: 'STRING' }, product: { type: 'STRING' },
+      headline: { type: 'STRING' }, price: { type: 'STRING' }, details: { type: 'STRING' }, label: { type: 'STRING' } } },
+    chips: { type: 'ARRAY', items: { type: 'STRING' } },
+  },
+};
 const FREE_PER_DAY = Number(process.env.MCRICH_CHAT_FREE || 30);
 
 const styleList = () => [
@@ -33,6 +44,10 @@ function systemPrompt(m, works) {
 แนวงานในแอป (id = ชื่อ):
 ${styleList()}
 เป้าหมาย (goal): ${GOALS.map((g) => `${g.id}=${g.label}`).join(', ')}
+ตัวอย่างโทน:
+ผู้ใช้: ช่วยคิดไอเดีย → ริช: "ได้เลยค่า ✨ ขายอะไรอยู่น้า?" chips: ["ของกิน","เสื้อผ้า","ของเล่น"]
+ผู้ใช้: ขอไอเดียคลิปขายของเล่น → ริช: "ของเล่นต้องคลิปเปิดกล่องสุ่มเลยค่า ลุ้นฉ่ำ เด็กๆ ชอบมาก 🎁 เอาแบบนี้ไหมน้า?" + draft คลิป v_mystery
+ผู้ใช้: ราคาเท่าไหร่ → ริช: "คลิปนี้ประมาณ 12-20 ดาวค่า ยังไม่ตัดจนกว่าจะกดยืนยันน้า"
 ถ้าผู้ใช้อยากสร้างงาน หรือคุณแนะนำงานชิ้นที่ชัดเจน ให้ใส่ "draft" เพื่อให้ผู้ใช้กดสร้างต่อได้ทันที (ไม่ตัดดาวจนกว่าเขาจะยืนยันเอง) ถ้าไม่ใช่ให้ draft เป็น null
 ตอบเป็น JSON เท่านั้น: {"reply":"ข้อความตอบ","draft":null หรือ {"kind":"image|video","style":"id จากรายการ","goal":"sell|aff|promo|content|pr","product":"ชื่อสินค้า/เรื่อง","headline":"ข้อความบนภาพ (ถ้าเป็นภาพ)","price":"","details":"รายละเอียด","label":"ปุ่ม เช่น สร้างโปสเตอร์นี้"},"chips":["ตัวเลือกคำตอบสั้นๆ ให้ผู้ใช้กดตอบคำถามของคุณ 2-3 ข้อ ข้อละไม่เกิน 12 ตัวอักษร"]}`;
 }
@@ -49,19 +64,27 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
   async function ask(uid, text, channel) {
     const m = await me(uid);
     const works = (await q('SELECT title, kind, status FROM works WHERE user_id=$1 ORDER BY created_at DESC LIMIT 5', [uid])).rows;
-    const hist = (await q('SELECT role, content FROM chat_messages WHERE user_id=$1 ORDER BY id DESC LIMIT 16', [uid])).rows.reverse();
+    const hist = (await q("SELECT role, content FROM chat_messages WHERE user_id=$1 AND created_at > now() - interval '2 days' ORDER BY id DESC LIMIT 10", [uid])).rows.reverse()
+      .filter((h) => !/^แง ริชค้าง|^ขอโทษนะคะ ตอนนี้น้องริช/.test(h.content));
     await q('INSERT INTO chat_messages(user_id,role,content,channel) VALUES($1,$2,$3,$4)', [uid, 'user', text, channel]);
-    const contents = [...hist.map((h) => ({ role: h.role === 'model' ? 'model' : 'user', parts: [{ text: h.content }] })), { role: 'user', parts: [{ text }] }];
+    const contents = [...hist.map((h) => ({ role: h.role === 'model' ? 'model' : 'user', parts: [{ text: h.content.slice(0, 400) }] })), { role: 'user', parts: [{ text }] }];
     let out = { reply: 'แง ริชค้างแป๊บ ลองพิมพ์ใหม่อีกทีน้า 🥺', draft: null, chips: [] };
     try {
       const r = await fetch(`${API()}/v1beta/models/${MODEL}:generateContent`, {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: { responseMimeType: 'application/json', temperature: 0.95, maxOutputTokens: 600 } }),
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: { responseMimeType: 'application/json', temperature: 0.9, responseSchema: CHAT_SCHEMA } }),
         signal: AbortSignal.timeout(60000),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(`gemini ${r.status} ${j.error?.message || ''}`);
-      const o = JSON.parse((j.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').replace(/^```(json)?|```$/g, '').trim());
+      const raw = (j.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('').replace(/^```(json)?|```$/g, '').trim();
+      let o;
+      try { o = JSON.parse(raw); } catch {
+        const m2 = raw.match(/\{[\s\S]*\}/);
+        try { o = JSON.parse(m2 ? m2[0] : ''); } catch { o = { reply: raw.replace(/[{}"]/g, '').slice(0, 300), draft: null, chips: [] }; }
+        log('chat json fallback', uid, j.candidates?.[0]?.finishReason || '', raw.slice(0, 120));
+      }
+      if (o.reply) o.reply = String(o.reply).replace(/\*\*|__|^#+\s/gm, '');
       const all = [...STYLES.map((s) => ({ id: s.id, kind: 'image' })), ...VIDEO_STYLES.map((s) => ({ id: s.id, kind: 'video' }))];
       let draft = o.draft && typeof o.draft === 'object' ? o.draft : null;
       if (draft) {
@@ -73,7 +96,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
         } : null;
       }
       out = { reply: String(o.reply || '').slice(0, 3000) || out.reply, draft, chips: (Array.isArray(o.chips) ? o.chips : []).map((c) => String(c).trim().slice(0, 40)).filter(Boolean).slice(0, 3) };
-    } catch (e) { log('chat fail', uid, e.message); }
+    } catch (e) { log('chat fail', uid, e.message.slice(0, 300)); }
     await q('INSERT INTO chat_messages(user_id,role,content,draft,channel) VALUES($1,$2,$3,$4,$5)', [uid, 'model', out.reply, out.draft, channel]);
     return out;
   }

@@ -242,3 +242,25 @@ CREATE TABLE IF NOT EXISTS closed_identities (
   hash       TEXT PRIMARY KEY,
   closed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- หน้าแรก: กระแส/คลิปไวรัล (Google Trends · YouTube มาแรง · คลิปที่แอดมินคัด) + ไอเดียจาก AI
+CREATE TABLE IF NOT EXISTS viral_items (
+  id          BIGSERIAL PRIMARY KEY,
+  source      TEXT NOT NULL,                 -- gtrends | youtube | curated
+  ext_id      TEXT NOT NULL,
+  title       TEXT NOT NULL,
+  url         TEXT NOT NULL DEFAULT '',
+  thumb_url   TEXT NOT NULL DEFAULT '',
+  thumb_file  TEXT NOT NULL DEFAULT '',
+  meta        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  tags        TEXT[] NOT NULL DEFAULT '{}',
+  idea        JSONB,                         -- {style, kind, hook, angle, product, summary}
+  safe        BOOLEAN NOT NULL DEFAULT TRUE, -- AI กรองข่าวร้าย/การเมือง/อาชญากรรม ออกจากหน้าแรก
+  active      BOOLEAN NOT NULL DEFAULT TRUE,
+  pinned      BOOLEAN NOT NULL DEFAULT FALSE,
+  rank        INTEGER NOT NULL DEFAULT 0,
+  first_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (source, ext_id)
+);
+CREATE INDEX IF NOT EXISTS viral_items_src ON viral_items(source, fetched_at DESC);

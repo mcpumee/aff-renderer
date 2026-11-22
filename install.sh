@@ -108,6 +108,12 @@ if [ "${SET_MCRICH_VOICE:-}" = "1" ] && [ -r /dev/tty ]; then
   echo ">> เสียงพากย์พรีเมียม ElevenLabs (แพ็กเสียเงินเท่านั้น · กด Enter ข้าม = ใช้เสียง Gemini อย่างเดียว)"
   askkey "   ElevenLabs API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && ELKEY=$REPLY
 fi
+# ---- YouTube Data API (คลิปมาแรงหน้าแรก · ไม่ใส่ก็ได้ ใช้กระแสจาก Google Trends + คลิปที่แอดมินเลือก) ----
+YTKEY=$(envget YOUTUBE_API_KEY)
+if [ "${SET_MCRICH_YT:-}" = "1" ] && [ -r /dev/tty ]; then
+  echo ">> YouTube Data API v3 key (เปิด API นี้ในโปรเจกต์ mc-rich ก่อน · กด Enter ข้าม)"
+  askkey "   YouTube API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && YTKEY=$REPLY
+fi
 
 cat > .env <<EOF
 PUBLIC_BASE=${PB}
@@ -136,6 +142,7 @@ ELEVENLABS_API_KEY=${ELKEY}
 LINEOA_SECRET=${OASEC}
 LINEOA_TOKEN=${OATOK}
 LINEOA_ID=${OAID}
+YOUTUBE_API_KEY=${YTKEY}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"

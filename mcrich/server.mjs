@@ -15,6 +15,7 @@ import { registerChat } from './chat.mjs';
 import { registerAuto } from './auto.mjs';
 import { registerBackoffice } from './backoffice.mjs';
 import { registerPrivacy, TERMS_VERSION, idHash } from './privacy.mjs';
+import { registerViral } from './viral.mjs';
 import { VIDEO_PRICE } from './video.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
@@ -58,6 +59,12 @@ async function migrate() {
       await q('INSERT INTO trends(title,style,kind,price,badge,color,tags,sort) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [...t, i]);
     }
   }
+  // รหัสแนวเดิมในการ์ดเทรนด์ → แนวงานปัจจุบัน
+  for (const [a, b] of [['blind_box', 'v_mystery'], ['gift_box', 'v_gift'], ['before_after', 'v_sell'], ['drama_family', 'v_drama'], ['drama_ghost', 'v_drama'], ['drama_market', 'v_drama']]) {
+    await q('UPDATE trends SET style=$2 WHERE style=$1', [a, b]);
+  }
+  await q("UPDATE trends SET price='เริ่ม 25 ดาว' WHERE style='v_drama' AND price LIKE 'เริ่ม 90%'");
+  await q("UPDATE trends SET price='เริ่ม 12 ดาว' WHERE style IN ('v_mystery','v_gift','v_sell') AND price IN ('6 ดาว','20 ดาว')");
   // ราคาคลิปเปิดกล่องจริง (เฟส 6)
   await q("UPDATE trends SET price='เริ่ม 12 ดาว' WHERE style IN ('blind_box','gift_box') AND price='6 ดาว'");
   await q("UPDATE trends SET price='เริ่ม 12 ดาว' WHERE style='before_after' AND price='20 ดาว'");
@@ -338,6 +345,7 @@ sched.setNotify((uid, text) => chat.notifyLine(uid, text));
 const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks: extras.hooks });
 const auto = registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, videoPrice: VIDEO_PRICE, notify: (uid, t) => chat.notifyLine(uid, t) });
 const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNED });
+const viral = registerViral(app, { q, auth, wrap, log, DATA_DIR });
 const priv = registerPrivacy(app, { q, pool, auth, wrap, log, DATA_DIR, PUBLIC_DIR: path.join(__dir, 'public'), banned: BANNED, purgeFiles: create.purgeFiles, clearSession: (res) => setCookie(res, 'mr_sid', '', 0) });
 // ผลงานเสร็จ → ส่ง Drive (ถ้าเชื่อม) + แจ้งเตือน LINE
 {
@@ -356,5 +364,5 @@ app.get(['/', '/index.html'], (_q, res) => { res.setHeader('cache-control', 'no-
 app.get('/sw.js', (_q, r) => { r.setHeader('cache-control', 'no-cache'); r.setHeader('service-worker-allowed', './'); r.sendFile(path.join(__dir, 'public', 'sw.js')); });
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 
-migrate().then(() => office.start()).then(() => { create.start(); sched.start(); chat.start(); auto.start(); priv.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
+migrate().then(() => office.start()).then(() => { create.start(); sched.start(); chat.start(); auto.start(); priv.start(); viral.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

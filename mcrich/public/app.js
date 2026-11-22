@@ -110,17 +110,75 @@ async function homeView() {
       <a class="btn" href="#create">+ สร้างผลงานใหม่</a>
       <div class="row between muted"><span>ภาพฟรีวันนี้ เหลือ ${ME.freeImages.today}</span><span>ภาพฟรีต้อนรับ เหลือ ${ME.freeImages.welcome}/10</span></div>
     </section>
-    <section style="display:flex;flex-direction:column;gap:10px"><div class="row between"><h2 id="th">ไวรัลตอนนี้</h2><a href="#interests" style="font-size:14px">ปรับความสนใจ</a></div>
+    <section id="vIdeas" style="display:flex;flex-direction:column;gap:10px"></section>
+    <section id="vTrends" style="display:flex;flex-direction:column;gap:10px"><h2>🔥 กระแสวันนี้ในไทย</h2><p class="muted">กำลังโหลด…</p></section>
+    <section id="vClips" style="display:flex;flex-direction:column;gap:10px"></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><div class="row between"><h2 id="th">แนวงานฮิต</h2><a href="#interests" style="font-size:14px">ปรับความสนใจ</a></div>
       <div class="grid3" id="trends"><p class="muted">กำลังโหลด…</p></div></section>
     ${!ME.brand?.shopName ? `<a class="card" href="#brand" style="text-decoration:none;color:var(--fg)"><b>ตั้งค่าชุดแบรนด์ให้เสร็จ</b><span class="muted">ใส่ชื่อร้าน โลโก้ สี และช่องทางสั่งซื้อครั้งเดียว ทุกผลงานจะออกมาเป็นสไตล์ร้านคุณ</span></a>` : ''}
     <a class="card" href="#profile" style="text-decoration:none;color:var(--fg);background:#1C2410;border-color:#3A4A18"><b>ชวนเพื่อน รับคนละ 20 ดาว</b><span class="muted">เมื่อเพื่อนเติมดาวครั้งแรก · โค้ดของคุณ ${esc(ME.referralCode)}</span></a>
   </main>${nav('home')}`;
-  try {
-    const t = await api('api/trends');
-    $('#th').textContent = t.personalized ? 'ไวรัลตอนนี้ ตรงกับความสนใจคุณ' : 'ไวรัลตอนนี้';
+  api('api/trends').then((t) => {
+    $('#th').textContent = t.personalized ? 'แนวงานฮิต ตรงกับคุณ' : 'แนวงานฮิต';
     $('#trends').innerHTML = t.items.map((x) => `<a class="trend" href="#create?style=${esc(x.style)}&kind=${esc(x.kind)}"><div class="thumb" style="background:${esc(x.color)}">${esc(x.badge)}</div>
       <b style="font-size:13px;line-height:1.3">${esc(x.title)}</b><span class="muted">${esc(x.price)}</span></a>`).join('');
-  } catch (e) { if (e.message !== 'login') $('#trends').innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+  }).catch((e) => { if (e.message !== 'login' && $('#trends')) $('#trends').innerHTML = `<p class="muted">${esc(e.message)}</p>`; });
+  let v;
+  try { v = await api('api/viral'); } catch (e) { if (e.message !== 'login' && $('#vTrends')) $('#vTrends').innerHTML = ''; return; }
+  if (!$('#vTrends')) return; // ผู้ใช้เปลี่ยนหน้าไปแล้ว
+  const all = [...v.ideas, ...v.trends, ...v.clips];
+  const byId = (id) => all.find((x) => String(x.id) === String(id));
+  const when = v.updatedAt ? `อัปเดต ${new Date(v.updatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.` : '';
+  $('#vIdeas').innerHTML = v.ideas.length ? `<div class="row between"><h2>💡 ไอเดียเกาะกระแส${v.personalized ? 'สำหรับคุณ' : ''}</h2><span class="muted" style="font-size:12px">${when}</span></div>
+    ${v.ideas.slice(0, 3).map((x) => `<div class="icard"><span class="em" aria-hidden="true">${esc(x.idea.emoji)}</span>
+      <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><b>${esc(x.idea.hook || x.title)}</b>
+        <span class="muted" style="font-size:13px">${esc(x.idea.angle)}</span>
+        <span class="muted" style="font-size:12px">${x.source === 'gtrends' ? '🔥 กระแส' : '🎬 คลิปมาแรง'}: ${esc(x.title)} · ${esc(x.idea.label)}</span>
+        <span class="row" style="gap:8px;margin-top:4px"><button type="button" class="btn sm" data-make="${x.id}">ทำเลย</button><button type="button" class="btn dark sm" data-open="${x.id}">ดูกระแส</button></span></span></div>`).join('')}` : '';
+  $('#vTrends').innerHTML = v.trends.length ? `<div class="row between"><h2>🔥 กระแสวันนี้ในไทย</h2><span class="muted" style="font-size:12px">Google Trends</span></div>
+    <div class="hs">${v.trends.map((x, i) => `<button type="button" class="tcard" data-open="${x.id}">
+      ${x.thumb ? `<img src="${x.thumb}" alt="" loading="lazy">` : ''}<span class="rk">#${i + 1}${x.traffic ? ` · ค้นหา ${esc(x.traffic)}` : ''}</span>
+      <span class="tt">${esc(x.title)}</span>${x.idea?.summary ? `<span class="hk">${esc(x.idea.summary)}</span>` : x.news ? `<span class="hk">${esc(x.news.title)}</span>` : ''}</button>`).join('')}</div>` : '';
+  const PF = { tiktok: 'TikTok', youtube: 'YouTube', facebook: 'Facebook', instagram: 'IG', web: 'คลิป' };
+  const views = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : n ? String(n) : '');
+  $('#vClips').innerHTML = v.clips.length ? `<div class="row between"><h2>🎬 คลิปมาแรง</h2><span class="muted" style="font-size:12px">แตะเพื่อดูไอเดีย</span></div>
+    <div class="hs">${v.clips.map((x) => `<button type="button" class="vcard" data-open="${x.id}"><span class="ph">${x.thumb ? `<img src="${x.thumb}" alt="" loading="lazy">` : ''}
+      <span class="pf">${x.pinned ? '⭐ ' : ''}${PF[x.platform] || 'คลิป'}</span>${x.views ? `<span class="vw">▶ ${views(x.views)}</span>` : ''}</span>
+      <b>${esc(x.title)}</b><span class="muted" style="font-size:12px">${esc(x.channel)}</span></button>`).join('')}</div>` : '';
+  const make = (x) => {
+    const i = x.idea; if (!i) return toast('ไอเดียกำลังมา ลองใหม่อีกสักพัก');
+    openDraft({ kind: i.kind, style: i.style, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', product: ME.brand?.shopName ? '' : i.product,
+      headline: i.kind === 'image' ? i.hook : '', hookText: i.kind === 'video' ? i.hook : '', details: `เกาะกระแส "${x.title}": ${i.angle}${i.kind === 'video' ? ` · ฮุกเปิดคลิป: ${i.hook}` : ''}` });
+  };
+  app.querySelectorAll('[data-make]').forEach((b) => b.onclick = () => make(byId(b.dataset.make)));
+  app.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => viralSheet(byId(b.dataset.open), make));
+}
+function viralSheet(x, make) {
+  if (!x) return;
+  const bg = document.createElement('div');
+  bg.className = 'sheet-bg';
+  const i = x.idea;
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><span class="grab" aria-hidden="true"></span>
+    ${x.thumb ? `<img src="${x.thumb}" alt="" style="width:100%;max-height:260px;object-fit:cover;border-radius:14px">` : ''}
+    <b style="font-size:19px;line-height:1.35">${esc(x.title)}</b>
+    <span class="muted">${x.source === 'gtrends' ? `🔥 คำค้นหามาแรง${x.traffic ? ` · ${esc(x.traffic)} ครั้ง` : ''}` : `🎬 ${esc(x.channel || '')}`}</span>
+    ${i?.summary ? `<p style="margin:0;color:var(--muted2)">${esc(i.summary)}</p>` : ''}
+    ${x.news ? `<a href="${esc(x.news.url)}" target="_blank" rel="noopener" class="card" style="text-decoration:none;color:var(--fg);padding:10px"><span style="font-size:14px">${esc(x.news.title)}</span><span class="muted" style="font-size:12px">${esc(x.news.source || 'ข่าว')} ↗</span></a>` : ''}
+    ${i ? `<section class="card" style="background:#1C2410;border-color:#3A4A18"><b>${esc(i.emoji)} ไอเดียเกาะกระแส · ${esc(i.label)}</b>
+      <span style="font-size:17px;font-weight:700">"${esc(i.hook)}"</span><span class="muted">${esc(i.angle)}</span>
+      ${i.product ? `<span class="muted" style="font-size:13px">เหมาะกับ: ${esc(i.product)}</span>` : ''}</section>` : '<span class="muted">AI กำลังคิดไอเดียสำหรับกระแสนี้…</span>'}
+    <span class="muted" style="font-size:12px">เกาะกระแสอย่างสร้างสรรค์ ไม่อ้างว่าเกี่ยวข้องกับคนดังหรือแบรนด์ในข่าว และตรวจข้อมูลก่อนโพสต์</span>
+    <div class="grid2"><a class="btn dark" href="${esc(x.url)}" target="_blank" rel="noopener">ดูต้นทาง ↗</a><button type="button" class="btn" id="vmk" ${i ? '' : 'disabled'}>ทำคอนเทนต์นี้</button></div>
+    <button type="button" class="btn ghost" id="vcl">ปิด</button></div>`;
+  const close = () => { bg.remove(); document.removeEventListener('keydown', esc_); window.removeEventListener('hashchange', close); };
+  const esc_ = (e) => { if (e.key === 'Escape') close(); };
+  bg.onclick = (e) => { if (e.target === bg) close(); };
+  document.body.appendChild(bg);
+  bg.querySelector('#vcl').onclick = close;
+  bg.querySelector('#vmk').onclick = () => { close(); make(x); };
+  document.addEventListener('keydown', esc_);
+  window.addEventListener('hashchange', close);
+  bg.querySelector('#vmk').focus();
 }
 
 const soon = (cur, title, text) => {
@@ -323,7 +381,7 @@ function successView(r) {
 
 // ---------- แอดมิน ----------
 // ---------- หลังบ้านแอดมิน ----------
-const ADMIN_TABS = [['dash', 'ภาพรวม'], ['topups', 'เติมดาว'], ['users', 'ผู้ใช้'], ['works', 'ผลงาน'], ['prices', 'ราคา'], ['trends', 'เทรนด์'], ['legal', 'ผู้ให้บริการ']];
+const ADMIN_TABS = [['dash', 'ภาพรวม'], ['topups', 'เติมดาว'], ['users', 'ผู้ใช้'], ['works', 'ผลงาน'], ['prices', 'ราคา'], ['viral', 'ไวรัล'], ['trends', 'แนวงานฮิต'], ['legal', 'ผู้ให้บริการ']];
 async function adminView(qs) {
   const params = new URLSearchParams(qs || '');
   const tab = ADMIN_TABS.some(([k]) => k === params.get('t')) ? params.get('t') : 'dash';
@@ -335,6 +393,7 @@ async function adminView(qs) {
   if (tab === 'prices') return adminPrices();
   if (tab === 'trends') return adminTrends();
   if (tab === 'legal') return adminLegal();
+  if (tab === 'viral') return adminViral();
   return adminDash();
 }
 const kpi = (label, val, sub = '') => `<div class="card" style="padding:12px;gap:2px"><span class="muted" style="font-size:12px">${label}</span><b class="num" style="font-size:22px">${val}</b>${sub ? `<span class="muted" style="font-size:12px">${sub}</span>` : ''}</div>`;
@@ -496,8 +555,9 @@ async function createView(qs) {
     const st = params.get('style');
     const s = params.get('kind') !== 'video' && CAT.styles.find((x) => x.id === st);
     REFS = []; REVS = [];
+    const vs = CAT.video?.styles?.find((x) => x.id === (TV[st] || st));
     if (s) D = { ...newDraft(), style: s.id, ratio: s.ratio, step: 0 };
-    else if (TV[st]) D = { ...newDraft(), kind: 'video', style: TV[st], step: 0 };
+    else if (vs) D = { ...newDraft(), kind: 'video', style: vs.id, step: 0 };
     else { D = { ...newDraft(), kind: 'video' }; toast('คลิปละครสั้นจะเปิดเร็วๆ นี้ ลองแนวเปิดกล่องก่อนได้เลย'); }
     history.replaceState(null, '', '#create');
   }
@@ -1317,7 +1377,7 @@ async function notifCard() {
 // ---------- แชทน้องริช ----------
 let CHAT = null;
 function openDraft(d) {
-  D = { ...newDraft(), kind: d.kind, style: d.style, goal: d.goal || 'sell', product: d.product || '', headline: d.headline || '', price: d.price || '', details: d.details || '', step: d.style ? 2 : 1 };
+  D = { ...newDraft(), kind: d.kind, style: d.style, goal: d.goal || 'sell', product: d.product || '', headline: d.headline || '', price: d.price || '', details: d.details || '', hookText: d.hookText || '', step: d.style ? 2 : 1 };
   if (d.kind === 'image') { const st = CAT?.styles?.find((x) => x.id === d.style); if (st) D.ratio = st.ratio; }
   REFS = []; REVS = []; VFILE = null; ITEMF = []; saveDraft(); go('create');
 }
@@ -1452,6 +1512,37 @@ function myDataView() {
     catch (x) { toast(x.message); e.target.disabled = false; }
   };
 }
+async function adminViral() {
+  const d = await api('api/admin/viral');
+  const SRC = { gtrends: '🔥 Google Trends', youtube: '▶ YouTube มาแรง', curated: '⭐ คลิปที่คัดเอง' };
+  const groups = ['curated', 'gtrends', 'youtube'].map((k) => [k, d.items.filter((x) => x.source === k)]);
+  $('main').innerHTML = `<section class="card"><b>เพิ่มคลิปไวรัลเอง</b><span class="muted">วางลิงก์ TikTok / YouTube (ดึงชื่อและภาพให้อัตโนมัติ) หรือ Facebook / IG (ใส่ชื่อเอง) · ปักหมุดขึ้นหน้าแรก 14 วัน</span>
+      <input type="url" id="vu" placeholder="https://www.tiktok.com/@.../video/..." aria-label="ลิงก์คลิป">
+      <input type="text" id="vt" maxlength="200" placeholder="ชื่อ/คำอธิบาย (ไม่บังคับสำหรับ TikTok/YouTube)" aria-label="ชื่อคลิป">
+      <button type="button" class="btn" id="vadd">เพิ่มคลิป</button></section>
+    <section class="card"><div class="row between"><b>สถานะการดึงข้อมูล</b><button type="button" class="btn dark sm" id="vref">ดึงใหม่ตอนนี้</button></div>
+      <span class="muted">Google Trends ✓ · YouTube ${d.youtube ? '✓' : '✗ ยังไม่ใส่ YOUTUBE_API_KEY'} · AI ไอเดีย ${d.ai ? '✓' : '✗'} · ดึงอัตโนมัติทุก 2 ชม.</span>
+      <span class="muted">ล่าสุด ${d.lastRun ? new Date(d.lastRun).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '-'}${d.lastErr ? ` · ⚠️ ${esc(d.lastErr)}` : ''}</span></section>
+    ${groups.map(([k, xs]) => xs.length ? `<h2>${SRC[k]} (${xs.length})</h2><div class="list">${xs.map((x) => `<div style="display:flex;gap:10px;align-items:flex-start">
+      ${x.thumb ? `<img src="${x.thumb}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px">` : ''}
+      <span style="flex:1;min-width:0"><b style="font-size:14px">${esc(x.title)}</b>${!x.safe ? ' <span class="badge b-warn">AI ซ่อน: ไม่เหมาะ</span>' : ''}${!x.active ? ' <span class="badge b-warn">ปิดแล้ว</span>' : ''}<br>
+        <span class="muted" style="font-size:12px">${x.idea ? `${esc(x.idea.emoji)} ${esc(x.idea.hook)} · ${esc(x.idea.label)}` : 'รอ AI คิดไอเดีย'}${x.tags?.length ? ` · ${x.tags.map(esc).join(', ')}` : ''}</span>
+        <span class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+          <button type="button" class="btn dark sm" data-vp='${JSON.stringify({ id: x.id, active: !x.active })}'>${x.active ? 'ซ่อน' : 'แสดง'}</button>
+          ${!x.safe ? `<button type="button" class="btn dark sm" data-vp='${JSON.stringify({ id: x.id, safe: true })}'>อนุญาตให้แสดง</button>` : ''}
+          <button type="button" class="btn dark sm" data-vp='${JSON.stringify({ id: x.id, pinned: !x.pinned })}'>${x.pinned ? 'เลิกปักหมุด' : 'ปักหมุด'}</button>
+          <button type="button" class="btn dark sm" data-vp='${JSON.stringify({ id: x.id, reidea: true })}'>คิดไอเดียใหม่</button>
+          ${k === 'curated' ? `<button type="button" class="btn ghost sm" data-vd="${x.id}">ลบ</button>` : ''}</span></span></div>`).join('')}</div>` : '').join('') || '<p class="muted">ยังไม่มีข้อมูล กด "ดึงใหม่ตอนนี้"</p>'}`;
+  $('#vadd').onclick = async (e) => {
+    e.target.disabled = true;
+    try { const r = await api('api/admin/viral', { method: 'POST', body: { url: $('#vu').value.trim(), title: $('#vt').value.trim() } }); toast(`เพิ่มแล้ว: ${r.title}`); adminViral(); }
+    catch (x) { toast(x.message); e.target.disabled = false; }
+  };
+  $('#vref').onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'กำลังดึง…'; try { await api('api/admin/viral/refresh', { method: 'POST', body: {} }); toast('ดึงข้อมูลแล้ว'); } catch (x) { toast(x.message); } adminViral(); };
+  app.querySelectorAll('[data-vp]').forEach((b) => b.onclick = async () => { const o = JSON.parse(b.dataset.vp); await api(`api/admin/viral/${o.id}`, { method: 'PATCH', body: o }).catch((x) => toast(x.message)); adminViral(); });
+  app.querySelectorAll('[data-vd]').forEach((b) => b.onclick = async () => { if (!confirm('ลบคลิปนี้?')) return; await api(`api/admin/viral/${b.dataset.vd}`, { method: 'DELETE' }); adminViral(); });
+}
+
 async function adminLegal() {
   const d = await api('api/admin/legal');
   $('main').innerHTML = `<section class="card"><b>ข้อมูลผู้ให้บริการ</b><span class="muted">แสดงในหน้าเงื่อนไข ความเป็นส่วนตัว และการคืนเงิน</span>

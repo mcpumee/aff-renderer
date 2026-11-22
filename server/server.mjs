@@ -132,7 +132,7 @@ async function buildDialogue(id, lines, stage) {
   for (let k = 0; k < lines.length; k++) {
     stage(`เตรียมเสียงพากย์ ${k + 1}/${lines.length}`);
     const L = lines[k];
-    const raw = path.join(TMP, `${id}-l${k}.mp3`);
+    const raw = path.join(TMP, `${id}-l${k}.${L.format === 'wav' ? 'wav' : 'mp3'}`);
     fs.writeFileSync(raw, Buffer.from(L.audio_base64 || '', 'base64'));
     let file = raw;
     const pitch = Number(L.pitch) || 1;
@@ -233,6 +233,7 @@ async function storyProps(id, req, stage, { captions, segs, endStart, speechEnd 
       durationSec: Math.max(endStart + 3.2, speechEnd + 1.2), audioUrl: `${LOCAL}/tmp/${id}-vo.mp3`, captions,
       shots, endStart, endImage, endCut, theme, price: req.price || '', cta: req.cta || 'กดตะกร้าเลย 👇',
       snapshotSec: Math.min(2.5, endStart / 2),
+      music: ['fun', 'hype', 'suspense', 'chill', 'luxury'].includes(req.music) ? req.music : undefined, musicVolume: Math.min(0.3, Math.max(0, Number(req.musicVolume) || 0.1)),
     },
   };
 }

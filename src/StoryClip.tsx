@@ -26,6 +26,8 @@ export type StoryProps = {
   price: string;
   cta: string;
   title?: string;
+  music?: string;
+  musicVolume?: number;
 };
 
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
@@ -107,6 +109,7 @@ export const StoryClip: React.FC<StoryProps> = (p) => {
       <Sequence from={Math.max(0, endF - 1)} durationInFrames={Math.round(1.1 * fps)}><Audio src={staticFile('sfx/sparkle.mp3')} volume={0.5} /></Sequence>
       <Captions captions={p.captions} bottom={330} />
       {p.audioUrl ? <Audio src={p.audioUrl} /> : null}
+      {p.music ? <Audio src={staticFile(`music/${p.music}.mp3`)} volume={p.musicVolume ?? 0.1} loop /> : null}
     </AbsoluteFill>
   );
 };

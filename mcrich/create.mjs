@@ -256,6 +256,18 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       const cost = V.selfPrice(p.videoSec, mode) + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
       return { video: true, self: true, style, tier: { id: mode === 'voice' ? 'self_voice' : 'self_subs', free: false, stars: cost }, versions: 1, p, cost, ...c0 };
     }
+    if (style.id === 'v_drama') {
+      Object.assign(p, {
+        genre: V.GENRES.some((g) => g.id === b.genre) ? b.genre : 'inlaw', art: V.ART.some((a) => a.id === b.art) ? b.art : 'cartoon3d',
+        scenes: Number(b.scenes) === 6 ? 6 : 4, plot: clean(b.plot, 400), dialogue: false, premium: false,
+      });
+      if (!p.product) return { error: 'ใส่ชื่อสินค้าก่อน' };
+      if (p.genre === 'free' && !p.plot) return { error: 'พิมพ์พล็อตเรื่องที่อยากได้' };
+      p.length = p.scenes === 6 ? 45 : 30;
+      const cD = checkContent([p.product, p.details, p.price, p.plot].join(' '));
+      const cost = V.DRAMA_PRICE[p.scenes];
+      return { video: true, style, tier: { id: 'drama', free: false, stars: cost }, versions: 1, p, cost, ...cD };
+    }
     if (style.id === 'v_top') {
       p.items = (Array.isArray(b.items) ? b.items : []).slice(0, 5).map((it) => {
         const l = clean(it?.link, 300);
@@ -292,6 +304,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         formulas: V.FORMULAS.map(({ id, label, desc, rec, dialogue }) => ({ id, label, desc, rec, dialogue: !!dialogue })),
         music: V.MUSIC,
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
+        genres: V.GENRES, art: V.ART.map(({ id, label }) => ({ id, label })), dramaPrices: V.DRAMA_PRICE,
         captionStyles: V.CAPTION_STYLES, selfMaxSec: V.SELF_MAX_SEC, selfPrices: { subs: [V.selfPrice(60, 'subs'), V.selfPrice(120, 'subs'), V.selfPrice(180, 'subs')], voiceExtra: 5 },
         voices: V.VOICES.map(({ id, label, gender }) => ({ id, label, gender })),
         premiumVoices: V.premiumReady() ? V.EL_VOICES.map(({ id, label, gender }) => ({ id, label, gender })) : [],
@@ -362,6 +375,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     }
 
     if (n.style.id === 'v_top' && n.p.nProducts !== n.p.items.length) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปให้ครบทุกสินค้าในอันดับ' }); }
+    if (n.style.id === 'v_drama' && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ละครต้องมีรูปสินค้า 1 รูป' }); }
     if (n.style.id !== 'v_show' && n.style.id !== 'v_top' && (req.files?.refs || []).length > 3) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'รูปสินค้าได้สูงสุด 3 รูป' }); }
     if (n.video && !n.self && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
@@ -599,6 +613,88 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     log('video done', w.id, style.id, p.premium ? 'elevenlabs' : 'gemini-tts', `${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
 
+  // ---------- ละครสั้นขายของ ----------
+  async function processDrama(w) {
+    const p = w.params;
+    const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    const fail = (msg) => { PROG.delete(w.id); return refund(w, msg); };
+    const brand = (await q('SELECT brand FROM profiles WHERE user_id=$1', [w.user_id])).rows[0]?.brand || {};
+    const t0 = Date.now();
+    const prodFile = w.refs.map((r) => path.join(REF_DIR, r)).find((f) => fs.existsSync(f));
+    if (!prodFile) return fail('ไม่พบรูปสินค้า · คืนดาวแล้ว');
+    const prodBuf = fs.readFileSync(prodFile);
+    let d;
+    try { stage('AI กำลังเขียนบทละคร', 5); d = await V.writeDrama(p, brand, GOALS.find((g) => g.id === p.goal)?.label || ''); }
+    catch (e) { log('drama script fail', w.id, e.message); return fail('AI เขียนบทไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว'); }
+    // ฉาก: ฉากแรกก่อน แล้วใช้เป็นต้นแบบหน้าตาตัวละครของฉากถัดไป (ทำพร้อมกัน 2 ฉาก)
+    const art = V.ART.find((a) => a.id === p.art) || V.ART[0];
+    const model = MODEL_OVERRIDE || TIERS[1].model;
+    const imgs = new Array(d.scenes.length).fill(null);
+    let done = 0;
+    const sceneImg = async (i) => {
+      const refs = i === 0 ? [prodBuf] : [prodBuf, imgs[0]];
+      try {
+        const buf = await genImage({ model, prompt: V.scenePrompt(d.scenes[i], d.chars, art, i === 0), refs, ratio: '9:16', size: '1K' });
+        const f = path.join(WORK_DIR, `tmp-${w.id}-sc${i}.jpg`);
+        await sharp(buf).rotate().jpeg({ quality: 90 }).toFile(f);
+        imgs[i] = fs.readFileSync(f);
+        return f;
+      } catch (e) { log('drama scene fail', w.id, i, e.message); return null; } finally { stage(`AI กำลังวาดฉาก ${++done}/${d.scenes.length}`, 10 + Math.round((done / d.scenes.length) * 35)); }
+    };
+    stage(`AI กำลังวาดฉาก 0/${d.scenes.length}`, 10);
+    const files = new Array(d.scenes.length).fill(null);
+    files[0] = await sceneImg(0);
+    if (!files[0]) return fail('AI วาดฉากไม่สำเร็จ (อาจขัดนโยบายเนื้อหา) · คืนดาวแล้ว');
+    let next = 1;
+    await Promise.all([0, 1].map(async () => { while (next < d.scenes.length) { const i = next++; files[i] = await sceneImg(i); } }));
+    for (let i = 1; i < files.length; i++) if (!files[i]) files[i] = files[i - 1]; // ฉากที่พลาด ใช้ภาพฉากก่อนหน้า
+    // เสียง: ทีละบท ตามตัวละคร
+    const lines = [];
+    try {
+      const all = d.scenes.flatMap((sc, si) => sc.lines.map((l) => ({ ...l, shot: si })));
+      let k = 0;
+      await Promise.all([0, 1, 2].map(async () => {
+        while (k < all.length) {
+          const i = k++, L = all[i];
+          const c = d.chars.find((x) => x.name === L.name) || null;
+          const v = await V.voiceOne(L.text, c ? c.voice : V.NARR_VOICE);
+          lines[i] = { text: L.text, name: c ? c.name : '', color: c ? c.color : '#FFFFFF', pitch: c ? c.pitch : 1, shot: L.shot, audio_base64: v.audio_base64, alignment: v.alignment, format: 'wav' };
+          stage(`กำลังพากย์เสียง ${lines.filter(Boolean).length}/${all.length}`, 45 + Math.round((lines.filter(Boolean).length / all.length) * 10));
+        }
+      }));
+      // ฉากจบ: คนสุดท้ายพูด CTA ซ้ำ เป็นท่อนฉากจบ
+      const last = lines.at(-1);
+      const ctaTxt = d.cta && d.cta.length <= 24 ? d.cta.replace(/[\u{1F000}-\u{1FFFF}\u2600-\u27BF]/gu, '').trim() : '';
+      if (ctaTxt && last) {
+        const c = d.chars.find((x) => x.name === last.name);
+        const v = await V.voiceOne(ctaTxt, c ? c.voice : V.NARR_VOICE);
+        lines.push({ ...last, text: ctaTxt, shot: -1, audio_base64: v.audio_base64, alignment: v.alignment });
+      }
+    } catch (e) { log('drama voice fail', w.id, e.message); files.forEach((f) => f && fs.rm(f, () => {})); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    let out;
+    try {
+      stage('กำลังตัดต่อ', 58);
+      out = await V.render({
+        type: 'story', lines, shots: files.map((f, i) => ({ url: V.fileUrl(f), kind: 'image', onscreen: i === 0 ? (d.hookText || d.scenes[0].onscreen) : d.scenes[i].onscreen })),
+        endImage: V.fileUrl(prodFile), price: p.price, cta: CTA[p.goal] || CTA.sell, music: V.pickMusic(p.music, { reveal: 'none' }, p.tone) || undefined, musicVolume: 0.08,
+        metadata: { mcrich: w.id },
+      }, (s) => stage(s.status === 'queued' ? 'รอคิวตัดต่อ' : s.stage || 'กำลังตัดต่อ', 58 + Math.round((s.progress || 0) * 0.38)));
+    } catch (e) { log('drama render fail', w.id, e.message); return fail('ตัดต่อคลิปไม่สำเร็จ · คืนดาวแล้ว'); }
+    finally { setTimeout(() => [...new Set(files)].forEach((f) => f && fs.rm(f, () => {})), 1000); }
+    stage('เกือบเสร็จ', 97);
+    const base = `${w.user_id}-${w.id}-d-${rand(6).toLowerCase()}`;
+    V.moveFile(out.mp4, path.join(WORK_DIR, `${base}.mp4`));
+    let thumb = '';
+    if (fs.existsSync(out.jpg)) { await sharp(out.jpg).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); thumb = `${base}.webp`; fs.rm(out.jpg, () => {}); }
+    const { captions, tags } = await finalizeCaptions(w, p, d.captions);
+    const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
+    await q("UPDATE works SET status='done', title=$6, files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: lines.filter((l) => l.shot >= 0).map((l) => `${l.name || 'ผู้บรรยาย'}: ${l.text}`), cast: d.chars.map(({ name, gender, age }) => ({ name, gender, age })) }), (d.title || w.title).slice(0, 80)]);
+    PROG.delete(w.id);
+    if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
+    log('drama done', w.id, d.scenes.length, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+
   // ---------- คลิปถ่ายเอง ----------
   async function processSelf(w) {
     const p = w.params;
@@ -668,6 +764,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
 
   async function process1(w) {
     if (w.style === 'v_self') return processSelf(w);
+    if (w.style === 'v_drama') return processDrama(w);
     if (w.kind === 'video') return processVideo(w);
     const style = STYLES.find((s) => s.id === w.style);
     const tier = TIERS.find((t) => t.id === w.tier) || TIERS[1];

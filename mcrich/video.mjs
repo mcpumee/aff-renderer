@@ -33,6 +33,7 @@ export const VIDEO_STYLES = [
   { id: 'v_wheel', label: 'หมุนวงล้อนำโชค', emoji: '🎡', color: '#EE4D2D', reveal: 'wheel', themes: ['orange', 'purple', 'candy'], open: 'หมุนวงล้อนำโชค', hook: 'หมุนวงล้อ\nลุ้นของดี!', variants: [] },
   { id: 'v_show', label: 'โชว์สินค้า / ป้ายยาหลายรูป', emoji: '📸', color: '#0E6E6E', reveal: 'show', open: '', hook: '', variants: TEMPLATES },
   { id: 'v_top', label: 'จัดอันดับ Top 3 / Top 5', emoji: '🏆', color: '#B8860B', reveal: 'top', open: '', hook: '', variants: TEMPLATES },
+  { id: 'v_drama', label: 'ละครสั้นขายของ', emoji: '🎭', color: '#7A1E48', reveal: 'drama', open: '', hook: '', variants: [] },
   { id: 'v_self', label: 'ใส่ซับคลิปที่ถ่ายเอง', emoji: '🎬', color: '#1F4E79', reveal: 'self', open: '', hook: '', variants: [] },
   { id: 'v_sell', label: 'ขายของ / รีวิวสินค้า', emoji: '🛍️', color: '#17694A', reveal: 'none', open: '', hook: 'ของมันต้องมี\nบอกต่อ!', variants: [] },
 ];
@@ -324,3 +325,88 @@ export function lineStarts(al, lines) {
   return out;
 }
 export const speechEnd = (al) => al?.character_end_times_seconds?.at(-1) || 0;
+
+// ---------- ละครสั้นขายของ ----------
+export const GENRES = [
+  { id: 'inlaw', label: 'แม่ผัว-ลูกสะใภ้', desc: 'ดราม่าขำๆ แม่ผัวจับผิด สุดท้ายยอมรับ' },
+  { id: 'couple', label: 'แฟนงอน', desc: 'งอนกันแล้วง้อด้วยของดี' },
+  { id: 'office', label: 'เพื่อนออฟฟิศ', desc: 'เพื่อนร่วมงานป้ายยากันในออฟฟิศ' },
+  { id: 'family', label: 'พ่อแม่ลูก', desc: 'อบอุ่น ซึ้งๆ ในครอบครัว' },
+  { id: 'ghost', label: 'ผีหลอกแต่ฮา', desc: 'ผีมาหลอก สุดท้ายผีก็อยากได้ของ' },
+  { id: 'customer', label: 'ลูกค้าเรื่องมาก', desc: 'แม่ค้าเจอลูกค้าจุกจิก ปิดการขายได้' },
+  { id: 'boss', label: 'เจ้านายจอมเหวี่ยง', desc: 'ลูกน้องเอาตัวรอดด้วยของดี' },
+  { id: 'retro', label: 'ย้อนยุค', desc: 'สมัยก่อน ชาววังหรือยุคเก่า เจอของสมัยใหม่' },
+  { id: 'free', label: 'พล็อตของฉันเอง', desc: 'พิมพ์เรื่องที่อยากได้' },
+];
+export const ART = [
+  { id: 'cartoon3d', label: 'การ์ตูน 3D', prompt: 'Pixar-like 3D animated film still, soft cinematic lighting, expressive cute characters' },
+  { id: 'anime', label: 'อนิเมะ', prompt: 'Japanese anime illustration style, clean cel shading, vibrant colors' },
+  { id: 'real', label: 'ภาพจริงแบบซีรีส์', prompt: 'cinematic photorealistic Thai TV drama still, natural lighting, 35mm film look' },
+  { id: 'blocky', label: 'ตัวบล็อกน่ารัก', prompt: 'cute blocky toy-like characters with cube heads and simple shapes, clean bright 3D render' },
+  { id: 'comic', label: 'การ์ตูนหมึก', prompt: 'Thai comic book illustration, bold ink outlines, flat colors, halftone shading' },
+];
+export const DRAMA_PRICE = { 4: 25, 6: 35 };
+// เสียงตามเพศ|วัย → [เสียง Gemini, ระดับเสียง]
+const DRAMA_CAST = {
+  'female|child': [['Leda', 1.22], ['Zephyr', 1.25]], 'female|young': [['Leda', 1], ['Zephyr', 1], ['Aoede', 1]], 'female|middle': [['Kore', 1], ['Sulafat', 1], ['Despina', 1]],
+  'female|old': [['Gacrux', 0.95], ['Sulafat', 0.9]], 'male|child': [['Puck', 1.25], ['Achird', 1.25]], 'male|young': [['Puck', 1], ['Fenrir', 1], ['Achird', 1]],
+  'male|middle': [['Charon', 1], ['Orus', 1], ['Iapetus', 1]], 'male|old': [['Algenib', 0.94], ['Charon', 0.9]],
+};
+export const NARR_VOICE = 'Kore';
+const COLORS = ['#FFE14D', '#7FDBFF', '#FF8FB1', '#9BF6A3', '#FFB86B', '#C9A7FF'];
+export function castDrama(chars) {
+  const used = new Set();
+  return chars.map((c, i) => {
+    const g = /f|หญิง|woman|girl/i.test(c.gender) ? 'female' : 'male';
+    const a = /child|kid|เด็ก/i.test(c.age) ? 'child' : /old|elder|แก่|ชรา|ยาย|ตา/i.test(c.age) ? 'old' : /young|teen|วัยรุ่น|สาว|หนุ่ม/i.test(c.age) ? 'young' : 'middle';
+    const opts = DRAMA_CAST[`${g}|${a}`];
+    const pick = opts.find(([v]) => !used.has(v)) || opts[i % opts.length];
+    used.add(pick[0]);
+    return { ...c, gender: g, age: a, voice: pick[0], pitch: pick[1], color: COLORS[i % COLORS.length] };
+  });
+}
+export async function writeDrama(p, brand, goalLabel) {
+  const genre = GENRES.find((g) => g.id === p.genre) || GENRES[0];
+  const n = p.scenes === 6 ? 6 : 4;
+  const len = n === 6 ? 45 : 30;
+  const prompt = `คุณคือนักเขียนบทละครสั้น TikTok ไทยที่ทำคลิปไวรัลขายของ เขียนละครสั้นแนว "${genre.label}" (${genre.desc})${p.plot ? `\nพล็อตที่ผู้ใช้อยากได้: ${p.plot}` : ''}
+ยาวประมาณ ${len} วินาที แบ่งเป็น ${n} ฉาก สินค้าต้องเข้ามาแก้ปัญหาในเรื่องอย่างเป็นธรรมชาติ ไม่ยัดเยียด มีจุดพลิกหรือมุกตลก
+สินค้า: ${p.product}
+จุดเด่น: ${p.details || '-'}
+ราคา/โปร: ${p.price || '-'}
+เป้าหมาย: ${goalLabel}
+โทน: ${p.tone || 'ตลก ขำๆ'}
+กฎ: ตัวละคร 2-3 ตัว ชื่อไทยสั้นๆ · แต่ละฉาก 1-3 บทพูด ประโยคสั้น ภาษาพูดธรรมชาติ · ห้ามอ้างรักษาโรคหรือคำเกินจริงตามกฎ อย. · ห้ามใส่อีโมจิหรือวงเล็บในบทพูด · ฉากสุดท้ายตัวละครชวน${p.goal === 'aff' ? 'กดตะกร้า' : p.goal === 'promo' ? 'มาที่ร้าน' : 'สั่งซื้อ'}
+look ของตัวละครเขียนเป็นภาษาอังกฤษ ละเอียดพอให้วาดหน้าตาเหมือนเดิมทุกฉาก (อายุ เพศ ทรงผม เสื้อผ้า สีเด่น) · scene เขียนเป็นภาษาอังกฤษ บรรยายสถานที่ ท่าทาง อารมณ์ ใครอยู่ในฉาก ถ้าสินค้าอยู่ในฉากให้เขียนว่า "the product"
+ตอบเป็น JSON เท่านั้น:
+{"title":"ชื่อเรื่องสั้น","characters":[{"name":"ชื่อ","gender":"female|male","age":"child|young|middle|old","look":"English visual description"}],
+"scenes":[{"scene":"English scene description","onscreen":"ข้อความบนจอสั้นๆ ไม่บังคับ","lines":[{"name":"ชื่อตัวละคร","text":"บทพูด"}]}],
+"hookText":"ฮุคบนจอ 2 บรรทัด คั่นด้วย \\n","cta":"ปุ่มท้ายคลิป สั้นมาก",
+"facebook":"แคปชั่น FB 3-6 บรรทัด ใส่ {LINK} ถ้ามีลิงก์","instagram":"แคปชั่น IG","tiktok":"แคปชั่น TikTok สั้นมีฮุค","shopee":"แคปชั่นขาย","hashtags":["5-8 แท็ก"]}`;
+  const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 1 },
+  }, 120000);
+  const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
+  const clean = (x) => String(x || '').replace(/[\u{1F000}-\u{1FFFF}\u2600-\u27BF()[\]{}*#"]/gu, '').replace(/\s+/g, ' ').trim();
+  const chars = castDrama((Array.isArray(o.characters) ? o.characters : []).slice(0, 4).map((c) => ({ name: clean(c.name).slice(0, 16) || 'ตัวละคร', gender: String(c.gender || ''), age: String(c.age || ''), look: String(c.look || '').slice(0, 300) })));
+  if (!chars.length) throw new Error('drama_no_chars');
+  const scenes = (Array.isArray(o.scenes) ? o.scenes : []).slice(0, n).map((sc) => ({
+    scene: String(sc.scene || '').slice(0, 600), onscreen: clean(sc.onscreen).slice(0, 30),
+    lines: (Array.isArray(sc.lines) ? sc.lines : []).slice(0, 4).map((l) => ({ name: clean(l.name), text: clean(l.text).slice(0, 140) })).filter((l) => l.text),
+  })).filter((sc) => sc.scene && sc.lines.length);
+  if (scenes.length < 2) throw new Error('drama_no_scenes');
+  return { title: clean(o.title).slice(0, 40), chars, scenes, hookText: String(o.hookText || '').slice(0, 40), cta: String(o.cta || '').slice(0, 24), captions: o };
+}
+export function scenePrompt(sc, chars, art, first) {
+  const who = chars.filter((c) => sc.scene.includes(c.name) || sc.lines.some((l) => l.name === c.name));
+  const cast = (who.length ? who : chars).map((c) => `- ${c.name}: ${c.look}`).join('\n');
+  return `${art.prompt}. Vertical 9:16 story frame for a short drama.
+Scene: ${sc.scene}
+Characters (keep exactly this appearance):
+${cast}
+${first ? 'The first reference image is the real product: if the product appears, draw it faithfully (same shape, packaging, colors).' : 'Reference images: 1) the real product, 2) an earlier frame of this same story — keep the same characters, faces, outfits and art style.'}
+Thai setting. No text, no letters, no subtitles, no watermark. Leave the top 15% and bottom 25% of the frame visually simple for captions.`;
+}
+/** พากย์บทเดียว (Gemini) → {audio_base64 wav, alignment, format} */
+export async function voiceOne(text, voice) { return voiceGemini([text], voice, ''); }

@@ -14,6 +14,7 @@ import { registerSchedule } from './schedule.mjs';
 import { registerChat } from './chat.mjs';
 import { registerAuto } from './auto.mjs';
 import { registerBackoffice } from './backoffice.mjs';
+import { registerPrivacy, TERMS_VERSION, idHash } from './privacy.mjs';
 import { VIDEO_PRICE } from './video.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
@@ -104,16 +105,18 @@ async function loginOrSignup(provider, subject, info, req) {
         email = CASE WHEN email='' THEN $4 ELSE email END WHERE id=$1`, [userId, info.name || '', info.picture || '', info.email || '']);
     } else {
       isNew = true;
+      const reopened = (await c.query('SELECT 1 FROM closed_identities WHERE hash=$1', [idHash(provider, subject)])).rows.length > 0;
       const refCode = String(readToken(getCookie(req, 'mr_ref'))?.code || '').toUpperCase();
       const ref = refCode ? await c.query('SELECT id FROM users WHERE referral_code=$1', [refCode]) : { rows: [] };
       const u = await c.query(`INSERT INTO users(public_id,name,avatar_url,email,referral_code,referred_by)
         VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
-      ['MR' + rand(5), info.name || 'ผู้ใช้ใหม่', info.picture || '', info.email || '', rand(7), ref.rows[0]?.id || null]);
+      ['MR' + rand(5), info.name || 'ผู้ใช้ใหม่', info.picture || '', info.email || '', rand(7), reopened ? null : ref.rows[0]?.id || null]);
       userId = u.rows[0].id;
       await c.query('INSERT INTO identities(provider,subject,user_id) VALUES($1,$2,$3)', [provider, subject, userId]);
       await c.query('INSERT INTO profiles(user_id) VALUES($1)', [userId]);
-      await c.query('INSERT INTO free_quota(user_id) VALUES($1)', [userId]);
-      await c.query(`INSERT INTO star_ledger(user_id,delta,kind,note) VALUES($1,$2,'signup_bonus','โบนัสสมัครสมาชิก')
+      // เคยปิดบัญชีแล้วสมัครใหม่ → ไม่ได้โบนัสต้อนรับซ้ำ
+      await c.query('INSERT INTO free_quota(user_id, welcome_left) VALUES($1,$2)', [userId, reopened ? 0 : 10]);
+      if (!reopened) await c.query(`INSERT INTO star_ledger(user_id,delta,kind,note) VALUES($1,$2,'signup_bonus','โบนัสสมัครสมาชิก')
         ON CONFLICT DO NOTHING`, [userId, SIGNUP_STARS]);
     }
     await c.query('INSERT INTO audit_log(user_id,action,detail,ip) VALUES($1,$2,$3,$4)',
@@ -124,7 +127,7 @@ async function loginOrSignup(provider, subject, info, req) {
 }
 
 async function me(userId) {
-  const u = (await q(`SELECT u.id,u.public_id,u.name,u.avatar_url,u.email,u.is_admin,u.onboarded,u.referral_code,u.created_at,
+  const u = (await q(`SELECT u.id,u.public_id,u.name,u.avatar_url,u.email,u.is_admin,u.onboarded,u.referral_code,u.created_at,u.terms_version,
       p.interests,p.brand,p.hashtags,
       COALESCE((SELECT sum(delta) FROM star_ledger s WHERE s.user_id=u.id),0)::int AS stars,
       f.welcome_left, f.daily_date, f.daily_used,
@@ -138,7 +141,7 @@ async function me(userId) {
     id: u.public_id, name: u.name, avatar: u.avatar_url, email: u.email, admin: u.is_admin, onboarded: u.onboarded,
     referralCode: u.referral_code, referred: u.referred, createdAt: u.created_at, providers: u.providers || [],
     stars: u.stars, freeImages: { welcome: u.welcome_left ?? 0, today: dailyLeft },
-    interests: u.interests, brand: u.brand, hashtags: u.hashtags,
+    interests: u.interests, brand: u.brand, hashtags: u.hashtags, termsVersion: u.terms_version,
   };
 }
 
@@ -335,6 +338,7 @@ sched.setNotify((uid, text) => chat.notifyLine(uid, text));
 const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks: extras.hooks });
 const auto = registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, videoPrice: VIDEO_PRICE, notify: (uid, t) => chat.notifyLine(uid, t) });
 const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNED });
+const priv = registerPrivacy(app, { q, pool, auth, wrap, log, DATA_DIR, PUBLIC_DIR: path.join(__dir, 'public'), banned: BANNED, purgeFiles: create.purgeFiles, clearSession: (res) => setCookie(res, 'mr_sid', '', 0) });
 // ผลงานเสร็จ → ส่ง Drive (ถ้าเชื่อม) + แจ้งเตือน LINE
 {
   const driveDone = extras.hooks.onDone;
@@ -342,7 +346,7 @@ const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNE
     await Promise.allSettled([driveDone(w), chat.notifyLine(w.user_id, `✅ ผลงานเสร็จแล้ว: ${w.title || 'ผลงานของคุณ'}\nดู/บันทึก/ตั้งเวลาโพสต์ 👉 ${chat.appUrl(`work?id=${w.id}`)}`)]);
   };
 }
-app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready(), create: create.ready(), drive: extras.driveReady(), lineoa: chat.oaReady() }));
+app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready(), create: create.ready(), drive: extras.driveReady(), lineoa: chat.oaReady(), termsVersion: TERMS_VERSION }));
 
 // ---------- หน้าเว็บ ----------
 // index.html ห้ามจำ (ให้ได้เวอร์ชันใหม่ทุกครั้ง) ส่วน js/css ใส่เลขเวอร์ชันในลิงก์
@@ -351,7 +355,6 @@ const INDEX = fs.readFileSync(path.join(__dir, 'public', 'index.html'), 'utf8').
 app.get(['/', '/index.html'], (_q, res) => { res.setHeader('cache-control', 'no-cache'); res.type('html').send(INDEX); });
 app.get('/sw.js', (_q, r) => { r.setHeader('cache-control', 'no-cache'); r.setHeader('service-worker-allowed', './'); r.sendFile(path.join(__dir, 'public', 'sw.js')); });
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
-app.get(['/privacy', '/terms'], (req, res) => res.sendFile(path.join(__dir, 'public', `${req.path.slice(1)}.html`)));
 
-migrate().then(() => office.start()).then(() => { create.start(); sched.start(); chat.start(); auto.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
+migrate().then(() => office.start()).then(() => { create.start(); sched.start(); chat.start(); auto.start(); priv.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

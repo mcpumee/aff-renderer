@@ -970,5 +970,5 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     setInterval(() => sweep().catch((e) => log('sweep', e.message)), 3600e3).unref();
     setTimeout(() => sweep().catch(() => {}), 20000).unref();
   }
-  return { ready, start, createInternal, REF_DIR };
+  return { ready, start, createInternal, REF_DIR, purgeFiles };
 }

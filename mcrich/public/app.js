@@ -98,7 +98,7 @@ function loginView(err) {
       <a class="btn line" href="auth/line" ${CFG.line ? '' : 'aria-disabled="true"'}>${ICON.line}เข้าสู่ระบบด้วย LINE</a>
       <a class="btn google" href="auth/google" ${CFG.google ? '' : 'aria-disabled="true"'}>${ICON.google}เข้าสู่ระบบด้วย Google</a>
       ${!CFG.line && !CFG.google ? '<p class="muted" style="text-align:center">ระบบล็อกอินกำลังตั้งค่า</p>' : ''}
-      <p class="muted" style="text-align:center">เข้าใช้งานถือว่ายอมรับ <a href="terms">เงื่อนไขการใช้</a> และ <a href="privacy">นโยบายความเป็นส่วนตัว</a></p>
+      <p class="muted" style="text-align:center">เข้าใช้งานถือว่ายอมรับ <a href="terms">เงื่อนไขการใช้</a> <a href="privacy">นโยบายความเป็นส่วนตัว</a> และ <a href="refund">การคืนเงิน</a></p>
     </div></div>`;
 }
 
@@ -162,7 +162,8 @@ function profileView(qs) {
     <section class="card" style="background:#1C2410;border-color:#3A4A18"><b>ชวนเพื่อน รับคนละ 20 ดาว</b>
       <div class="row"><input type="text" id="inv" readonly value="${esc(inviteUrl)}" aria-label="ลิงก์ชวนเพื่อน"><button type="button" class="btn sm" id="copyInv">คัดลอก</button></div>
       <span class="muted">ชวนแล้ว ${ME.referred} คน · ได้ดาวเมื่อเพื่อนเติมดาวครั้งแรก</span></section>
-    <div class="row" style="justify-content:center;gap:16px"><a href="privacy" class="muted">นโยบายความเป็นส่วนตัว</a><a href="terms" class="muted">เงื่อนไขการใช้</a></div>
+    <div class="list"><a href="#mydata"><span><b>ข้อมูลและความเป็นส่วนตัว</b><br><span class="muted">ดาวน์โหลดข้อมูลของฉัน · ปิดบัญชี</span></span><span aria-hidden="true">›</span></a></div>
+    <div class="row" style="justify-content:center;gap:16px;flex-wrap:wrap"><a href="terms" class="muted">เงื่อนไขการใช้</a><a href="privacy" class="muted">ความเป็นส่วนตัว</a><a href="refund" class="muted">การคืนเงิน</a></div>
     ${ME.admin ? '<a class="btn dark" href="#admin">หลังบ้านแอดมิน</a>' : ''}
     <button type="button" class="btn ghost" id="logout">ออกจากระบบ</button>
   </main>${nav('profile')}`;
@@ -322,7 +323,7 @@ function successView(r) {
 
 // ---------- แอดมิน ----------
 // ---------- หลังบ้านแอดมิน ----------
-const ADMIN_TABS = [['dash', 'ภาพรวม'], ['topups', 'เติมดาว'], ['users', 'ผู้ใช้'], ['works', 'ผลงาน'], ['prices', 'ราคา'], ['trends', 'เทรนด์']];
+const ADMIN_TABS = [['dash', 'ภาพรวม'], ['topups', 'เติมดาว'], ['users', 'ผู้ใช้'], ['works', 'ผลงาน'], ['prices', 'ราคา'], ['trends', 'เทรนด์'], ['legal', 'ผู้ให้บริการ']];
 async function adminView(qs) {
   const params = new URLSearchParams(qs || '');
   const tab = ADMIN_TABS.some(([k]) => k === params.get('t')) ? params.get('t') : 'dash';
@@ -333,6 +334,7 @@ async function adminView(qs) {
   if (tab === 'works') return adminWorks(params.get('s') || 'failed');
   if (tab === 'prices') return adminPrices();
   if (tab === 'trends') return adminTrends();
+  if (tab === 'legal') return adminLegal();
   return adminDash();
 }
 const kpi = (label, val, sub = '') => `<div class="card" style="padding:12px;gap:2px"><span class="muted" style="font-size:12px">${label}</span><b class="num" style="font-size:22px">${val}</b>${sub ? `<span class="muted" style="font-size:12px">${sub}</span>` : ''}</div>`;
@@ -1402,6 +1404,72 @@ async function linksView() {
   };
 }
 
+// ---------- เงื่อนไข / ข้อมูลของฉัน (PDPA) ----------
+function termsView(again) {
+  app.innerHTML = `<div class="login" style="gap:16px">
+    <div class="brand" style="font-size:22px"><span class="mark" style="width:40px;height:40px;font-size:16px">Mc</span>Rich</div>
+    <h1 style="font-size:26px;margin-top:12px">${again ? 'เราปรับปรุงเงื่อนไขการใช้งาน' : 'ก่อนเริ่มใช้งาน'}</h1>
+    <p style="color:var(--muted2)">${again ? 'อ่านและกดยอมรับฉบับใหม่ก่อนใช้งานต่อนะ' : 'อ่านสรุปสั้นๆ แล้วกดยอมรับเพื่อเริ่มใช้ Mc Rich'}</p>
+    <section class="card" style="gap:8px"><b>สรุปสำคัญ</b>
+      <span class="muted">⭐ ดาว 1 ดาว = 1 บาท ใช้ในแอปเท่านั้น งานล้มเหลวคืนดาวอัตโนมัติ</span>
+      <span class="muted">🗂️ ไฟล์ผลงานเก็บ 7 วัน ควรดาวน์โหลดหรือส่งเข้า Drive</span>
+      <span class="muted">✅ ตรวจผลงาน AI ก่อนโพสต์ทุกครั้ง ห้ามโฆษณาเกินจริงหรือละเมิดผู้อื่น</span>
+      <span class="muted">🔒 ข้อมูลของคุณใช้เพื่อให้บริการเท่านั้น ดาวน์โหลดหรือลบได้เองในแอป</span></section>
+    <div class="list"><a href="terms" target="_blank" rel="noopener"><span><b>เงื่อนไขการใช้บริการ</b></span><span aria-hidden="true">↗</span></a>
+      <a href="privacy" target="_blank" rel="noopener"><span><b>นโยบายความเป็นส่วนตัว</b></span><span aria-hidden="true">↗</span></a>
+      <a href="refund" target="_blank" rel="noopener"><span><b>นโยบายการคืนเงิน</b></span><span aria-hidden="true">↗</span></a></div>
+    <label class="row" for="tok" style="gap:10px;align-items:flex-start"><input id="tok" type="checkbox" class="sw-in"><span>ฉันอ่านและยอมรับเงื่อนไขการใช้บริการ นโยบายความเป็นส่วนตัว และนโยบายการคืนเงิน</span></label>
+    <button type="button" class="btn" id="tgo" disabled>ยอมรับและเริ่มใช้งาน</button>
+    <button type="button" class="btn ghost" id="tout">ไม่ยอมรับ · ออกจากระบบ</button></div>`;
+  $('#tok').onchange = (e) => { $('#tgo').disabled = !e.target.checked; };
+  $('#tgo').onclick = async () => {
+    try { const r = await api('api/me/terms', { method: 'PUT', body: { version: CFG.termsVersion } }); ME.termsVersion = r.termsVersion; route(); }
+    catch (e) { toast(e.message); fetch('api/config').then((x) => x.json()).then((c) => { CFG = c; }).catch(() => {}); }
+  };
+  $('#tout').onclick = async () => { await api('api/logout', { method: 'POST' }).catch(() => {}); ME = null; go('login'); };
+}
+function myDataView() {
+  app.innerHTML = `${topbar('ข้อมูลและความเป็นส่วนตัว', 'profile')}<main>
+    <section class="card"><b>ดาวน์โหลดข้อมูลของฉัน</b>
+      <span class="muted">ไฟล์ JSON รวมข้อมูลบัญชี โปรไฟล์ ประวัติดาว การเติมดาว รายการผลงาน ตารางโพสต์ แชท และแผนอัตโนมัติ (ไฟล์ภาพ/คลิปดาวน์โหลดได้จากหน้าผลงาน)</span>
+      <a class="btn dark" href="api/me/export" download>ดาวน์โหลดข้อมูล</a></section>
+    <section class="card"><b>แก้ไขข้อมูล</b><span class="muted">ชื่อและรูปมาจาก LINE หรือ Google · แก้ชุดแบรนด์ แฮชแท็ก และความสนใจได้ในหน้าโปรไฟล์</span>
+      <div class="grid2"><a class="btn dark sm" href="#brand">ชุดแบรนด์</a><a class="btn dark sm" href="#interests">ความสนใจ</a></div></section>
+    <section class="card"><b>ล้างประวัติแชท</b><span class="muted">ลบข้อความที่คุยกับน้องริชทั้งหมด</span><button type="button" class="btn dark sm" id="cclr">ล้างแชท</button></section>
+    <section class="card" style="border-color:var(--bad)"><b style="color:var(--bad)">ปิดบัญชี</b>
+      <span class="muted">ลบโปรไฟล์ ผลงานและไฟล์ทั้งหมด แชท แผนอัตโนมัติ ตารางโพสต์ และการเชื่อมต่อ Drive / LINE ทันที <b>ดาวคงเหลือ ${num(ME.stars)} ดาวจะหายไป</b> และสมัครใหม่จะไม่ได้โบนัสต้อนรับ ข้อมูลการเงินเก็บต่อตามกฎหมาย 5 ปี</span>
+      ${ME.stars > 0 ? '<span class="muted">มีดาวที่ซื้อเหลืออยู่? อ่าน <a href="refund" target="_blank" rel="noopener">นโยบายการคืนเงิน</a> ก่อนปิดบัญชี</span>' : ''}
+      <label class="f" for="dconf">พิมพ์ <b>ลบบัญชี</b> เพื่อยืนยัน<input id="dconf" type="text" autocomplete="off"></label>
+      <button type="button" class="btn ghost" id="dgo" disabled style="color:var(--bad);border-color:var(--bad)">ปิดบัญชีถาวร</button></section>
+    <div class="row" style="justify-content:center;gap:16px;flex-wrap:wrap"><a href="terms" class="muted">เงื่อนไขการใช้</a><a href="privacy" class="muted">ความเป็นส่วนตัว</a><a href="refund" class="muted">การคืนเงิน</a></div>
+  </main>${nav('profile')}`;
+  $('#dconf').oninput = (e) => { $('#dgo').disabled = e.target.value.trim() !== 'ลบบัญชี'; };
+  $('#cclr').onclick = async () => { if (!confirm('ล้างประวัติแชททั้งหมด?')) return; try { await api('api/chat', { method: 'DELETE' }); toast('ล้างแชทแล้ว'); } catch (e) { toast(e.message); } };
+  $('#dgo').onclick = async (e) => {
+    if (!confirm('ปิดบัญชีถาวร? ย้อนกลับไม่ได้')) return;
+    e.target.disabled = true;
+    try { await api('api/me', { method: 'DELETE', body: { confirm: $('#dconf').value.trim() } }); ME = null; alert('ปิดบัญชีเรียบร้อย ขอบคุณที่ใช้ Mc Rich'); go('login'); }
+    catch (x) { toast(x.message); e.target.disabled = false; }
+  };
+}
+async function adminLegal() {
+  const d = await api('api/admin/legal');
+  $('main').innerHTML = `<section class="card"><b>ข้อมูลผู้ให้บริการ</b><span class="muted">แสดงในหน้าเงื่อนไข ความเป็นส่วนตัว และการคืนเงิน</span>
+      <label class="f" for="lo">ชื่อผู้ประกอบการ / บริษัท<input id="lo" type="text" maxlength="120" value="${esc(d.operator)}"></label>
+      <label class="f" for="la">ที่อยู่ติดต่อ<textarea id="la" rows="2" maxlength="300">${esc(d.address)}</textarea></label>
+      <div class="grid2"><label class="f" for="le">อีเมลติดต่อ<input id="le" type="text" inputmode="email" maxlength="120" value="${esc(d.email)}"></label>
+      <label class="f" for="lp">โทร (ไม่บังคับ)<input id="lp" type="tel" maxlength="20" value="${esc(d.phone)}"></label></div>
+      <span class="muted">LINE OA ใส่ให้อัตโนมัติจากการตั้งค่าระบบ</span>
+      <label class="row" for="lr" style="gap:10px"><input id="lr" type="checkbox" class="sw-in" ${d.reviewed ? 'checked' : ''}><span>ตรวจทานข้อกฎหมายแล้ว (ซ่อนป้าย "ฉบับร่าง")</span></label>
+      <button type="button" class="btn" id="lsave">บันทึก</button></section>
+    <section class="card"><b>เวอร์ชันเงื่อนไข ${esc(d.termsVersion)}</b><span class="muted">ยอมรับแล้ว ${num(d.accepted.ok)} / ${num(d.accepted.total)} คน · ผู้ใช้ที่ยังไม่ยอมรับจะเห็นหน้ายอมรับก่อนใช้งาน</span>
+      <div class="grid3"><a class="btn dark sm" href="terms" target="_blank" rel="noopener">เงื่อนไข</a><a class="btn dark sm" href="privacy" target="_blank" rel="noopener">ส่วนตัว</a><a class="btn dark sm" href="refund" target="_blank" rel="noopener">คืนเงิน</a></div></section>`;
+  $('#lsave').onclick = async () => {
+    try { const r = await api('api/admin/legal', { method: 'PUT', body: { operator: $('#lo').value, address: $('#la').value, email: $('#le').value, phone: $('#lp').value, reviewed: $('#lr').checked } });
+      toast(r.email || !$('#le').value.trim() ? 'บันทึกแล้ว' : 'บันทึกแล้ว (อีเมลไม่ถูกต้อง ไม่ได้บันทึกอีเมล)'); adminLegal(); } catch (e) { toast(e.message); }
+  };
+}
+
 // ---------- เส้นทาง ----------
 async function route() {
   const [name, qs] = location.hash.replace(/^#/, '').split('?');
@@ -1410,12 +1478,14 @@ async function route() {
     try { ME = await api('api/me'); } catch { return; }
   }
   if (r === 'login') return ME ? go('home') : loginView(new URLSearchParams(qs || '').get('err'));
+  if (CFG.termsVersion && ME.termsVersion !== CFG.termsVersion) return termsView(!!ME.termsVersion);
   if (!ME.onboarded && r !== 'onboard') return go('onboard');
   window.scrollTo(0, 0);
   switch (r) {
     case 'onboard': return interestsView('onboard');
     case 'interests': return interestsView('edit');
     case 'profile': return profileView(qs);
+    case 'mydata': return myDataView();
     case 'links': return linksView().catch((e) => toast(e.message));
     case 'plan': return planView().catch((e) => toast(e.message));
     case 'auto': return autoView(qs).catch((e) => toast(e.message));

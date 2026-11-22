@@ -233,3 +233,12 @@ CREATE INDEX IF NOT EXISTS auto_plans_user ON auto_plans(user_id);
 -- ระงับผู้ใช้ (หลังบ้าน)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS star_ledger_kind_time ON star_ledger(kind, created_at);
+
+-- PDPA: ยอมรับเงื่อนไข · ปิดบัญชี (เก็บแค่ค่าแฮชของบัญชีที่ปิด กันรับโบนัสสมัครซ้ำ)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS closed_identities (
+  hash       TEXT PRIMARY KEY,
+  closed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

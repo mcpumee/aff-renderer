@@ -321,11 +321,134 @@ function successView(r) {
 }
 
 // ---------- แอดมิน ----------
-async function adminView(status = 'review') {
-  app.innerHTML = `${topbar('หลังบ้าน · เติมดาว', 'profile')}<main>
+// ---------- หลังบ้านแอดมิน ----------
+const ADMIN_TABS = [['dash', 'ภาพรวม'], ['topups', 'เติมดาว'], ['users', 'ผู้ใช้'], ['works', 'ผลงาน'], ['prices', 'ราคา'], ['trends', 'เทรนด์']];
+async function adminView(qs) {
+  const params = new URLSearchParams(qs || '');
+  const tab = ADMIN_TABS.some(([k]) => k === params.get('t')) ? params.get('t') : 'dash';
+  app.innerHTML = `${topbar('หลังบ้านแอดมิน', 'profile')}<div class="chips" style="padding:12px 16px 0;overflow-x:auto;flex-wrap:nowrap">${ADMIN_TABS.map(([k, l]) => `<a class="chip" href="#admin?t=${k}" aria-pressed="${k === tab}" style="white-space:nowrap;text-decoration:none">${l}</a>`).join('')}</div>
+    <main><p class="muted">กำลังโหลด…</p></main>${nav('profile')}`;
+  if (tab === 'topups') return adminTopups();
+  if (tab === 'users') return params.get('u') ? adminUser(params.get('u')) : adminUsers(params.get('q') || '', params.get('sort') || 'new');
+  if (tab === 'works') return adminWorks(params.get('s') || 'failed');
+  if (tab === 'prices') return adminPrices();
+  if (tab === 'trends') return adminTrends();
+  return adminDash();
+}
+const kpi = (label, val, sub = '') => `<div class="card" style="padding:12px;gap:2px"><span class="muted" style="font-size:12px">${label}</span><b class="num" style="font-size:22px">${val}</b>${sub ? `<span class="muted" style="font-size:12px">${sub}</span>` : ''}</div>`;
+async function adminDash() {
+  const d = await api('api/admin/stats');
+  const max = Math.max(1, ...d.days.map((x) => x.baht));
+  $('main').innerHTML = `
+    ${d.works.stuck ? `<div class="card" style="border-color:var(--warn)"><b>⚠️ งานค้างเกิน 30 นาที ${d.works.stuck} ชิ้น</b><a href="#admin?t=works&s=working">ดูรายการ ›</a></div>` : ''}
+    ${d.money.review ? `<a class="card" href="#admin?t=topups" style="text-decoration:none;color:inherit;border-color:var(--lime)"><b>สลิปรอตรวจ ${d.money.review} รายการ ›</b></a>` : ''}
+    <h2>รายได้ (เติมดาว)</h2>
+    <div class="grid2">${kpi('วันนี้', '฿' + num(d.money.today))}${kpi('เดือนนี้', '฿' + num(d.money.month))}${kpi('ทั้งหมด', '฿' + num(d.money.total), `ลูกค้าจ่ายเงิน ${num(d.money.payers)} คน`)}${kpi('ดาวค้างในระบบ', num(d.stars.outstanding), 'ดาวที่ลูกค้ายังไม่ได้ใช้')}</div>
+    <section class="card"><b>14 วันล่าสุด</b>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:120px" role="img" aria-label="กราฟรายได้ 14 วัน">${d.days.map((x) => `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end" title="${x.d}: ฿${num(x.baht)} · ${x.works} งาน">
+        <div style="width:100%;background:var(--lime);border-radius:4px 4px 0 0;height:${Math.max(2, Math.round(x.baht / max * 100))}%"></div></div>`).join('')}</div>
+      <div class="row between muted" style="font-size:11px"><span>${d.days[0].d}</span><span>วันนี้</span></div></section>
+    <h2>ดาว</h2>
+    <div class="grid2">${kpi('ใช้วันนี้', num(d.stars.spent_today))}${kpi('ใช้เดือนนี้', num(d.stars.spent_month))}${kpi('แจกเดือนนี้', num(d.stars.given_month), 'สมัคร/ชวนเพื่อน/แอดมิน')}${kpi('แผนอัตโนมัติเปิดอยู่', num(d.extra.auto_on || 0), `คิวโพสต์ ${num(d.extra.sched || 0)}`)}</div>
+    <h2>ผู้ใช้</h2>
+    <div class="grid2">${kpi('ทั้งหมด', num(d.users.total), `ระงับ ${num(d.users.banned)}`)}${kpi('ใหม่วันนี้', num(d.users.today), `7 วัน ${num(d.users.week)}`)}${kpi('เข้าใช้ 7 วัน', num(d.users.active7))}${kpi('แชทน้องริชวันนี้', num(d.extra.chats_today || 0))}</div>
+    <h2>ผลงาน</h2>
+    <div class="grid2">${kpi('สร้างวันนี้', num(d.works.today), `คลิป ${num(d.works.video_today)}`)}${kpi('คิว / กำลังทำ', `${num(d.works.queued)} / ${num(d.works.working)}`, `รอตรวจซับ ${num(d.works.review)}`)}${kpi('สำเร็จ 24 ชม.', num(d.works.done24))}${kpi('ล้มเหลว 24 ชม.', num(d.works.failed24), '<a href="#admin?t=works">ดูสาเหตุ ›</a>')}</div>
+    <h2>แนวยอดนิยม 30 วัน</h2>
+    <div class="list">${d.styles.map((x) => `<div><span><b>${esc(x.style)}</b> <span class="muted">${x.kind === 'video' ? '🎬' : '🖼️'}</span><br><span class="muted">${num(x.n)} งาน · ${num(x.stars)} ดาว${x.failed ? ` · ล้มเหลว ${x.failed}` : ''}</span></span></div>`).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div>`;
+}
+async function adminUsers(qv, sort) {
+  const d = await api(`api/admin/users?q=${encodeURIComponent(qv)}&sort=${sort}`);
+  $('main').innerHTML = `<form id="us" class="row" style="gap:8px"><input type="text" id="uq" value="${esc(qv)}" placeholder="ค้นหา รหัส MR… / ชื่อ / อีเมล" aria-label="ค้นหาผู้ใช้"><button class="btn sm" type="submit">ค้นหา</button></form>
+    <div class="chips">${[['new', 'ใหม่สุด'], ['active', 'เข้าใช้ล่าสุด'], ['paid', 'จ่ายเยอะสุด'], ['stars', 'ดาวเยอะสุด']].map(([k, l]) => `<a class="chip" href="#admin?t=users&sort=${k}&q=${encodeURIComponent(qv)}" aria-pressed="${k === sort}" style="text-decoration:none">${l}</a>`).join('')}</div>
+    <div class="list">${d.items.map((u) => `<a href="#admin?t=users&u=${u.id}" style="display:flex;gap:10px;align-items:center;text-decoration:none;color:inherit">
+      ${u.avatar ? `<img src="${esc(u.avatar)}" alt="" style="width:40px;height:40px;border-radius:50%;object-fit:cover">` : '<span style="width:40px;height:40px;border-radius:50%;background:var(--s2);display:inline-block"></span>'}
+      <span style="flex:1;min-width:0"><b>${esc(u.name || '-')}</b> <span class="muted">${esc(u.id)}</span>${u.admin ? ' <span class="badge b-lime">แอดมิน</span>' : ''}${u.banned ? ' <span class="badge b-warn">ระงับ</span>' : ''}<br>
+      <span class="muted">⭐${num(u.stars)} · ${num(u.works)} งาน · จ่าย ฿${num(u.paid)} · ${esc(u.providers)}</span></span><span aria-hidden="true">›</span></a>`).join('') || '<div class="muted">ไม่พบ</div>'}</div>`;
+  $('#us').onsubmit = (e) => { e.preventDefault(); go(`admin?t=users&sort=${sort}&q=${encodeURIComponent($('#uq').value.trim())}`); };
+}
+async function adminUser(pid) {
+  const d = await api('api/admin/users/' + encodeURIComponent(pid));
+  const u = d.user;
+  $('main').innerHTML = `<a href="#admin?t=users" style="font-size:14px">‹ รายชื่อผู้ใช้</a>
+    <section class="card"><div class="row" style="gap:12px">${u.avatar ? `<img src="${esc(u.avatar)}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover">` : ''}
+      <span><b style="font-size:18px">${esc(u.name || '-')}</b><br><span class="muted">${esc(u.id)} · ${esc(u.email || '')} · ${esc(u.providers)}</span></span></div>
+      <span class="muted">สมัคร ${new Date(u.createdAt).toLocaleDateString('th-TH')} · เข้าล่าสุด ${new Date(u.lastLogin).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+      <div class="grid2">${kpi('ดาวคงเหลือ', num(u.stars))}${kpi('จ่ายแล้ว', '฿' + num(u.paid), `${num(u.works)} งาน`)}</div></section>
+    <section class="card"><b>เพิ่ม / หักดาว</b>
+      <div class="grid2"><label class="f" for="sd">จำนวน (ติดลบ = หัก)<input id="sd" type="number" step="1" placeholder="เช่น 50 หรือ -20"></label>
+      <label class="f" for="sn">เหตุผล<input id="sn" type="text" maxlength="120" placeholder="ชดเชยงานเสีย / โปรโมชัน"></label></div>
+      <button type="button" class="btn" id="sgo">บันทึก</button></section>
+    ${u.admin ? '' : `<button type="button" class="btn ${u.banned ? '' : 'ghost'}" id="ban" style="width:100%">${u.banned ? 'ยกเลิกระงับบัญชี' : 'ระงับบัญชีนี้'}</button>`}
+    <h2>ประวัติดาว</h2><div class="list">${d.ledger.map((x) => `<div><span><b>${esc(x.note || x.kind)}</b><br><span class="muted">${esc(x.kind)} · ${new Date(x.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span></span>
+      <b class="num" style="color:${x.delta >= 0 ? 'var(--ok)' : 'var(--bad)'}">${x.delta >= 0 ? '+' : '−'}${num(Math.abs(x.delta))}</b></div>`).join('') || '<div class="muted">ไม่มี</div>'}</div>
+    <h2>ผลงานล่าสุด</h2><div class="list">${d.works.map((w) => `<div><span><b>${esc(w.title || w.style)}</b><br><span class="muted">#${w.id} · ${esc(w.style)} · ${w.cost} ดาว · ${new Date(w.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>${w.error ? `<br><span class="muted" style="color:var(--bad)">${esc(w.error)}</span>` : ''}</span>
+      <span class="badge ${w.status === 'done' ? 'b-ok' : w.status === 'failed' ? 'b-warn' : 'b-lime'}">${esc(w.status)}</span></div>`).join('') || '<div class="muted">ไม่มี</div>'}</div>`;
+  $('#sgo').onclick = async () => {
+    const delta = Number($('#sd').value); const note = $('#sn').value.trim();
+    if (!delta || !note) return toast('ใส่จำนวนและเหตุผล');
+    if (!confirm(`${delta > 0 ? 'เพิ่ม' : 'หัก'} ${Math.abs(delta)} ดาว ให้ ${u.name}?`)) return;
+    try { const r = await api(`api/admin/users/${u.id}/stars`, { method: 'POST', body: { delta, note } }); toast(`บันทึกแล้ว คงเหลือ ${num(r.stars)} ดาว`); adminUser(pid); } catch (e) { toast(e.message); }
+  };
+  const bb = $('#ban'); if (bb) bb.onclick = async () => {
+    if (!confirm(u.banned ? 'ยกเลิกการระงับ?' : 'ระงับบัญชีนี้? ผู้ใช้จะใช้งานไม่ได้และแผนอัตโนมัติจะหยุด')) return;
+    try { await api(`api/admin/users/${u.id}/ban`, { method: 'POST', body: { banned: !u.banned } }); toast('บันทึกแล้ว'); adminUser(pid); } catch (e) { toast(e.message); }
+  };
+}
+async function adminWorks(st) {
+  const d = await api('api/admin/works?status=' + st);
+  $('main').innerHTML = `<div class="chips">${[['failed', 'ล้มเหลว'], ['working', 'กำลังทำ'], ['queued', 'รอคิว'], ['review', 'รอตรวจซับ'], ['done', 'สำเร็จ']].map(([k, l]) => `<a class="chip" href="#admin?t=works&s=${k}" aria-pressed="${k === st}" style="text-decoration:none">${l}</a>`).join('')}</div>
+    ${st === 'failed' && d.errors.length ? `<section class="card"><b>สาเหตุที่พบบ่อย 7 วัน</b>${d.errors.map((x) => `<span class="muted">${num(x.n)}× ${esc(x.e || '(ไม่ระบุ)')}</span>`).join('')}</section>` : ''}
+    <div class="list">${d.items.map((w) => `<a href="#admin?t=users&u=${esc(w.public_id)}" style="text-decoration:none;color:inherit;display:block"><b>#${w.id} ${esc(w.title || w.style)}</b><br>
+      <span class="muted">${esc(w.name)} (${esc(w.public_id)}) · ${esc(w.style)} · ${w.cost} ดาว${w.status === 'failed' ? (w.refunded ? ' · คืนดาวแล้ว ✓' : w.cost ? ' · ยังไม่คืนดาว' : '') : ''}</span><br>
+      <span class="muted">${new Date(w.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}${w.done_at ? ' → ' + new Date(w.done_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+      ${w.error ? `<br><span style="color:var(--bad);font-size:14px;overflow-wrap:anywhere">${esc(w.error)}</span>` : ''}</a>`).join('') || '<div class="muted">ไม่มีรายการ</div>'}</div>`;
+}
+async function adminPrices() {
+  const d = await api('api/admin/prices');
+  const p = d.prices, df = d.defaults;
+  const inp = (id, v, def, label) => `<label class="f" for="${id}">${label}<input id="${id}" type="number" min="1" max="500" step="1" value="${v}"><span class="muted" style="font-size:12px">ค่าเดิม ${def}</span></label>`;
+  $('main').innerHTML = `<section class="card"><b>ราคาภาพ (ดาว/ภาพ)</b><div class="grid2">${Object.keys(p.tiers).map((k) => inp('t_' + k, p.tiers[k], df.tiers[k], esc(d.labels.tiers[k] || k))).join('')}</div></section>
+    <section class="card"><b>คลิปทั่วไป (ดาว/คลิป)</b><div class="grid2">${Object.keys(p.video).map((k) => inp('v_' + k, p.video[k], df.video[k], `${k} วินาที`)).join('')}${inp('pv', p.premiumVoice, df.premiumVoice, 'บวกเสียงพรีเมียม')}</div></section>
+    <section class="card"><b>ละครสั้น (ดาว/เรื่อง)</b><div class="grid2">${Object.keys(p.drama).map((k) => inp('d_' + k, p.drama[k], df.drama[k], `${k} ฉาก`)).join('')}</div></section>
+    <p class="muted" style="font-size:13px">มีผลทันทีกับงานใหม่ งานที่สั่งไปแล้วไม่เปลี่ยน · ราคาต้นทุน+80% คำนวณไว้แล้วในค่าเดิม</p>
+    <div class="grid2"><button type="button" class="btn ghost" id="preset">คืนค่าเดิม</button><button type="button" class="btn" id="psave">บันทึกราคา</button></div>`;
+  const val = (id) => Number($('#' + id).value);
+  $('#psave').onclick = async () => {
+    const body = { tiers: Object.fromEntries(Object.keys(p.tiers).map((k) => [k, val('t_' + k)])), video: Object.fromEntries(Object.keys(p.video).map((k) => [k, val('v_' + k)])),
+      drama: Object.fromEntries(Object.keys(p.drama).map((k) => [k, val('d_' + k)])), premiumVoice: val('pv') };
+    try { await api('api/admin/prices', { method: 'PUT', body }); CAT = null; toast('บันทึกราคาแล้ว'); adminPrices(); } catch (e) { toast(e.message); }
+  };
+  $('#preset').onclick = async () => { if (!confirm('คืนราคาทั้งหมดเป็นค่าเดิม?')) return; await api('api/admin/prices', { method: 'PUT', body: { reset: true } }); CAT = null; toast('คืนค่าแล้ว'); adminPrices(); };
+}
+async function adminTrends() {
+  const d = await api('api/admin/trends');
+  const row = (t) => `<section class="card" data-id="${t ? t.id : 'new'}">
+    <div class="grid2"><label class="f">ชื่อ<input type="text" name="title" maxlength="60" value="${esc(t?.title || '')}"></label>
+    <label class="f">รหัสแนว<input type="text" name="style" maxlength="40" value="${esc(t?.style || '')}" placeholder="v_mystery"></label>
+    <label class="f">ประเภท<select name="kind"><option value="video" ${t?.kind !== 'image' ? 'selected' : ''}>คลิป</option><option value="image" ${t?.kind === 'image' ? 'selected' : ''}>ภาพ</option></select></label>
+    <label class="f">ป้ายราคา<input type="text" name="price" maxlength="30" value="${esc(t?.price || '')}" placeholder="เริ่ม 12 ดาว"></label>
+    <label class="f">ป้ายมุม<input type="text" name="badge" maxlength="20" value="${esc(t?.badge || '')}" placeholder="ฮิต"></label>
+    <label class="f">ลำดับ<input type="number" name="sort" step="1" value="${t?.sort ?? 0}"></label></div>
+    <label class="f">แท็กจับคู่ความสนใจ (คั่นด้วย ,)<input type="text" name="tags" value="${esc((t?.tags || []).join(', '))}"></label>
+    <div class="row" style="gap:8px;flex-wrap:wrap">${t ? `<label class="row" style="gap:6px"><input type="checkbox" class="sw-in" name="active" ${t.active ? 'checked' : ''}>แสดง</label>` : ''}
+      <input type="color" name="color" value="${esc(t?.color || '#333333')}" aria-label="สี" style="width:44px;height:36px;padding:0;border:0;background:none">
+      <button type="button" class="btn sm" data-save>${t ? 'บันทึก' : '+ เพิ่ม'}</button>${t ? '<button type="button" class="btn ghost sm" data-del>ลบ</button>' : ''}</div></section>`;
+  $('main').innerHTML = `<p class="muted">การ์ดเทรนด์หน้าแรก เรียงตามลำดับ แสดงตามความสนใจของลูกค้า</p>${row(null)}${d.items.map(row).join('')}`;
+  app.querySelectorAll('[data-id]').forEach((card) => {
+    const get = () => { const o = {}; card.querySelectorAll('[name]').forEach((i) => { o[i.name] = i.type === 'checkbox' ? i.checked : i.value; }); return o; };
+    const id = card.dataset.id;
+    card.querySelector('[data-save]').onclick = async () => {
+      try { await api(id === 'new' ? 'api/admin/trends' : `api/admin/trends/${id}`, { method: id === 'new' ? 'POST' : 'PATCH', body: get() }); toast('บันทึกแล้ว'); adminTrends(); } catch (e) { toast(e.message); }
+    };
+    const del = card.querySelector('[data-del]'); if (del) del.onclick = async () => { if (!confirm('ลบเทรนด์นี้?')) return; await api(`api/admin/trends/${id}`, { method: 'DELETE' }); adminTrends(); };
+  });
+}
+async function adminTopups(status = 'review') {
+  $('main').innerHTML = `
     <div class="chips">${[['review', 'รอตรวจ'], ['paid', 'สำเร็จ'], ['rejected', 'ไม่ผ่าน']].map(([k, l]) => `<button type="button" class="chip" data-s="${k}" aria-pressed="${k === status}">${l}</button>`).join('')}</div>
-    <div id="sum" class="muted"></div><div id="list" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></div></main>${nav('profile')}`;
-  app.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => adminView(b.dataset.s));
+    <div id="sum" class="muted"></div><div id="list" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></div>`;
+  app.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => adminTopups(b.dataset.s));
   const d = await api('api/admin/topups?status=' + status);
   $('#sum').textContent = `เดือนนี้เติมสำเร็จ ${num(d.month.n)} รายการ · ฿${num(d.month.total)}`;
   $('#list').innerHTML = d.items.map((t) => `<section class="card">
@@ -335,8 +458,8 @@ async function adminView(status = 'review') {
     ${t.slip ? `<a href="${t.slip}" target="_blank" rel="noopener"><img src="${t.slip}" alt="สลิป" style="max-width:100%;max-height:360px;border-radius:10px"></a>` : '<span class="muted">ไม่มีสลิป</span>'}
     ${status === 'review' ? `<div class="grid2"><button type="button" class="btn" data-ok="${t.id}">อนุมัติ เติมดาว</button><button type="button" class="btn ghost" data-no="${t.id}">ไม่ผ่าน</button></div>` : ''}
   </section>`).join('') || '<p class="muted">ไม่มีรายการ</p>';
-  app.querySelectorAll('[data-ok]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/topups/${b.dataset.ok}/approve`, { method: 'POST', body: {} }); toast('เติมดาวแล้ว'); adminView(status); } catch (e) { toast(e.message); } });
-  app.querySelectorAll('[data-no]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/topups/${b.dataset.no}/reject`, { method: 'POST', body: {} }); toast('ปฏิเสธแล้ว'); adminView(status); } catch (e) { toast(e.message); } });
+  app.querySelectorAll('[data-ok]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/topups/${b.dataset.ok}/approve`, { method: 'POST', body: {} }); toast('เติมดาวแล้ว'); adminTopups(status); } catch (e) { toast(e.message); } });
+  app.querySelectorAll('[data-no]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/topups/${b.dataset.no}/reject`, { method: 'POST', body: {} }); toast('ปฏิเสธแล้ว'); adminTopups(status); } catch (e) { toast(e.message); } });
 }
 
 async function starsView() {
@@ -1300,7 +1423,7 @@ async function route() {
     case 'tags': return tagsView();
     case 'stars': return starsView().catch((e) => toast(e.message));
     case 'topup': return topupView().catch((e) => toast(e.message));
-    case 'admin': return ME.admin ? adminView().catch((e) => toast(e.message)) : go('home');
+    case 'admin': return ME.admin ? adminView(qs).catch((e) => toast(e.message)) : go('home');
     case 'create': return createView(qs).catch((e) => toast(e.message));
     case 'works': return worksView().catch((e) => toast(e.message));
     case 'work': return workView(qs).catch((e) => toast(e.message));

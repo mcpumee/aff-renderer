@@ -13,6 +13,7 @@ import { registerExtras } from './extras.mjs';
 import { registerSchedule } from './schedule.mjs';
 import { registerChat } from './chat.mjs';
 import { registerAuto } from './auto.mjs';
+import { registerBackoffice } from './backoffice.mjs';
 import { VIDEO_PRICE } from './video.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
@@ -244,9 +245,11 @@ if (process.env.TEST_LOGIN === '1' && PUBLIC_URL.startsWith('http://localhost'))
 }
 
 // ---------- ต้องล็อกอิน ----------
+const BANNED = new Set();
 const auth = async (req, res, next) => {
   const t = readToken(getCookie(req, 'mr_sid'));
   if (!t?.uid) return res.status(401).json({ error: 'login' });
+  if (BANNED.has(Number(t.uid))) return res.status(403).json({ error: 'บัญชีนี้ถูกระงับ ติดต่อแอดมิน' });
   req.uid = t.uid;
   next();
 };
@@ -331,6 +334,7 @@ const chat = registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL });
 sched.setNotify((uid, text) => chat.notifyLine(uid, text));
 const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks: extras.hooks });
 const auto = registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, videoPrice: VIDEO_PRICE, notify: (uid, t) => chat.notifyLine(uid, t) });
+const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNED });
 // ผลงานเสร็จ → ส่ง Drive (ถ้าเชื่อม) + แจ้งเตือน LINE
 {
   const driveDone = extras.hooks.onDone;
@@ -349,5 +353,5 @@ app.get('/sw.js', (_q, r) => { r.setHeader('cache-control', 'no-cache'); r.setHe
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 app.get(['/privacy', '/terms'], (req, res) => res.sendFile(path.join(__dir, 'public', `${req.path.slice(1)}.html`)));
 
-migrate().then(() => { create.start(); sched.start(); chat.start(); auto.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
+migrate().then(() => office.start()).then(() => { create.start(); sched.start(); chat.start(); auto.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

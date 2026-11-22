@@ -76,7 +76,8 @@ export function pickMusic(m, style, tone) {
 export const LENGTHS = [{ id: 15, label: '15 วิ' }, { id: 30, label: '30 วิ' }, { id: 45, label: '45 วิ' }];
 // ราคา (ดาว) — ปรับได้ที่นี่ที่เดียว
 export const VIDEO_PRICE = { 15: 12, 30: 15, 45: 20 };
-export const PREMIUM_VOICE_EXTRA = 8;
+export let PREMIUM_VOICE_EXTRA = 8;
+export const setPremiumExtra = (n) => { PREMIUM_VOICE_EXTRA = n; };
 
 // เสียงพากย์ Gemini (ค่าเริ่มต้น)
 export const VOICES = [

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
 import sharp from 'sharp';
+import { TIERS } from './create.mjs';
 
 export const AUTO_STYLES = [
   { id: 'sale_banner', kind: 'image', label: 'ป้ายโปรแรง', est: 5 },
@@ -25,7 +26,7 @@ export function registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, 
   const DIR = path.join(DATA_DIR, 'auto');
   fs.mkdirSync(DIR, { recursive: true });
   const upload = multer({ dest: path.join(DATA_DIR, 'tmp'), limits: { fileSize: 10 * 1024 * 1024, files: 3 } });
-  const est = (st, len) => (st.kind === 'image' ? 5 : videoPrice[len] || videoPrice[15]);
+  const est = (st, len) => (st.kind === 'image' ? (TIERS.find((t) => t.id === 'std')?.stars || 5) : videoPrice[len] || videoPrice[15]);
   const thaiNow = () => new Date(Date.now() + 7 * 3600e3);
   const clean = (v, n) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
   const monthKey = () => thaiNow().toISOString().slice(0, 7);

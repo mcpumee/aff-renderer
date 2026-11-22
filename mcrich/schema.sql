@@ -229,3 +229,7 @@ CREATE TABLE IF NOT EXISTS auto_plans (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS auto_plans_user ON auto_plans(user_id);
+
+-- ระงับผู้ใช้ (หลังบ้าน)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS star_ledger_kind_time ON star_ledger(kind, created_at);

@@ -192,7 +192,7 @@ async function ttsLine(text, voice, tone) {
   for (const m of models) {
     try {
       const j = await gpost(`${API()}/v1beta/models/${m}:generateContent`, {
-        contents: [{ role: 'user', parts: [{ text: `Read this Thai line aloud in a ${tone} Thai social-media voice, natural and lively, fast pace: ${text}` }] }],
+        contents: [{ role: 'user', parts: [{ text }] }], // ส่งเฉพาะบทไทย (ถ้าใส่คำสั่งกำกับ โมเดลจะอ่านออกเสียงคำสั่งด้วย)
         generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
       }, 90000);
       const part = (j.candidates?.[0]?.content?.parts || []).find((p) => p.inlineData?.data || p.inline_data?.data);

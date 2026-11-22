@@ -283,7 +283,9 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
     const { ytLeft, scLeft } = await budgets(c);
     const { seen, combos } = await plan(c);
     if (!combos.length) return 'ไม่มีแหล่งที่เปิดใช้';
-    const r = await runCombos(c, combos, seen, Math.min(ytLeft, Math.ceil(c.ytDaily / 12)), Math.min(scLeft, Math.ceil(c.daily / 12)));
+    // คู่ (สไตล์×แพลตฟอร์ม) ที่ยังไม่มีคลิปเลย → ดึงให้ครบรอบนี้เลย (ภายในงบวันนี้) ลูกค้าจะได้ไม่ต้องรอ
+    const empty = (p) => combos.filter((x) => x.prov === p && x.pri >= 10).length;
+    const r = await runCombos(c, combos, seen, Math.min(ytLeft, Math.max(Math.ceil(c.ytDaily / 12), empty('yt'))), Math.min(scLeft, Math.max(Math.ceil(c.daily / 12), empty('sc'))));
     return `${r.n} คลิป · YouTube ${r.ytCalls} ครั้ง · ScrapeCreators ${r.scCalls} เครดิต`;
   }
   // ลูกค้ากดดูสไตล์ที่ยังว่าง → ดึงให้ทันที (สูงสุด 3 คู่ต่อครั้ง กันใช้งบเกิน)
@@ -453,16 +455,24 @@ ${list}
       else list = base.filter((r) => (r.meta?.groups || []).includes(g));
       list.sort(req.query.sort === 'new' ? (x, y) => new Date(y.meta?.posted || y.first_seen) - new Date(x.meta?.posted || x.first_seen) : byScore);
     }
+    // ไม่ให้ลูกค้ารอ: ถ้าสไตล์นี้ยังมีคลิปน้อย เติมด้วยคลิปมาแรงของแพลตฟอร์มเดียวกันทันที (ระหว่างระบบดึงสไตล์นี้เพิ่มเบื้องหลัง)
+    let fallback = false;
+    if (pf !== 'google' && list.length < limit && !page) {
+      const ids = new Set(list.map((r) => r.id));
+      const extra = clipsOf(pf).filter((r) => !ids.has(r.id)).sort(byScore).slice(0, limit - list.length);
+      if (extra.length) { fallback = list.length < 4; list = [...list, ...extra.map((r) => ({ ...r, _fb: true }))]; }
+    }
     // ชิปสไตล์: ทุกสไตล์ที่ผู้ใช้เลือกไว้ (สไตล์ที่ยังว่าง ระบบจะดึงให้ทันทีเมื่อกดดู)
     const myChips = GROUPS.filter((x) => myGroups.includes(x.key)).map((x) => ({ key: x.key, label: x.label, emoji: x.emoji,
       n: pf === 'google' ? all.filter((r) => r.source === 'gtrends' && (r.tags || []).includes(x.interest)).length : clipsOf(pf).filter((r) => (r.meta?.groups || []).includes(x.key)).length }));
     let fillingNow = false;
     if (pf !== 'google' && !page) {
-      const want = g === 'mine' ? myChips.filter((x) => x.n < 4).map((x) => x.key) : list.length < 4 ? [g] : [];
+      const own = list.filter((r) => !r._fb).length;
+      const want = g === 'mine' ? myChips.filter((x) => x.n < 4).map((x) => x.key) : own < 4 ? [g] : [];
       if (want.length) { const c = await cfg(); const pairs = want.filter((k) => GROUPS.some((x) => x.key === k)).slice(0, 3).map((k) => [k, pf]); if (pairs.length && provOf(pf, c)) fillingNow = fillNow(pairs); }
     }
-    res.json({ platform: pf, tabs, items: list.slice(page * limit, page * limit + limit).map(view), total: list.length, general,
-      myChips, needStyles: !myGroups.length, filling: fillingNow && list.length < 4 });
+    res.json({ platform: pf, tabs, items: list.slice(page * limit, page * limit + limit).map((r) => ({ ...view(r), other: !!r._fb })), total: list.length, general,
+      myChips, needStyles: !myGroups.length, filling: fillingNow, fallback });
   }));
   app.get('/api/viral/:id/thumb', auth, wrap(async (req, res) => {
     const r = (await q('SELECT thumb_file FROM viral_items WHERE id=$1', [Number(req.params.id) || 0])).rows[0];

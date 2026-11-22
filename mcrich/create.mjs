@@ -444,7 +444,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }));
 
   /** สร้างงานจากระบบ (โหมดอัตโนมัติ): refFiles = ไฟล์รูปบนดิสก์ จะคัดลอกเป็นของงานนี้ */
-  async function createInternal(uid, body, refFiles = [], note = '') {
+  async function createInternal(uid, body, refFiles = [], note = '', opts = {}) {
     const m = await me(uid);
     const n = normalize(body, m.brand || {});
     if (n.error || n.blocked) return { error: n.error || n.blocked };
@@ -462,12 +462,13 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       await c.query('BEGIN');
       await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [uid]);
       const bal = (await c.query('SELECT COALESCE(sum(delta),0)::int s FROM star_ledger WHERE user_id=$1', [uid])).rows[0].s;
-      if (bal < n.cost) { await c.query('ROLLBACK'); refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return { error: 'ดาวไม่พอ', lowStars: true, cost: n.cost, bal }; }
+      if (!opts.system && bal < n.cost) { await c.query('ROLLBACK'); refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return { error: 'ดาวไม่พอ', lowStars: true, cost: n.cost, bal }; }
+      if (opts.system) n.cost = 0; // งานตัวอย่างของระบบ ไม่ตัดดาว
       const title = n.p.product || n.p.headline || n.style.label;
       const w = (await c.query(`INSERT INTO works(user_id,kind,style,title,params,tier,versions,cost,free,refs,expires_at)
         VALUES($1,$9,$2,$3,$4,$5,$6,$7,false,$8, now() + interval '${KEEP_DAYS} days') RETURNING id`,
       [uid, n.style.id, title.slice(0, 80), { ...n.p, auto: true, warnings: n.warnings }, n.tier.id, n.versions, n.cost, refs, n.video ? 'video' : 'image'])).rows[0];
-      await c.query("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'spend',$3,$4)", [uid, -n.cost, `work:${w.id}`, `อัตโนมัติ: ${n.style.label}${note ? ` · ${note}` : ''}`]);
+      if (n.cost) await c.query("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'spend',$3,$4)", [uid, -n.cost, `work:${w.id}`, `อัตโนมัติ: ${n.style.label}${note ? ` · ${note}` : ''}`]);
       await c.query("INSERT INTO audit_log(user_id,action,detail) VALUES($1,'work_auto',$2)", [uid, { id: w.id, style: n.style.id, cost: n.cost }]);
       await c.query('COMMIT');
       kick();
@@ -970,5 +971,5 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     setInterval(() => sweep().catch((e) => log('sweep', e.message)), 3600e3).unref();
     setTimeout(() => sweep().catch(() => {}), 20000).unref();
   }
-  return { ready, start, createInternal, REF_DIR, purgeFiles };
+  return { ready, start, createInternal, REF_DIR, WORK_DIR, purgeFiles };
 }

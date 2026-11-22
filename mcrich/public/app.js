@@ -118,8 +118,10 @@ async function homeView() {
   </main>${nav('home')}`;
   api('api/trends').then((t) => {
     $('#th').textContent = t.personalized ? 'แนวงานฮิต ตรงกับคุณ' : 'แนวงานฮิต';
-    $('#trends').innerHTML = t.items.map((x) => `<a class="trend" href="#create?style=${esc(x.style)}&kind=${esc(x.kind)}"><div class="thumb" style="background:${esc(x.color)}">${esc(x.badge)}</div>
-      <b style="font-size:13px;line-height:1.3">${esc(x.title)}</b><span class="muted">${esc(x.price)}</span></a>`).join('');
+    $('#trends').innerHTML = t.items.map((x) => `<button type="button" class="trend" data-trend="${x.id}" style="background:none;border:0;padding:0;font:inherit;text-align:left;cursor:pointer">
+      <div class="thumb" style="background:${esc(x.color)}${x.sample?.poster ? ` url('${x.sample.poster}') center/cover` : ''};position:relative">${x.sample?.kind === 'video' ? '<span style="position:absolute;right:6px;top:6px;background:rgba(0,0,0,.6);border-radius:999px;padding:2px 7px;font-size:11px">▶ ตัวอย่าง</span>' : ''}${x.badge ? `<span style="background:rgba(0,0,0,.55);border-radius:999px;padding:2px 8px">${esc(x.badge)}</span>` : ''}</div>
+      <b style="font-size:13px;line-height:1.3">${esc(x.title)}</b><span class="muted">${esc(x.price)}</span></button>`).join('');
+    app.querySelectorAll('[data-trend]').forEach((b) => b.onclick = () => trendSheet(t.items.find((x) => String(x.id) === b.dataset.trend)));
   }).catch((e) => { if (e.message !== 'login' && $('#trends')) $('#trends').innerHTML = `<p class="muted">${esc(e.message)}</p>`; });
   viralBox($('#vBox'), { home: true }).catch((e) => { if (e.message !== 'login' && $('#vBox')) $('#vBox').innerHTML = ''; });
 }
@@ -154,13 +156,13 @@ async function viralBox(el, o = {}) {
     el.innerHTML = `${o.home ? `<div class="row between"><h2>🔥 ไวรัลสไตล์คุณ</h2><a href="#viral?pf=${st.pf}&g=${st.g}" style="font-size:14px">ดูทั้งหมด ›</a></div>` : ''}
       <div class="hs" role="tablist" aria-label="แพลตฟอร์ม" style="padding-bottom:0">${d.tabs.map(tab).join('')}</div>
       ${d.myChips.length ? `<div class="hs" style="padding-bottom:0">${d.myChips.length > 1 ? chip('mine', '✨ ทุกสไตล์ของฉัน') : ''}${d.myChips.map((c) => chip(c.key, `${c.emoji} ${esc(c.label)}`)).join('')}</div>` : ''}
-      ${d.filling ? '<span class="muted" style="font-size:13px">⏳ กำลังดึงคลิปสไตล์นี้ให้ใหม่ รอสักครู่…</span>' : ''}
+      ${d.fallback ? '<span class="muted" style="font-size:13px">สไตล์นี้กำลังอัปเดต · ระหว่างนี้ดูคลิปมาแรงบนแพลตฟอร์มนี้ไปก่อน</span>' : ''}
       ${d.needStyles ? '<a class="card" href="#interests" style="text-decoration:none;color:var(--fg);padding:12px"><b>เลือกสไตล์ของคุณก่อน</b><span class="muted" style="font-size:13px">ตั้งหมวดสินค้าและสไตล์คลิป ระบบจะคัดเฉพาะไวรัลที่ตรงกับคุณ</span></a>' : ''}
       ${google && d.general && st.items.length ? '<span class="muted" style="font-size:13px">ยังไม่มีกระแสตรงสไตล์คุณวันนี้ · นี่คือกระแสยอดนิยมในไทย</span>' : ''}
       ${!o.home && !google ? `<div class="row" style="gap:8px">${['hot', 'new'].map((k) => `<button type="button" class="chip" data-vs="${k}" aria-pressed="${st.sort === k}" style="min-height:32px;padding:4px 12px;font-size:13px">${k === 'hot' ? '🔥 มาแรง' : '🆕 ใหม่สุด'}</button>`).join('')}</div>` : ''}
       <div class="vgrid" style="display:grid;grid-template-columns:${google ? '1fr' : `repeat(auto-fill,minmax(${o.home ? 104 : 150}px,1fr))`};gap:12px 10px">
         ${st.items.length ? st.items.map((x, i) => (google ? trendRow(x, i) : clipCard(x).replace('class="vcard"', 'class="vcard" style="width:auto"'))).join('')
-          : d.filling ? '<p class="muted">กำลังค้นคลิปไวรัลล่าสุด ใช้เวลาประมาณ 1 นาที…</p>' : `<p class="muted">ยังไม่มีคลิป${d.myChips.length ? 'ในสไตล์นี้' : ''}บน ${esc(d.tabs.find((t) => t.key === st.pf)?.label || '')} ลองแพลตฟอร์มอื่น หรือกลับมาใหม่อีกสักพัก</p>`}</div>
+          : d.filling ? '<p class="muted">กำลังอัปเดตคลิปล่าสุด อีกสักครู่จะขึ้นเอง</p>' : `<p class="muted">ยังไม่มีคลิป${d.myChips.length ? 'ในสไตล์นี้' : ''}บน ${esc(d.tabs.find((t) => t.key === st.pf)?.label || '')} ลองแพลตฟอร์มอื่น หรือกลับมาใหม่อีกสักพัก</p>`}</div>
       ${!o.home && st.items.length < d.total ? '<button type="button" class="btn dark" data-vmore>ดูเพิ่ม</button>' : ''}`;
     el.querySelectorAll('[data-vpf]').forEach((b) => b.onclick = () => { st.retry = 0; st.pf = b.dataset.vpf; savePf(st.pf); load(true).catch((e) => toast(e.message)); });
     el.querySelectorAll('[data-vg]').forEach((b) => b.onclick = () => { st.retry = 0; st.g = b.dataset.vg; load(true).catch((e) => toast(e.message)); });
@@ -178,6 +180,24 @@ async function viralView(qs) {
   app.innerHTML = `${topbar('ไวรัลสไตล์คุณ', 'home')}<main><section id="vAll" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></section></main>${nav('home')}`;
   if (ps.get('pf')) savePf(ps.get('pf'));
   await viralBox($('#vAll'), { pf: ps.get('pf') || '', g: ps.get('g') || 'mine' });
+}
+function trendSheet(x) {
+  if (!x) return;
+  const go_ = () => go(`create?style=${encodeURIComponent(x.style)}&kind=${encodeURIComponent(x.kind)}`);
+  if (!x.sample) return go_();
+  const bg = document.createElement('div');
+  bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><span class="grab" aria-hidden="true"></span>
+    ${x.sample.kind === 'video' ? `<video src="${x.sample.src}" poster="${x.sample.poster}" autoplay muted loop playsinline controls style="width:100%;max-height:62vh;border-radius:14px;background:#000"></video>`
+      : `<img src="${x.sample.src}" alt="ตัวอย่าง ${esc(x.title)}" style="width:100%;max-height:62vh;object-fit:contain;border-radius:14px;background:var(--s2)">`}
+    <b style="font-size:19px">${esc(x.title)}</b><span class="muted">ตัวอย่างที่สร้างด้วย Mc Rich · ${esc(x.price)} · ใส่สินค้าของคุณแทนได้เลย</span>
+    <button type="button" class="btn" id="tmk">สร้างแบบนี้</button><button type="button" class="btn ghost" id="tcl">ปิด</button></div>`;
+  const close = () => { bg.remove(); window.removeEventListener('hashchange', close); };
+  bg.onclick = (e) => { if (e.target === bg) close(); };
+  document.body.appendChild(bg);
+  bg.querySelector('#tcl').onclick = close;
+  bg.querySelector('#tmk').onclick = () => { close(); go_(); };
+  window.addEventListener('hashchange', close);
 }
 function viralSheet(x, make) {
   if (!x) return;
@@ -530,7 +550,10 @@ async function adminTrends() {
     <label class="f">แท็กจับคู่ความสนใจ (คั่นด้วย ,)<input type="text" name="tags" value="${esc((t?.tags || []).join(', '))}"></label>
     <div class="row" style="gap:8px;flex-wrap:wrap">${t ? `<label class="row" style="gap:6px"><input type="checkbox" class="sw-in" name="active" ${t.active ? 'checked' : ''}>แสดง</label>` : ''}
       <input type="color" name="color" value="${esc(t?.color || '#333333')}" aria-label="สี" style="width:44px;height:36px;padding:0;border:0;background:none">
-      <button type="button" class="btn sm" data-save>${t ? 'บันทึก' : '+ เพิ่ม'}</button>${t ? '<button type="button" class="btn ghost sm" data-del>ลบ</button>' : ''}</div></section>`;
+      <button type="button" class="btn sm" data-save>${t ? 'บันทึก' : '+ เพิ่ม'}</button>${t ? '<button type="button" class="btn ghost sm" data-del>ลบ</button>' : ''}</div>
+    ${t ? `<div class="row" style="gap:10px;align-items:center">${t.sample?.poster ? `<img src="${t.sample.poster}" alt="" style="width:48px;height:64px;object-fit:cover;border-radius:8px">` : ''}
+      <span class="muted" style="flex:1;font-size:13px">ตัวอย่าง: ${({ done: '✓ พร้อมแล้ว', queued: 'รอคิวสร้าง', photo: 'กำลังสร้างรูปสินค้า…', render: 'กำลังสร้างตัวอย่าง…', failed: `✗ ไม่สำเร็จ ${esc(t.sample?.error || '')}` })[t.sample?.status] || 'ยังไม่มี (ระบบจะสร้างให้อัตโนมัติ)'}</span>
+      <button type="button" class="btn dark sm" data-smp>${t.sample?.has ? 'สร้างใหม่' : 'สร้างตัวอย่าง'}</button></div>` : ''}</section>`;
   $('main').innerHTML = `<p class="muted">การ์ดเทรนด์หน้าแรก เรียงตามลำดับ แสดงตามความสนใจของลูกค้า</p>${row(null)}${d.items.map(row).join('')}`;
   app.querySelectorAll('[data-id]').forEach((card) => {
     const get = () => { const o = {}; card.querySelectorAll('[name]').forEach((i) => { o[i.name] = i.type === 'checkbox' ? i.checked : i.value; }); return o; };
@@ -539,6 +562,7 @@ async function adminTrends() {
       try { await api(id === 'new' ? 'api/admin/trends' : `api/admin/trends/${id}`, { method: id === 'new' ? 'POST' : 'PATCH', body: get() }); toast('บันทึกแล้ว'); adminTrends(); } catch (e) { toast(e.message); }
     };
     const del = card.querySelector('[data-del]'); if (del) del.onclick = async () => { if (!confirm('ลบเทรนด์นี้?')) return; await api(`api/admin/trends/${id}`, { method: 'DELETE' }); adminTrends(); };
+    const smp = card.querySelector('[data-smp]'); if (smp) smp.onclick = async () => { try { await api(`api/admin/trends/${id}/sample`, { method: 'POST', body: {} }); toast('เข้าคิวสร้างตัวอย่างแล้ว (คลิปใช้เวลา 3–10 นาที)'); adminTrends(); } catch (e) { toast(e.message); } };
   });
 }
 async function adminTopups(status = 'review') {

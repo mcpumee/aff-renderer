@@ -132,7 +132,8 @@ export function registerBackoffice(app, { q, pool, auth, wrap, log, banned }) {
   }));
 
   // ---------- เทรนด์หน้าแรก ----------
-  const tview = (t) => ({ id: t.id, title: t.title, style: t.style, kind: t.kind, price: t.price, badge: t.badge, color: t.color, tags: t.tags, active: t.active, sort: t.sort });
+  const tview = (t) => ({ id: t.id, title: t.title, style: t.style, kind: t.kind, price: t.price, badge: t.badge, color: t.color, tags: t.tags, active: t.active, sort: t.sort,
+    sample: t.sample ? { status: t.sample.status, error: t.sample.error || '', poster: t.sample.poster ? `api/trends/${t.id}/sample?poster=1&v=${t.sample.at}` : '', has: !!t.sample.file } : null });
   const tclean = (b) => ({
     title: String(b.title || '').trim().slice(0, 60), style: String(b.style || '').trim().slice(0, 40), kind: b.kind === 'image' ? 'image' : 'video',
     price: String(b.price || '').slice(0, 30), badge: String(b.badge || '').slice(0, 20), color: /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#333333',

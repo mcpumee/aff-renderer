@@ -16,6 +16,7 @@ import { registerAuto } from './auto.mjs';
 import { registerBackoffice } from './backoffice.mjs';
 import { registerPrivacy, TERMS_VERSION, idHash } from './privacy.mjs';
 import { registerViral } from './viral.mjs';
+import { registerSamples } from './samples.mjs';
 import { VIDEO_PRICE } from './video.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
@@ -388,8 +389,8 @@ app.get('/api/stars/history', auth, wrap(async (req, res) => {
 app.get('/api/trends', auth, wrap(async (req, res) => {
   const p = (await q('SELECT interests FROM profiles WHERE user_id=$1', [req.uid])).rows[0]?.interests || {};
   const mine = [...(p.goals || []), ...(p.categories || []), ...(p.styles || [])];
-  const { rows } = await q('SELECT id,title,style,kind,price,badge,color,tags FROM trends WHERE active ORDER BY sort, id');
-  const scored = rows.map((t) => ({ ...t, score: t.tags.filter((x) => mine.includes(x)).length })).sort((a, b) => b.score - a.score || 0);
+  const { rows } = await q('SELECT id,title,style,kind,price,badge,color,tags,sample FROM trends WHERE active ORDER BY sort, id');
+  const scored = rows.map(({ sample, ...t }) => ({ ...t, sample: sample?.file ? { kind: sample.kind, src: `api/trends/${t.id}/sample?v=${sample.at}`, poster: sample.poster ? `api/trends/${t.id}/sample?poster=1&v=${sample.at}` : '' } : null, score: t.tags.filter((x) => mine.includes(x)).length })).sort((a, b) => b.score - a.score || 0);
   res.json({ items: scored.slice(0, 6), personalized: mine.length > 0 });
 }));
 
@@ -404,6 +405,7 @@ const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ran
 const auto = registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, videoPrice: VIDEO_PRICE, notify: (uid, t) => chat.notifyLine(uid, t) });
 const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNED });
 const viral = registerViral(app, { q, auth, wrap, log, DATA_DIR });
+const samples = registerSamples(app, { q, auth, wrap, log, DATA_DIR, create });
 const priv = registerPrivacy(app, { q, pool, auth, wrap, log, DATA_DIR, PUBLIC_DIR: path.join(__dir, 'public'), banned: BANNED, purgeFiles: create.purgeFiles, clearSession: (res) => setCookie(res, 'mr_sid', '', 0) });
 // ผลงานเสร็จ → ส่ง Drive (ถ้าเชื่อม) + แจ้งเตือน LINE
 {
@@ -422,5 +424,5 @@ app.get(['/', '/index.html'], (_q, res) => { res.setHeader('cache-control', 'no-
 app.get('/sw.js', (_q, r) => { r.setHeader('cache-control', 'no-cache'); r.setHeader('service-worker-allowed', './'); r.sendFile(path.join(__dir, 'public', 'sw.js')); });
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 
-migrate().then(() => office.start()).then(() => { create.start(); sched.start(); chat.start(); auto.start(); priv.start(); viral.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
+migrate().then(() => office.start()).then(() => { create.start(); sched.start(); chat.start(); auto.start(); priv.start(); viral.start(); samples.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

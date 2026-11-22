@@ -1123,17 +1123,17 @@ async function chatView(qs) {
   const params = new URLSearchParams(qs || '');
   app.innerHTML = `${topbar('น้องริช · ผู้ช่วย AI')}<main class="chat"><div id="msgs"><p class="muted">กำลังโหลด…</p></div></main>
     <form class="chatbar" id="cf"><div id="chips" class="chips"></div><div class="row" style="gap:8px">
-      <input id="ct" type="text" maxlength="1000" placeholder="ถามน้องริชได้เลย…" autocomplete="off" aria-label="ข้อความ">
+      <input id="ct" type="text" maxlength="1000" placeholder="พิมพ์คุยกับริช…" autocomplete="off" aria-label="ข้อความ">
       <button class="btn" style="width:auto;padding:0 18px" aria-label="ส่ง">ส่ง</button></div><span class="muted" id="cq" style="font-size:12px"></span></form>${nav('chat')}`;
   CHAT = await api('api/chat');
   if (params.get('draft') === 'last') {
     const d = [...CHAT.items].reverse().find((m) => m.draft);
     if (d) { if (!CAT) CAT = await api('api/create/catalog').catch(() => null); return openDraft(d.draft); }
   }
-  const starters = ['ช่วยคิดคอนเทนต์ขายของ 7 วัน', 'เขียนแคปชั่นโปรลดราคา', 'สินค้าใหม่ควรทำคลิปแบบไหนดี', 'ทำโปสเตอร์ประชาสัมพันธ์งานวันเด็ก'];
+  const starters = ['ขายของออนไลน์', 'ทำ Affiliate', 'โปรโมตร้าน', 'งานองค์กร'];
   const draw = (chips) => {
     const items = CHAT.items;
-    $('#msgs').innerHTML = (items.length ? '' : `<div class="msg ai"><span class="av">🤖</span><div><div class="bb">สวัสดีค่ะ น้องริชเอง ✨<br>ให้ช่วยคิดไอเดียคอนเทนต์ เขียนแคปชั่น เลือกแนวคลิป หรือวางแผนโพสต์ได้เลย</div></div></div>`)
+    $('#msgs').innerHTML = (items.length ? '' : `<div class="msg ai"><span class="av">🤖</span><div><div class="bb">ริชมาแล้วค่าา ✨<br>ขายอะไรอยู่น้า? บอกริชมา เดี๋ยวพาไปทำงานปังๆ ให้เลย</div></div></div>`)
       + items.map(bubble).join('')
       + (CHAT.oa && !items.length ? `<a class="card" href="${esc(CHAT.oa.url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><b>💬 คุยกับน้องริชใน LINE ก็ได้</b><span class="muted">เพิ่มเพื่อน ${esc(CHAT.oa.id)} รับแจ้งเตือนผลงานเสร็จและเวลาโพสต์</span></a>` : '');
     $('#chips').innerHTML = (chips || (items.length ? [] : starters)).map((c) => `<button type="button" class="chip" data-chip="${esc(c)}" style="min-height:32px;font-size:13px;white-space:nowrap">${esc(c)}</button>`).join('');
@@ -1150,7 +1150,7 @@ async function chatView(qs) {
     text = String(text || '').trim(); if (!text) return;
     $('#ct').value = '';
     CHAT.items.push({ role: 'user', content: text });
-    CHAT.items.push({ role: 'model', content: 'กำลังคิด…' });
+    CHAT.items.push({ role: 'model', content: 'ริชกำลังพิมพ์…' });
     draw([]);
     try {
       const r = await api('api/chat', { method: 'POST', body: { text } });

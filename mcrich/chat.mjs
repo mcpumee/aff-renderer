@@ -23,8 +23,9 @@ const styleList = () => [
 function systemPrompt(m, works) {
   const b = m.brand || {};
   return `คุณคือ "น้องริช" ผู้ช่วย AI ของแอป Mc Rich (แอปสร้างภาพและคลิปขายของ/คอนเทนต์/ประชาสัมพันธ์ด้วย AI จ่ายด้วยดาว 1 ดาว = 1 บาท)
-บุคลิก: เป็นกันเอง กระตือรือร้น ตอบสั้น กระชับ ใช้ภาษาไทยเป็นหลัก อีโมจิพอประมาณ เหมาะอ่านบนมือถือ
-ช่วยได้: คิดไอเดียคอนเทนต์/แผนโพสต์ เขียนแคปชั่น แฮชแท็ก ฮุค เลือกแนวภาพ/คลิปที่เหมาะ แนะนำการใช้แอป ตอบเรื่องดาว ผลงาน การตั้งเวลาโพสต์
+บุคลิก: ผู้หญิง วัยรุ่น Gen Z สดใส ขี้เล่น พลังบวก แทนตัวเองว่า "ริช" หรือ "เค้า" ลงท้าย "ค่า/น้า/นะคะ" ใช้คำวัยรุ่นพอดีๆ (ตึงมาก, ปังมาก, ฉ่ำ, คือดีย์, งานดีย์, จึ้ง, ไม่ไหวแล้วว) อีโมจิ 1-2 ตัว
+สไตล์ตอบ: สั้นมาก 1-2 ประโยค (ไม่เกิน 2 บรรทัด) เหมือนแชทกับเพื่อน · ถามกลับสั้นๆ ทีละคำถามเพื่อเข้าใจความต้องการก่อน เช่น "ขายอะไรอยู่น้า?" "อยากได้ภาพหรือคลิปดีคะ?" · ห้ามอธิบายยาว ห้ามลิสต์หลายข้อ ห้ามเขียนแผนคอนเทนต์หรือแคปชั่นยาวเอง · พอรู้ว่าอยากทำอะไรแล้ว ให้เสนองาน 1 ชิ้นผ่าน "draft" แล้วชวนกดสร้างสั้นๆ (ให้แอปทำงานหนักแทน) · ถ้าผู้ใช้ขอแคปชั่นตรงๆ ให้เขียนสั้นๆ 1-2 บรรทัดพอ
+ช่วยได้: ถามความต้องการแล้วพาไปสร้างภาพ/คลิปที่เหมาะ แนะนำการใช้แอป ตอบเรื่องดาว ผลงาน การตั้งเวลาโพสต์
 กฎ: ห้ามแนะนำคำโฆษณาเกินจริงหรือผิดกฎ อย. · ห้ามสัญญายอดขาย · ไม่รู้ให้บอกตรงๆ · เรื่องเงิน/คืนเงิน/ปัญหาระบบให้แนะนำติดต่อแอดมิน · ไม่ตอบเรื่องที่ไม่เกี่ยวกับธุรกิจ/คอนเทนต์ยาวเกินไป ให้ตอบสั้นแล้วชวนกลับมาเรื่องงาน
 ข้อมูลผู้ใช้: ชื่อ ${m.name || '-'} · ดาวคงเหลือ ${m.stars} · ภาพฟรีเหลือ ${m.freeImages.today + m.freeImages.welcome} · ร้าน/แบรนด์ ${b.shopName || '-'} · ความสนใจ ${JSON.stringify(m.interests || {})}
 ผลงานล่าสุด: ${works.map((w) => `${w.title} (${w.kind === 'video' ? 'คลิป' : 'ภาพ'}, ${w.status})`).join(' / ') || '-'}
@@ -33,7 +34,7 @@ function systemPrompt(m, works) {
 ${styleList()}
 เป้าหมาย (goal): ${GOALS.map((g) => `${g.id}=${g.label}`).join(', ')}
 ถ้าผู้ใช้อยากสร้างงาน หรือคุณแนะนำงานชิ้นที่ชัดเจน ให้ใส่ "draft" เพื่อให้ผู้ใช้กดสร้างต่อได้ทันที (ไม่ตัดดาวจนกว่าเขาจะยืนยันเอง) ถ้าไม่ใช่ให้ draft เป็น null
-ตอบเป็น JSON เท่านั้น: {"reply":"ข้อความตอบ","draft":null หรือ {"kind":"image|video","style":"id จากรายการ","goal":"sell|aff|promo|content|pr","product":"ชื่อสินค้า/เรื่อง","headline":"ข้อความบนภาพ (ถ้าเป็นภาพ)","price":"","details":"รายละเอียด","label":"ปุ่ม เช่น สร้างโปสเตอร์นี้"},"chips":["คำถามต่อยอด 2-3 ข้อ ข้อละไม่เกิน 12 ตัวอักษร"]}`;
+ตอบเป็น JSON เท่านั้น: {"reply":"ข้อความตอบ","draft":null หรือ {"kind":"image|video","style":"id จากรายการ","goal":"sell|aff|promo|content|pr","product":"ชื่อสินค้า/เรื่อง","headline":"ข้อความบนภาพ (ถ้าเป็นภาพ)","price":"","details":"รายละเอียด","label":"ปุ่ม เช่น สร้างโปสเตอร์นี้"},"chips":["ตัวเลือกคำตอบสั้นๆ ให้ผู้ใช้กดตอบคำถามของคุณ 2-3 ข้อ ข้อละไม่เกิน 12 ตัวอักษร"]}`;
 }
 
 export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToken }) {
@@ -51,11 +52,11 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
     const hist = (await q('SELECT role, content FROM chat_messages WHERE user_id=$1 ORDER BY id DESC LIMIT 16', [uid])).rows.reverse();
     await q('INSERT INTO chat_messages(user_id,role,content,channel) VALUES($1,$2,$3,$4)', [uid, 'user', text, channel]);
     const contents = [...hist.map((h) => ({ role: h.role === 'model' ? 'model' : 'user', parts: [{ text: h.content }] })), { role: 'user', parts: [{ text }] }];
-    let out = { reply: 'ขอโทษนะคะ ตอนนี้น้องริชตอบไม่ได้ ลองใหม่อีกครั้งนะ 🙏', draft: null, chips: [] };
+    let out = { reply: 'แง ริชค้างแป๊บ ลองพิมพ์ใหม่อีกทีน้า 🥺', draft: null, chips: [] };
     try {
       const r = await fetch(`${API()}/v1beta/models/${MODEL}:generateContent`, {
         method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: { responseMimeType: 'application/json', temperature: 0.8 } }),
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: { responseMimeType: 'application/json', temperature: 0.95, maxOutputTokens: 600 } }),
         signal: AbortSignal.timeout(60000),
       });
       const j = await r.json();
@@ -154,11 +155,11 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
       type: 'bubble', size: 'kilo',
       body: { type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '18px', backgroundColor: '#0B0C0F', contents: [
         { type: 'text', text: 'Mc Rich 🤖✨', color: '#C8F94A', weight: 'bold', size: 'xl' },
-        { type: 'text', text: linked ? 'น้องริชพร้อมช่วยแล้ว! ถามไอเดียคอนเทนต์ ขอแคปชั่น หรือให้แนะนำคลิปได้เลย ผลงานเสร็จและเวลาโพสต์จะแจ้งที่นี่' : 'สร้างภาพขายของ คลิปเปิดกล่อง ละครสั้น ประชาสัมพันธ์ ด้วย AI ในมือถือ สมัครด้วย LINE รับภาพฟรี 10 ภาพ', color: '#F4F6F8', size: 'sm', wrap: true },
+        { type: 'text', text: linked ? 'ริชมาแล้วค่าา ✨ บอกริชว่าขายอะไรอยู่ เดี๋ยวพาไปทำภาพ/คลิปปังๆ ให้เลย ผลงานเสร็จริชทักบอกนะ' : 'ทำภาพขายของ คลิปเปิดกล่อง ละครสั้น ด้วย AI ในมือถือ คือดีย์มาก สมัครด้วย LINE รับภาพฟรี 10 ภาพเลยค่า 🎁', color: '#F4F6F8', size: 'sm', wrap: true },
       ] },
       footer: { type: 'box', layout: 'vertical', spacing: 'sm', paddingAll: '12px', backgroundColor: '#0B0C0F', contents: linked ? [
         { type: 'button', style: 'primary', color: '#7BB31A', height: 'sm', action: { type: 'uri', label: '🎨 สร้างงานเลย', uri: appUrl('create?new=1') } },
-        { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '💡 ขอไอเดียคอนเทนต์', text: 'ขอไอเดียคอนเทนต์สัปดาห์นี้' } },
+        { type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '💬 คุยกับริช', text: 'ริชช่วยหน่อย' } },
       ] : [
         { type: 'button', style: 'primary', color: '#7BB31A', height: 'sm', action: { type: 'uri', label: '🎁 สมัครฟรี รับภาพฟรี', uri: appUrl() } },
       ] },
@@ -250,7 +251,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
     const list = await fetch(`${LINE_API()}/v2/bot/richmenu/list`, { headers: H }).then((r) => r.json()).catch(() => ({}));
     const W = 2500, Hh = 1686, cw = Math.floor(W / 3), ch = Math.floor(Hh / 2);
     const acts = [
-      { type: 'uri', uri: appUrl('create?new=1') }, { type: 'uri', uri: appUrl('works') }, { type: 'message', text: 'สวัสดีน้องริช ขอไอเดียหน่อย' },
+      { type: 'uri', uri: appUrl('create?new=1') }, { type: 'uri', uri: appUrl('works') }, { type: 'message', text: 'ริชช่วยหน่อย' },
       { type: 'message', text: 'ดาว' }, { type: 'uri', uri: appUrl('topup') }, { type: 'uri', uri: appUrl('plan') },
     ];
     const body = { size: { width: W, height: Hh }, selected: true, name: `mcrich-main-${RM_VERSION}`, chatBarText: 'เมนู Mc Rich',

@@ -133,25 +133,55 @@ async function homeView() {
     ${v.ideas.slice(0, 3).map((x) => `<div class="icard"><span class="em" aria-hidden="true">${esc(x.idea.emoji)}</span>
       <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px"><b>${esc(x.idea.hook || x.title)}</b>
         <span class="muted" style="font-size:13px">${esc(x.idea.angle)}</span>
-        <span class="muted" style="font-size:12px">${x.source === 'gtrends' ? '🔥 กระแส' : '🎬 คลิปมาแรง'}: ${esc(x.title)} · ${esc(x.idea.label)}</span>
+        <span class="muted" style="font-size:12px">${x.source === 'gtrends' ? '🔥 กระแส' : `🎬 ${PF[x.platform] || 'คลิป'}`}: ${esc(x.title)} · ${esc(x.idea.label)}</span>
         <span class="row" style="gap:8px;margin-top:4px"><button type="button" class="btn sm" data-make="${x.id}">ทำเลย</button><button type="button" class="btn dark sm" data-open="${x.id}">ดูกระแส</button></span></span></div>`).join('')}` : '';
   $('#vTrends').innerHTML = v.trends.length ? `<div class="row between"><h2>🔥 กระแสวันนี้ในไทย</h2><span class="muted" style="font-size:12px">Google Trends</span></div>
     <div class="hs">${v.trends.map((x, i) => `<button type="button" class="tcard" data-open="${x.id}">
       ${x.thumb ? `<img src="${x.thumb}" alt="" loading="lazy">` : ''}<span class="rk">#${i + 1}${x.traffic ? ` · ค้นหา ${esc(x.traffic)}` : ''}</span>
       <span class="tt">${esc(x.title)}</span>${x.idea?.summary ? `<span class="hk">${esc(x.idea.summary)}</span>` : x.news ? `<span class="hk">${esc(x.news.title)}</span>` : ''}</button>`).join('')}</div>` : '';
-  const PF = { tiktok: 'TikTok', youtube: 'YouTube', facebook: 'Facebook', instagram: 'IG', web: 'คลิป' };
-  const views = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : n ? String(n) : '');
-  $('#vClips').innerHTML = v.clips.length ? `<div class="row between"><h2>🎬 คลิปมาแรง</h2><span class="muted" style="font-size:12px">แตะเพื่อดูไอเดีย</span></div>
-    <div class="hs">${v.clips.map((x) => `<button type="button" class="vcard" data-open="${x.id}"><span class="ph">${x.thumb ? `<img src="${x.thumb}" alt="" loading="lazy">` : ''}
-      <span class="pf">${x.pinned ? '⭐ ' : ''}${PF[x.platform] || 'คลิป'}</span>${x.views ? `<span class="vw">▶ ${views(x.views)}</span>` : ''}</span>
-      <b>${esc(x.title)}</b><span class="muted" style="font-size:12px">${esc(x.channel)}</span></button>`).join('')}</div>` : '';
-  const make = (x) => {
-    const i = x.idea; if (!i) return toast('ไอเดียกำลังมา ลองใหม่อีกสักพัก');
-    openDraft({ kind: i.kind, style: i.style, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', product: ME.brand?.shopName ? '' : i.product,
-      headline: i.kind === 'image' ? i.hook : '', hookText: i.kind === 'video' ? i.hook : '', details: `เกาะกระแส "${x.title}": ${i.angle}${i.kind === 'video' ? ` · ฮุกเปิดคลิป: ${i.hook}` : ''}` });
-  };
+  $('#vClips').innerHTML = v.clips.length ? `<div class="row between"><h2>🎬 คลิปไวรัล${v.forYou ? 'สไตล์คุณ' : 'ตอนนี้'}</h2><a href="#viral" style="font-size:14px">ดูทั้งหมด ›</a></div>
+    ${v.groups.length ? `<div class="hs" style="padding-bottom:0">${v.groups.map((g) => `<a class="chip" href="#viral?g=${g.key}" style="text-decoration:none;white-space:nowrap;flex:none" aria-pressed="${v.myGroups.includes(g.key)}">${g.emoji} ${esc(g.label)}</a>`).join('')}</div>` : ''}
+    <div class="hs">${v.clips.map(clipCard).join('')}</div>` : '';
+  const make = makeFromViral;
   app.querySelectorAll('[data-make]').forEach((b) => b.onclick = () => make(byId(b.dataset.make)));
   app.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => viralSheet(byId(b.dataset.open), make));
+}
+const PF = { tiktok: 'TikTok', youtube: 'YouTube', facebook: 'Facebook', instagram: 'IG', web: 'คลิป' };
+const views = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : n ? String(n) : '');
+const clipCard = (x) => `<button type="button" class="vcard" data-open="${x.id}"><span class="ph">${x.thumb ? `<img src="${x.thumb}" alt="" loading="lazy">` : ''}
+  <span class="pf">${x.pinned ? '⭐ ' : ''}${PF[x.platform] || 'คลิป'}</span>${x.views ? `<span class="vw">▶ ${views(x.views)}</span>` : x.likes ? `<span class="vw">♥ ${views(x.likes)}</span>` : ''}</span>
+  <b>${esc(x.title)}</b><span class="muted" style="font-size:12px">${esc(x.channel)}</span></button>`;
+function makeFromViral(x) {
+  const i = x?.idea; if (!i) return toast('ไอเดียกำลังมา ลองใหม่อีกสักพัก');
+  openDraft({ kind: i.kind, style: i.style, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', product: ME.brand?.shopName ? '' : i.product,
+    headline: i.kind === 'image' ? i.hook : '', hookText: i.kind === 'video' ? i.hook : '', details: `เกาะกระแส "${x.title}": ${i.angle}${i.kind === 'video' ? ` · ฮุกเปิดคลิป: ${i.hook}` : ''}` });
+}
+async function viralView(qs) {
+  const ps = new URLSearchParams(qs || '');
+  const st = { g: ps.get('g') || 'mine', pf: ps.get('pf') || 'all', sort: ps.get('sort') || 'hot', page: 0, items: [] };
+  app.innerHTML = `${topbar('คลิปไวรัล', 'home')}<main><div id="vf"></div><div id="vg" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 10px"><p class="muted">กำลังโหลด…</p></div>
+    <button type="button" class="btn dark" id="vmore" hidden>ดูเพิ่ม</button></main>${nav('home')}`;
+  async function load(reset) {
+    if (reset) { st.page = 0; st.items = []; }
+    const d = await api(`api/viral/clips?group=${encodeURIComponent(st.g)}&platform=${st.pf}&sort=${st.sort}&page=${st.page}`);
+    if (!$('#vf')) return;
+    st.items = [...st.items, ...d.items];
+    const chip = (k, v, label, on) => `<button type="button" class="chip" data-${k}="${esc(v)}" aria-pressed="${on}" style="white-space:nowrap;flex:none">${label}</button>`;
+    $('#vf').innerHTML = `<div class="hs" style="padding-bottom:8px">${chip('g', 'mine', '✨ สไตล์ฉัน', st.g === 'mine')}${chip('g', 'all', 'ทั้งหมด', st.g === 'all')}${d.picked ? chip('g', 'picked', '⭐ คัดพิเศษ', st.g === 'picked') : ''}
+      ${d.groups.map((g) => chip('g', g.key, `${g.emoji} ${esc(g.label)}`, st.g === g.key)).join('')}</div>
+      <div class="hs" style="padding-bottom:12px">${chip('pf', 'all', 'ทุกแพลตฟอร์ม', st.pf === 'all')}${d.platforms.filter((p) => p.n).map((p) => chip('pf', p.key, PF[p.key], st.pf === p.key)).join('')}
+      ${chip('sort', 'hot', '🔥 มาแรง', st.sort === 'hot')}${chip('sort', 'new', '🆕 ใหม่สุด', st.sort === 'new')}</div>
+      ${st.g === 'mine' && !d.myGroups.length ? '<a class="card" href="#interests" style="text-decoration:none;color:var(--fg)"><b>เลือกสไตล์ที่ชอบก่อน</b><span class="muted">ตั้งหมวดสินค้าและสไตล์คลิป แล้วระบบจะคัดคลิปไวรัลให้ตรงกับคุณ</span></a>' : ''}`;
+    $('#vg').innerHTML = st.items.length ? st.items.map((x) => clipCard(x).replace('class="vcard"', 'class="vcard" style="width:auto"')).join('') : '<p class="muted">ยังไม่มีคลิปในหมวดนี้ ลองหมวดอื่น หรือกลับมาใหม่อีกสักพัก</p>';
+    $('#vmore').hidden = st.items.length >= d.total;
+    app.querySelectorAll('[data-g]').forEach((b) => b.onclick = () => { st.g = b.dataset.g; load(true); });
+    app.querySelectorAll('[data-pf]').forEach((b) => b.onclick = () => { st.pf = b.dataset.pf; load(true); });
+    app.querySelectorAll('[data-sort]').forEach((b) => b.onclick = () => { st.sort = b.dataset.sort; load(true); });
+    app.querySelectorAll('#vg [data-open]').forEach((b) => b.onclick = () => viralSheet(st.items.find((x) => String(x.id) === b.dataset.open), makeFromViral));
+    history.replaceState(null, '', `#viral?g=${st.g}&pf=${st.pf}&sort=${st.sort}`);
+  }
+  $('#vmore').onclick = () => { st.page++; load(false).catch((e) => toast(e.message)); };
+  await load(true);
 }
 function viralSheet(x, make) {
   if (!x) return;
@@ -161,7 +191,7 @@ function viralSheet(x, make) {
   bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><span class="grab" aria-hidden="true"></span>
     ${x.thumb ? `<img src="${x.thumb}" alt="" style="width:100%;max-height:260px;object-fit:cover;border-radius:14px">` : ''}
     <b style="font-size:19px;line-height:1.35">${esc(x.title)}</b>
-    <span class="muted">${x.source === 'gtrends' ? `🔥 คำค้นหามาแรง${x.traffic ? ` · ${esc(x.traffic)} ครั้ง` : ''}` : `🎬 ${esc(x.channel || '')}`}</span>
+    <span class="muted">${x.source === 'gtrends' ? `🔥 คำค้นหามาแรง${x.traffic ? ` · ${esc(x.traffic)} ครั้ง` : ''}` : `🎬 ${PF[x.platform] || ''}${x.channel ? ' · ' + esc(x.channel) : ''}${x.views ? ` · ▶ ${views(x.views)}` : ''}${x.likes ? ` · ♥ ${views(x.likes)}` : ''}`}</span>
     ${i?.summary ? `<p style="margin:0;color:var(--muted2)">${esc(i.summary)}</p>` : ''}
     ${x.news ? `<a href="${esc(x.news.url)}" target="_blank" rel="noopener" class="card" style="text-decoration:none;color:var(--fg);padding:10px"><span style="font-size:14px">${esc(x.news.title)}</span><span class="muted" style="font-size:12px">${esc(x.news.source || 'ข่าว')} ↗</span></a>` : ''}
     ${i ? `<section class="card" style="background:#1C2410;border-color:#3A4A18"><b>${esc(i.emoji)} ไอเดียเกาะกระแส · ${esc(i.label)}</b>
@@ -1514,15 +1544,26 @@ function myDataView() {
 }
 async function adminViral() {
   const d = await api('api/admin/viral');
-  const SRC = { gtrends: '🔥 Google Trends', youtube: '▶ YouTube มาแรง', curated: '⭐ คลิปที่คัดเอง' };
-  const groups = ['curated', 'gtrends', 'youtube'].map((k) => [k, d.items.filter((x) => x.source === k)]);
+  const SRC = { curated: '⭐ คลิปที่คัดเอง', tiktok: '🎵 TikTok', instagram: '📸 Instagram Reels', youtube: '▶ YouTube Shorts', facebook: '📘 Facebook', gtrends: '🔥 Google Trends', ytpopular: '▶ YouTube มาแรง' };
+  const groups = Object.keys(SRC).map((k) => [k, d.items.filter((x) => x.source === k).slice(0, 30)]);
+  const cnt = Object.fromEntries((d.counts || []).map((c) => [c.source, c]));
+  const mk = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 7);
   $('main').innerHTML = `<section class="card"><b>เพิ่มคลิปไวรัลเอง</b><span class="muted">วางลิงก์ TikTok / YouTube (ดึงชื่อและภาพให้อัตโนมัติ) หรือ Facebook / IG (ใส่ชื่อเอง) · ปักหมุดขึ้นหน้าแรก 14 วัน</span>
       <input type="url" id="vu" placeholder="https://www.tiktok.com/@.../video/..." aria-label="ลิงก์คลิป">
       <input type="text" id="vt" maxlength="200" placeholder="ชื่อ/คำอธิบาย (ไม่บังคับสำหรับ TikTok/YouTube)" aria-label="ชื่อคลิป">
       <button type="button" class="btn" id="vadd">เพิ่มคลิป</button></section>
     <section class="card"><div class="row between"><b>สถานะการดึงข้อมูล</b><button type="button" class="btn dark sm" id="vref">ดึงใหม่ตอนนี้</button></div>
-      <span class="muted">Google Trends ✓ · YouTube ${d.youtube ? '✓' : '✗ ยังไม่ใส่ YOUTUBE_API_KEY'} · AI ไอเดีย ${d.ai ? '✓' : '✗'} · ดึงอัตโนมัติทุก 2 ชม.</span>
-      <span class="muted">ล่าสุด ${d.lastRun ? new Date(d.lastRun).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '-'}${d.lastErr ? ` · ⚠️ ${esc(d.lastErr)}` : ''}</span></section>
+      <span class="muted">คลิปไวรัล TikTok/IG/YouTube Shorts/FB (ScrapeCreators) ${d.sc ? '✓' : '✗ ยังไม่ใส่ SCRAPECREATORS_API_KEY'} · Google Trends ✓ · YouTube มาแรง ${d.youtube ? '✓' : '✗'} · AI คัดกรอง+ไอเดีย ${d.ai ? '✓' : '✗'}</span>
+      <span class="muted">ล่าสุด ${d.lastRun ? new Date(d.lastRun).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '-'} · ดึงอัตโนมัติทุก 2 ชม.${d.lastErr ? ` · ⚠️ ${esc(d.lastErr)}` : ''}</span>
+      <div class="grid2">${kpi('เครดิตใช้วันนี้', `${num(d.usage.used)} / ${num(d.cfg.daily)}`)}${kpi('เครดิตใช้เดือนนี้', num(d.usage.month?.[mk] || 0), d.usage.remaining != null ? `เหลือในบัญชี ${num(d.usage.remaining)}` : '')}</div>
+      <span class="muted" style="font-size:13px">7 วันล่าสุด: ${Object.entries(cnt).map(([k, c]) => `${SRC[k] || k} ${num(c.n)} (AI ซ่อน ${num(c.hidden)})`).join(' · ') || '-'}</span></section>
+    <section class="card"><b>ตั้งค่าการดึงคลิปไวรัล</b>
+      <div class="grid2"><label class="f" for="vday">งบเครดิตต่อวัน<input id="vday" type="number" min="0" max="5000" value="${d.cfg.daily}"><span class="muted" style="font-size:12px">≈ ${num(d.cfg.daily * 30)} เครดิต/เดือน</span></label>
+      <label class="f" for="vpq">เก็บคลิปต่อคำค้น<input id="vpq" type="number" min="1" max="20" value="${d.cfg.perQuery}"></label></div>
+      <div class="chips">${['tiktok', 'instagram', 'youtube', 'facebook'].map((p) => `<button type="button" class="chip" data-vpl="${p}" aria-pressed="${d.cfg.platforms[p] !== false}">${SRC[p]}</button>`).join('')}</div>
+      <details><summary class="muted">คำค้นของแต่ละสไตล์ (${d.groups.length} กลุ่ม)</summary><span class="muted" style="font-size:13px">${d.groups.map((g) => `${g.emoji} ${esc(g.label)}: ${g.q.map(esc).join(', ')}`).join('<br>')}</span></details>
+      <button type="button" class="btn sm" id="vcfg">บันทึกการตั้งค่า</button>
+      ${Object.keys(d.samples || {}).length ? `<details><summary class="muted">ตัวอย่างข้อมูลดิบล่าสุด (สำหรับตรวจระบบ)</summary>${Object.entries(d.samples).map(([k, v]) => `<p class="muted" style="font-size:12px;overflow-wrap:anywhere"><b>${k}</b> "${esc(v.kw)}" · ${v.count} รายการ · keys: ${esc(v.keys.join(', '))}<br>${esc(v.first)}</p>`).join('')}</details>` : ''}</section>
     ${groups.map(([k, xs]) => xs.length ? `<h2>${SRC[k]} (${xs.length})</h2><div class="list">${xs.map((x) => `<div style="display:flex;gap:10px;align-items:flex-start">
       ${x.thumb ? `<img src="${x.thumb}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px">` : ''}
       <span style="flex:1;min-width:0"><b style="font-size:14px">${esc(x.title)}</b>${!x.safe ? ' <span class="badge b-warn">AI ซ่อน: ไม่เหมาะ</span>' : ''}${!x.active ? ' <span class="badge b-warn">ปิดแล้ว</span>' : ''}<br>
@@ -1537,6 +1578,11 @@ async function adminViral() {
     e.target.disabled = true;
     try { const r = await api('api/admin/viral', { method: 'POST', body: { url: $('#vu').value.trim(), title: $('#vt').value.trim() } }); toast(`เพิ่มแล้ว: ${r.title}`); adminViral(); }
     catch (x) { toast(x.message); e.target.disabled = false; }
+  };
+  app.querySelectorAll('[data-vpl]').forEach((b) => b.onclick = () => b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')));
+  $('#vcfg').onclick = async () => {
+    const platforms = Object.fromEntries([...app.querySelectorAll('[data-vpl]')].map((b) => [b.dataset.vpl, b.getAttribute('aria-pressed') === 'true']));
+    try { await api('api/admin/viral/cfg', { method: 'PUT', body: { daily: Number($('#vday').value), perQuery: Number($('#vpq').value), platforms } }); toast('บันทึกแล้ว'); } catch (x) { toast(x.message); }
   };
   $('#vref').onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'กำลังดึง…'; try { await api('api/admin/viral/refresh', { method: 'POST', body: {} }); toast('ดึงข้อมูลแล้ว'); } catch (x) { toast(x.message); } adminViral(); };
   app.querySelectorAll('[data-vp]').forEach((b) => b.onclick = async () => { const o = JSON.parse(b.dataset.vp); await api(`api/admin/viral/${o.id}`, { method: 'PATCH', body: o }).catch((x) => toast(x.message)); adminViral(); });
@@ -1577,6 +1623,7 @@ async function route() {
     case 'interests': return interestsView('edit');
     case 'profile': return profileView(qs);
     case 'mydata': return myDataView();
+    case 'viral': return viralView(qs).catch((e) => toast(e.message));
     case 'links': return linksView().catch((e) => toast(e.message));
     case 'plan': return planView().catch((e) => toast(e.message));
     case 'auto': return autoView(qs).catch((e) => toast(e.message));

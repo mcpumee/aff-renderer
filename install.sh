@@ -114,6 +114,12 @@ if [ "${SET_MCRICH_YT:-}" = "1" ] && [ -r /dev/tty ]; then
   echo ">> YouTube Data API v3 key (เปิด API นี้ในโปรเจกต์ mc-rich ก่อน · กด Enter ข้าม)"
   askkey "   YouTube API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && YTKEY=$REPLY
 fi
+# ---- ScrapeCreators (คลิปไวรัล TikTok / IG Reels / YouTube Shorts / Facebook แยกตามสไตล์ลูกค้า) ----
+SCKEY=$(envget SCRAPECREATORS_API_KEY)
+if [ "${SET_MCRICH_VIRAL:-}" = "1" ] && [ -r /dev/tty ]; then
+  echo ">> ScrapeCreators API key (สมัครที่ scrapecreators.com · กด Enter ข้าม)"
+  askkey "   ScrapeCreators API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && SCKEY=$REPLY
+fi
 
 cat > .env <<EOF
 PUBLIC_BASE=${PB}
@@ -143,6 +149,7 @@ LINEOA_SECRET=${OASEC}
 LINEOA_TOKEN=${OATOK}
 LINEOA_ID=${OAID}
 YOUTUBE_API_KEY=${YTKEY}
+SCRAPECREATORS_API_KEY=${SCKEY}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"

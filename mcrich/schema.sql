@@ -264,3 +264,5 @@ CREATE TABLE IF NOT EXISTS viral_items (
   UNIQUE (source, ext_id)
 );
 CREATE INDEX IF NOT EXISTS viral_items_src ON viral_items(source, fetched_at DESC);
+-- YouTube มาแรง (mostPopular) แยกจาก YouTube Shorts ไวรัลตามสไตล์
+UPDATE viral_items SET source='ytpopular' WHERE source='youtube' AND NOT (meta ? 'groups');

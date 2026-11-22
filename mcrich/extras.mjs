@@ -193,6 +193,11 @@ export function registerExtras(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC
   return {
     hooks: {
       shortLinks,
+      shortLink: async (w, url, label) => {
+        const code = await newCode();
+        await q('INSERT INTO links(code,user_id,work_id,platform,url,label) VALUES($1,$2,$3,$4,$5,$6)', [code, w.user_id, w.id, 'other', url, String(label || '').slice(0, 80)]);
+        return shortUrl(code);
+      },
       onDone: (w) => saveWork(w, false).then((r) => r && log('drive auto', w.id, r.files)).catch((e) => log('drive auto fail', w.id, e.message)),
     },
     driveReady,

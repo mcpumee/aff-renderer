@@ -16,6 +16,7 @@ const RENDERER = () => (process.env.RENDERER_URL || 'http://aff-renderer:3000').
 const RENDER_OUT = process.env.RENDER_OUT || '/data/out';
 
 // แนวคลิป (ฉากเปิดเป็นแอนิเมชันของเรา ไม่เสียค่า AI วิดีโอ)
+const TEMPLATES = [{ id: 'kenburns', label: 'นุ่มนวล ซูมช้า' }, { id: 'flash', label: 'ตัดไว แฟลช' }, { id: 'cards', label: 'การ์ดสไลด์' }];
 export const VIDEO_STYLES = [
   { id: 'v_gift', label: 'ระเบิดกล่องของขวัญ', emoji: '🎁', color: '#A3192A', reveal: 'gift', themes: ['goldRed', 'emerald', 'pink', 'navy', 'purple'], open: 'ระเบิดกล่องของขวัญ', hook: 'ระเบิดกล่อง\nของขวัญ!',
     variants: [{ id: 'explode', label: 'สั่นแล้วระเบิด' }, { id: 'drop', label: 'ตกจากฟ้า ตูม!', open: 'กล่องของขวัญตกจากฟ้า' }] },
@@ -30,6 +31,8 @@ export const VIDEO_STYLES = [
     variants: [{ id: 'glow', label: 'แสงทองพุ่ง' }, { id: 'key', label: 'ไขกุญแจทอง', open: 'ไขกุญแจหีบสมบัติ' }] },
   { id: 'v_scratch', label: 'ขูดบัตรลุ้นโชค', emoji: '🎟️', color: '#5A2CA0', reveal: 'scratch', themes: ['purple', 'navy', 'emerald'], open: 'ขูดบัตรลุ้นโชค', hook: 'ขูดบัตร\nลุ้นรางวัล!', variants: [] },
   { id: 'v_wheel', label: 'หมุนวงล้อนำโชค', emoji: '🎡', color: '#EE4D2D', reveal: 'wheel', themes: ['orange', 'purple', 'candy'], open: 'หมุนวงล้อนำโชค', hook: 'หมุนวงล้อ\nลุ้นของดี!', variants: [] },
+  { id: 'v_show', label: 'โชว์สินค้า / ป้ายยาหลายรูป', emoji: '📸', color: '#0E6E6E', reveal: 'show', open: '', hook: '', variants: TEMPLATES },
+  { id: 'v_top', label: 'จัดอันดับ Top 3 / Top 5', emoji: '🏆', color: '#B8860B', reveal: 'top', open: '', hook: '', variants: TEMPLATES },
   { id: 'v_self', label: 'ใส่ซับคลิปที่ถ่ายเอง', emoji: '🎬', color: '#1F4E79', reveal: 'self', open: '', hook: '', variants: [] },
   { id: 'v_sell', label: 'ขายของ / รีวิวสินค้า', emoji: '🛍️', color: '#17694A', reveal: 'none', open: '', hook: 'ของมันต้องมี\nบอกต่อ!', variants: [] },
 ];
@@ -117,7 +120,10 @@ export async function writeScript(p, style, brand, goalLabel) {
   const len = Number(p.length) || 30;
   const chars = Math.round(len * 11.5);
   const f = FORMULAS.find((x) => x.id === p.formula) || FORMULAS[0];
-  const dlg = !!p.dialogue;
+  const top = style.id === 'v_top' && Array.isArray(p.items) && p.items.length >= 2;
+  const dlg = !!p.dialogue && !top;
+  const topInfo = top ? `\nสินค้าที่จัดอันดับ (อันดับ 1 = ดีที่สุด):\n${p.items.map((it, i) => `#${i + 1} ${it.name}${it.price ? ` ราคา ${it.price}` : ''}${it.note ? ` — ${it.note}` : ''}`).join('\n')}
+เล่าแบบนับถอยหลังจากอันดับ ${p.items.length} ไปหาอันดับ 1 (อันดับ 1 ไว้ท้ายสุด ตื่นเต้นที่สุด) แต่ละอันดับ 1-3 ประโยค บอกชื่อและเหตุผลสั้นๆ ห้ามแต่งสเปกที่ไม่ได้ให้มา` : '';
   const prompt = `คุณคือครีเอเตอร์ TikTok ไทยที่ทำคลิปขายของยอดวิวสูง เขียนบทพากย์คลิปแนว "${style.label}" ยาวประมาณ ${len} วินาที
 ${style.open ? `ประโยคแรกระบบใส่ให้แล้วคือ "${style.open}" (ตอนนี้ภาพกำลังเปิด/ลุ้น) ห้ามเขียนซ้ำ ให้เริ่มที่ประโยคถัดไปซึ่งต้องเฉลยว่าได้สินค้าอะไร แบบตื่นเต้น` : 'ประโยคแรกต้องเป็นฮุคหยุดนิ้วภายใน 2 วินาที'}
 สูตรการเล่า: ${f.label} — ${f.guide}
@@ -125,12 +131,12 @@ ${dlg ? 'รูปแบบ: บทสนทนาระหว่าง A กั
 เป้าหมาย: ${goalLabel}
 สินค้า: ${p.product || '-'}
 จุดเด่น/รายละเอียด: ${p.details || '-'}
-ราคา/โปร: ${p.price || '-'}
+ราคา/โปร: ${p.price || '-'}${topInfo}
 ร้าน: ${brand.shopName || '-'}
 โทน: ${p.tone || 'เป็นกันเอง'}
 กฎ: ภาษาพูดไทยธรรมชาติ ประโยคสั้น · รวมทั้งบทประมาณ ${chars} ตัวอักษร · ห้ามอ้างรักษาโรค ห้ามคำเกินจริง (100%, เห็นผลทันที) ตามกฎ อย. · ปิดท้ายด้วยคำชวน${p.goal === 'aff' ? 'กดตะกร้า/ลิงก์' : p.goal === 'promo' ? 'มาที่ร้าน' : 'สั่งซื้อ/ทักแชท'} · ห้ามใส่อีโมจิ สัญลักษณ์ หรือวงเล็บในบทพากย์
 ตอบเป็น JSON เท่านั้น:
-{"lines":["ประโยคพากย์ทีละประโยค"],"hookText":"ข้อความบนจอช่วงเปิด 2 บรรทัด คั่นด้วย \\n บรรทัดละไม่เกิน 12 ตัวอักษร","cta":"ปุ่มท้ายคลิป สั้นมาก","facebook":"แคปชั่น FB 3-6 บรรทัด ใส่ {LINK} ถ้ามีลิงก์","instagram":"แคปชั่น IG 2-4 บรรทัด","tiktok":"แคปชั่น TikTok 1-2 บรรทัด มีฮุค","shopee":"แคปชั่นขาย สั้น ชัด","hashtags":["5-8 แท็ก"]}
+{${top ? `"intro":["ประโยคเปิด 1-2 ประโยค เช่น ${p.items.length} อันดับ...ที่ต้องมี"],"ranks":[{"rank":${p.items.length},"lines":["..."]},"... ไล่ลงไปถึง rank 1"],"outro":["ประโยคปิด ชวนซื้อ"],` : '"lines":["ประโยคพากย์ทีละประโยค"],'}"highlights":["จุดเด่นสั้นมาก 3 ข้อ ข้อละไม่เกิน 14 ตัวอักษร สำหรับป้ายบนจอ"],"hookText":"ข้อความบนจอช่วงเปิด 2 บรรทัด คั่นด้วย \\n บรรทัดละไม่เกิน 12 ตัวอักษร","cta":"ปุ่มท้ายคลิป สั้นมาก","facebook":"แคปชั่น FB 3-6 บรรทัด ใส่ {LINK} ถ้ามีลิงก์","instagram":"แคปชั่น IG 2-4 บรรทัด","tiktok":"แคปชั่น TikTok 1-2 บรรทัด มีฮุค","shopee":"แคปชั่นขาย สั้น ชัด","hashtags":["5-8 แท็ก"]}
 ${p.link ? 'มีลิงก์สินค้า: ใส่ {LINK} ในแคปชั่น ห้ามเขียน URL เอง' : 'ไม่มีลิงก์'}`;
   const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -138,7 +144,18 @@ ${p.link ? 'มีลิงก์สินค้า: ใส่ {LINK} ในแ�
   }, 90000);
   const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
   const clean = (s) => String(s || '').replace(/[\u{1F000}-\u{1FFFF}☀-➿()[\]{}*#"]/gu, '').replace(/\s+/g, ' ').trim();
-  const raw = (Array.isArray(o.lines) ? o.lines : []).map((l) => String(l || '')).filter((l) => l.trim()).slice(0, 18);
+  // Top N: รวมเป็นบรรทัดเดียวกัน พร้อมจำว่าอันดับไหนเริ่มบรรทัดไหน
+  let rankAt = null;
+  if (top) {
+    const arr = (x) => (Array.isArray(x) ? x : []).map((l) => String(l || '')).filter((l) => l.trim());
+    const flat = [...arr(o.intro)];
+    rankAt = {};
+    const ranks = (Array.isArray(o.ranks) ? o.ranks : []).filter((r) => r && Number(r.rank) >= 1 && Number(r.rank) <= p.items.length).sort((a, b) => b.rank - a.rank);
+    for (const r of ranks) { const ls = arr(r.lines).slice(0, 4); if (!ls.length) continue; rankAt[Number(r.rank)] = flat.length; flat.push(...ls); }
+    flat.push(...arr(o.outro));
+    o.lines = flat;
+  }
+  const raw = (Array.isArray(o.lines) ? o.lines : []).map((l) => String(l || '')).filter((l) => l.trim()).slice(0, top ? 30 : 18);
   let speakers = raw.map((l, i) => (dlg ? (/^\s*B\s*[:：]/i.test(l) ? 'B' : /^\s*A\s*[:：]/i.test(l) ? 'A' : (i % 2 ? 'B' : 'A')) : 'A'));
   let lines = raw.map((l) => clean(l.replace(/^\s*[AB]\s*[:：]\s*/i, '')));
   const keep = lines.map((l) => !!l);
@@ -149,7 +166,8 @@ ${p.link ? 'มีลิงก์สินค้า: ใส่ {LINK} ในแ�
     lines.unshift(style.open); speakers.unshift('A');
   }
   return {
-    lines, speakers,
+    lines, speakers, rankAt,
+    highlights: (Array.isArray(o.highlights) ? o.highlights : []).map((h) => clean(h).slice(0, 22)).filter(Boolean).slice(0, 3),
     // แนวเปิดกล่อง: ใช้หัวข้อที่ตรงกับแอนิเมชันเสมอ / แนวขายของ: ให้ AI คิดฮุค
     hookText: style.open ? style.hook : (String(o.hookText || '').slice(0, 40) || style.hook),
     cta: String(o.cta || '').slice(0, 24),
@@ -297,3 +315,12 @@ export async function transcribe(mp3, hint, durSec) {
     .map((g) => ({ start: Math.max(0, Math.min(durSec, Number(g.start) || 0)), end: Math.max(0, Math.min(durSec, Number(g.end) || 0)), text: String(g.text || '').replace(/\s+/g, ' ').trim().slice(0, 80) }))
     .filter((g) => g.text && g.end > g.start).sort((a, b) => a.start - b.start).slice(0, 200);
 }
+
+/** เวลาเริ่มของแต่ละบรรทัดในเสียงพากย์ (บรรทัดต่อกันด้วยตัวคั่น 1 ตัวทั้ง Gemini และ ElevenLabs) */
+export function lineStarts(al, lines) {
+  const st = al?.character_start_times_seconds || [];
+  const out = []; let off = 0;
+  for (const l of lines) { out.push(st[Math.min(off, st.length - 1)] ?? 0); off += [...l].length + 1; }
+  return out;
+}
+export const speechEnd = (al) => al?.character_end_times_seconds?.at(-1) || 0;

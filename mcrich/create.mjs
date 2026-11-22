@@ -241,6 +241,8 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       voice: voices.some((v) => v.id === b.voice) ? b.voice : voices[0].id,
       hashtags: (Array.isArray(b.hashtags) ? b.hashtags : []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, '').slice(0, 40)).filter((t) => t.length > 1).slice(0, 20),
       nProducts: 0,
+      captionStyle: V.CAPTION_STYLES.some((c) => c.id === b.captionStyle) ? b.captionStyle : 'pop',
+      useLogo: !!b.useLogo && !!brand.logo,
     };
     if (isSelf) {
       Object.assign(p, {
@@ -254,11 +256,21 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       const cost = V.selfPrice(p.videoSec, mode) + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
       return { video: true, self: true, style, tier: { id: mode === 'voice' ? 'self_voice' : 'self_subs', free: false, stars: cost }, versions: 1, p, cost, ...c0 };
     }
+    if (style.id === 'v_top') {
+      p.items = (Array.isArray(b.items) ? b.items : []).slice(0, 5).map((it) => {
+        const l = clean(it?.link, 300);
+        return { name: clean(it?.name, 40), price: clean(it?.price, 20), note: clean(it?.note, 120), link: /^https?:\/\/\S+$/i.test(l) ? l : '' };
+      });
+      if (p.items.length < 2 || p.items.some((it) => !it.name)) return { error: 'จัดอันดับต้องมีสินค้าอย่างน้อย 2 ชิ้น และใส่ชื่อทุกชิ้น' };
+      p.product = p.product || p.items.map((it) => it.name).join(', ').slice(0, 120);
+      p.length = p.items.length <= 3 ? 30 : 45;
+    }
     if (!p.product) return { error: 'ใส่ชื่อสินค้าก่อน' };
     // บทคุยกัน 2 คน ใช้เสียงมาตรฐาน (เสียงพรีเมียมเป็นเสียงเดียว)
     p.dialogue = !!V.FORMULAS.find((f) => f.id === p.formula)?.dialogue && !premium;
-    const c = checkContent([p.product, p.details, p.price].join(' '));
-    const cost = V.VIDEO_PRICE[length] + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
+    const c = checkContent([p.product, p.details, p.price, ...(p.items || []).map((it) => `${it.name} ${it.note}`)].join(' '));
+    if (style.id === 'v_top') p.dialogue = false;
+    const cost = V.VIDEO_PRICE[p.length] + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
     return { video: true, style, tier: { id: premium ? 'video_premium' : 'video', free: false, stars: cost }, versions: 1, p, cost, ...c };
   }
   async function freeLeft(c, uid, lock) {
@@ -297,7 +309,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }));
 
   // ยืนยันสร้าง: ตัดดาว (หรือภาพฟรี) แล้วเข้าคิว
-  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 3 }, { name: 'revs', maxCount: 3 }, { name: 'video', maxCount: 1 }]), wrap(async (req, res) => {
+  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 8 }, { name: 'revs', maxCount: 3 }, { name: 'video', maxCount: 1 }]), wrap(async (req, res) => {
     res.on('finish', () => rmTmp(req));
     if (!ready()) return res.status(503).json({ error: 'ระบบสร้างภาพกำลังตั้งค่า' });
     let body; try { body = JSON.parse(req.body?.data || '{}'); } catch { return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' }); }
@@ -349,6 +361,8 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       }
     }
 
+    if (n.style.id === 'v_top' && n.p.nProducts !== n.p.items.length) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปให้ครบทุกสินค้าในอันดับ' }); }
+    if (n.style.id !== 'v_show' && n.style.id !== 'v_top' && (req.files?.refs || []).length > 3) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'รูปสินค้าได้สูงสุด 3 รูป' }); }
     if (n.video && !n.self && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
     try {
@@ -511,9 +525,43 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     const nP = Math.max(1, Math.min(p.nProducts || 1, files.length));
     const prods = files.slice(0, nP), revs = files.slice(nP);
     let out;
+    const isShow = style.reveal === 'show' || style.reveal === 'top';
+    const showReq = () => {
+      const al = voice.alignment;
+      const starts = V.lineStarts(al, script.lines), end = V.speechEnd(al) || 1;
+      const slides = [];
+      if (style.reveal === 'top') {
+        const N = p.items.length;
+        slides.push({ url: prods[N - 1] || prods[0], start: 0, intro: true });
+        for (let r = N; r >= 1; r--) {
+          const li = script.rankAt?.[r];
+          const st = li !== undefined ? starts[li] : end * ((N - r + 1) / (N + 1));
+          slides.push({ url: prods[r - 1] || prods[0], start: st, rank: r, title: p.items[r - 1].name, price: p.items[r - 1].price });
+        }
+      } else {
+        // แบ่งรูปเท่าๆ กันตามเวลา แล้วขยับจุดตัดไปที่ต้นประโยคที่ใกล้ที่สุด
+        const n = prods.length;
+        for (let i = 0; i < n; i++) {
+          const ideal = (end * i) / n;
+          const snap = i === 0 ? 0 : starts.reduce((b, x) => (Math.abs(x - ideal) < Math.abs(b - ideal) ? x : b), ideal);
+          slides.push({ url: prods[i], start: Math.abs(snap - ideal) < end / n / 2 ? snap : ideal });
+        }
+      }
+      slides.sort((a, b) => a.start - b.start);
+      const hl = script.highlights.map((text, i) => ({ text, start: Math.min(end - 1, 3 + ((end - 4) * (i + 0.3)) / Math.max(1, script.highlights.length)) }));
+      return {
+        type: 'show', mode: style.reveal, template: style.variantId || 'kenburns', topN: p.items?.length,
+        voiceover: { ...voice, text: script.lines.join(' ') }, slides, highlights: style.reveal === 'top' ? [] : hl,
+        hookText: script.hookText, price: p.price, cta: script.cta && script.cta.length <= 18 ? script.cta : CTA[p.goal] || CTA.sell,
+        captionStyle: p.captionStyle || 'pop', accent: /^#[0-9a-f]{6}$/i.test(brand.color || '') ? brand.color : undefined,
+        music: V.pickMusic(p.music, style, p.tone) || undefined,
+        logoUrl: p.useLogo && brand.logo ? V.fileUrl(path.join(LOGO_DIR, path.basename(brand.logo))) : undefined,
+        metadata: { mcrich: w.id },
+      };
+    };
     try {
       stage('กำลังตัดต่อ', 35);
-      out = await V.render({
+      out = await V.render(isShow ? showReq() : {
         type: 'review', reveal: style.reveal, openPhrase: style.open || undefined,
         themeName: style.themes ? style.themes[Math.floor(Math.random() * style.themes.length)] : undefined,
         revealVariant: style.variantId,
@@ -524,7 +572,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         metadata: { mcrich: w.id },
       }, (s) => stage(s.status === 'queued' ? 'รอคิวตัดต่อ' : s.stage || 'กำลังตัดต่อ', 35 + Math.round((s.progress || 0) * 0.6)));
     } catch (e) {
-      log('video render fail', w.id, e.message);
+      log('video render fail', w.id, e.stack || e.message);
       PROG.delete(w.id);
       return refund(w, 'ตัดต่อคลิปไม่สำเร็จ · คืนดาวแล้ว');
     }
@@ -534,6 +582,15 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     let thumb = '';
     if (fs.existsSync(out.jpg)) { await sharp(out.jpg).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); thumb = `${base}.webp`; fs.rm(out.jpg, () => {}); }
     const { captions, tags } = await finalizeCaptions(w, p, script.captions);
+    if (style.reveal === 'top') {
+      // รายการสินค้าพร้อมลิงก์แต่ละชิ้น (ลิงก์สั้นนับคลิกได้)
+      const rows = [];
+      for (const [i, it] of p.items.entries()) {
+        const url = it.link ? (hooks.shortLink ? await hooks.shortLink(w, it.link, it.name).catch(() => it.link) : it.link) : '';
+        rows.push(`#${i + 1} ${it.name}${it.price ? ` ${it.price}` : ''}${url ? ` 👉 ${url}` : ''}`);
+      }
+      for (const k of Object.keys(captions)) if (captions[k]) captions[k] += `\n\n${rows.join('\n')}`;
+    }
     const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
     await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
       [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: script.lines.map((l, i) => (p.dialogue ? `${script.speakers[i]}: ${l}` : l)) })]);

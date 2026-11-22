@@ -350,6 +350,47 @@ async function buildProps(id, req, stage = () => {}) {
     const endStart = Math.max(3, endAt ?? Math.max(0, speechEnd - 3.5));
     return storyProps(id, req, stage, { captions, segs, endStart, speechEnd });
   }
+  if (req.type === 'show') {
+    // คลิปโชว์สินค้า / จัดอันดับ: สไลด์ตามเวลาที่ Mc Rich คำนวณจากเสียงพากย์
+    if (!req.voiceover?.audio_base64) throw new Error('ต้องมีเสียงพากย์');
+    const vext = req.voiceover.format === 'wav' ? 'wav' : 'mp3';
+    fs.writeFileSync(path.join(TMP, `${id}-vo.${vext}`), Buffer.from(req.voiceover.audio_base64, 'base64'));
+    const audioSec = await probeSeconds(path.join(TMP, `${id}-vo.${vext}`));
+    const al = req.voiceover.normalized_alignment || req.voiceover.alignment;
+    const captions = captionsFromAlignment(al);
+    const speechEnd = Math.max(audioSec || 0, al?.character_end_times_seconds?.at(-1) || 0);
+    stage('เตรียมรูป');
+    const cache = new Map();
+    const slides = [];
+    for (const [i, sl] of (req.slides || []).slice(0, 14).entries()) {
+      if (!sl?.url) continue;
+      if (!cache.has(sl.url)) {
+        const url = await localize(id, sl.url, `s${i}`, 'jpg');
+        cache.set(sl.url, { url, ...(await enhanceImage(path.join(TMP, `${id}-s${i}.jpg`))) });
+      }
+      const c = cache.get(sl.url);
+      slides.push({ url: c.url, w: c.w, h: c.h, start: Math.max(0, Number(sl.start) || 0), end: Number(sl.end) || 0,
+        title: String(sl.title || '').slice(0, 40) || undefined, price: String(sl.price || '').slice(0, 20) || undefined,
+        rank: Number(sl.rank) || undefined, intro: !!sl.intro || undefined });
+    }
+    if (!slides.length) throw new Error('ไม่มีรูปสินค้า');
+    slides.sort((a, b) => a.start - b.start); slides[0].start = 0;
+    const endStart = speechEnd + 0.3;
+    return {
+      comp: 'ShowClip',
+      props: {
+        durationSec: endStart + 2.8, audioUrl: `${LOCAL}/tmp/${id}-vo.${vext}`, captions,
+        captionStyle: ['pop', 'box', 'karaoke', 'big'].includes(req.captionStyle) ? req.captionStyle : 'pop',
+        accent: /^#[0-9a-f]{6}$/i.test(req.accent || '') ? req.accent : '#C8F94A',
+        music: ['fun', 'hype', 'suspense', 'chill', 'luxury'].includes(req.music) ? req.music : undefined, musicVolume: 0.12,
+        mode: req.mode === 'top' ? 'top' : 'show', template: ['kenburns', 'flash', 'cards'].includes(req.template) ? req.template : 'kenburns',
+        slides, endStart, topN: Number(req.topN) || undefined,
+        highlights: (req.highlights || []).slice(0, 4).map((h) => ({ text: String(h.text || '').slice(0, 24), start: Math.max(0, Number(h.start) || 0) })).filter((h) => h.text && h.start < endStart),
+        hookText: String(req.hookText || '').slice(0, 60) || undefined, price: req.price || '', cta: req.cta || 'กดตะกร้าได้เลย 👇',
+        logoUrl: req.logoUrl ? await (async () => { const f = path.join(TMP, `${id}-logo.png`); await download(req.logoUrl, f); return `${LOCAL}/tmp/${id}-logo.png`; })() : undefined,
+      },
+    };
+  }
   if (req.type === 'self') {
     const dest = path.join(TMP, `${id}-v.mp4`);
     stage('เตรียมคลิป');

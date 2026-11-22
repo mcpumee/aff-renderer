@@ -146,6 +146,7 @@ function profileView(qs) {
     <div class="list">
       <a href="#interests"><span><b>ความสนใจ</b><br><span class="muted">${esc(iSum)}</span></span><span aria-hidden="true">แก้ไข ›</span></a>
       <a href="#brand"><span><b>ชุดแบรนด์</b><br><span class="muted">${ME.brand?.shopName ? esc(ME.brand.shopName) : 'โลโก้ สี ฟอนต์ ชื่อร้าน ช่องทางสั่งซื้อ'}</span></span><span aria-hidden="true">›</span></a>
+      <a href="#auto"><span><b>โหมดอัตโนมัติ 🤖</b><br><span class="muted">สร้างคอนเทนต์ให้เองตามวัน-เวลา คุมงบดาวต่อเดือน</span></span><span aria-hidden="true">›</span></a>
       <a href="#links"><span><b>ลิงก์ของฉัน · สถิติคลิก</b><br><span class="muted">ลิงก์สั้นนับคลิกแยกแพลตฟอร์ม</span></span><span aria-hidden="true">›</span></a>
       <a href="#tags"><span><b>แฮชแท็กประจำ</b><br><span class="muted">${(ME.hashtags || []).length} แท็ก · ติ๊กใช้ได้ตอนสร้าง</span></span><span aria-hidden="true">›</span></a>
     </div>
@@ -849,7 +850,7 @@ const PLAT = [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', '
 const daysLeft = (d) => Math.max(0, Math.ceil((new Date(d) - Date.now()) / 864e5));
 const WSTAT = { queued: ['รอคิว', 'b-lime'], working: ['กำลังสร้าง', 'b-lime'], review: ['รอตรวจซับ', 'b-warn'], done: ['เสร็จแล้ว', 'b-ok'], failed: ['ไม่สำเร็จ', 'b-warn'] };
 async function worksView() {
-  app.innerHTML = `${topbar()}<main><div class="row between"><h1 style="font-size:22px">ผลงานของฉัน</h1><span class="row" style="gap:8px"><a class="btn dark sm" href="#plan">📅 ปฏิทินโพสต์</a><a class="btn sm" href="#create?new=1">+ สร้าง</a></span></div>
+  app.innerHTML = `${topbar()}<main><div class="row between"><h1 style="font-size:22px">ผลงานของฉัน</h1><span class="row" style="gap:8px"><a class="btn dark sm" href="#plan">📅 ปฏิทิน</a><a class="btn dark sm" href="#auto">🤖 อัตโนมัติ</a><a class="btn sm" href="#create?new=1">+ สร้าง</a></span></div>
     <div id="wl" class="grid2"><p class="muted">กำลังโหลด…</p></div></main>${nav('works')}`;
   const { items } = await api('api/works');
   if (!items.length) { $('#wl').outerHTML = `<div class="soon card"><h2>ยังไม่มีผลงาน</h2><p class="muted">สร้างภาพแรกได้เลย มีภาพฟรีให้ ${ME.freeImages.today + ME.freeImages.welcome} ภาพ</p><a class="btn" href="#create?new=1">สร้างภาพแรก</a></div>`; return; }
@@ -1093,6 +1094,86 @@ async function planView() {
 }
 
 
+// ---------- โหมดอัตโนมัติ ----------
+const DAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+async function autoView(qs) {
+  app.innerHTML = `${topbar('โหมดอัตโนมัติ', 'works')}<main><p class="muted">กำลังโหลด…</p></main>${nav('works')}`;
+  const d = await api('api/auto');
+  const edit = new URLSearchParams(qs || '').get('edit');
+  if (edit) return autoForm(d, d.items.find((x) => String(x.id) === edit) || null);
+  $('main').innerHTML = `
+    <section class="card"><b>ให้ Mc Rich ทำคอนเทนต์ให้เอง 🤖</b>
+      <span class="muted">ตั้งสินค้า วัน และเวลาโพสต์ ระบบจะสร้างภาพ/คลิปให้ล่วงหน้า ${d.leadMin} นาที หมุนแนวไม่ซ้ำ แล้วเตือนให้โพสต์ตามเวลา ตัดดาวเฉพาะตอนสร้างจริง และไม่เกินเพดานที่ตั้งไว้</span></section>
+    ${d.items.length ? `<div class="list">${d.items.map((p) => `<div style="display:flex;gap:12px;align-items:flex-start">
+      ${p.thumb ? `<img src="${p.thumb}" alt="" style="width:52px;height:52px;object-fit:cover;border-radius:10px">` : '<span style="font-size:30px">🤖</span>'}
+      <span style="flex:1;min-width:0"><b>${esc(p.name)}</b><br>
+        <span class="muted">${p.days.map((x) => DAYS[x]).join(' ')} · ${esc(p.time)} น. · ${p.styles.length} แนว</span><br>
+        <span class="muted">เดือนนี้ใช้ ${num(p.spent)}/${num(p.cap)} ดาว · ประมาณ ${num(p.estMonth)} ดาว/เดือน · ทำไปแล้ว ${num(p.runs)} ชิ้น</span>
+        ${p.lastError ? `<br><span class="badge b-warn">${esc(p.lastError)}</span>` : ''}
+        ${p.lastWorkId ? `<br><a href="#work?id=${p.lastWorkId}" style="font-size:14px">ผลงานล่าสุด ›</a>` : ''}
+        <span class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button type="button" class="btn dark sm" data-run="${p.id}">สร้างเลยตอนนี้</button>
+          <a class="btn dark sm" href="#auto?edit=${p.id}">แก้ไข</a>
+          <button type="button" class="btn dark sm" data-del="${p.id}" aria-label="ลบแผน ${esc(p.name)}">ลบ</button></span></span>
+      <label style="display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px" class="muted"><input type="checkbox" class="sw-in" data-on="${p.id}" ${p.active ? 'checked' : ''} aria-label="เปิดใช้แผน ${esc(p.name)}">${p.active ? 'เปิด' : 'พัก'}</label>
+    </div>`).join('')}</div>` : ''}
+    <a class="btn" href="#auto?edit=new" style="width:100%">+ ตั้งแผนอัตโนมัติ</a>
+    <p class="muted" style="font-size:13px">แนวที่หมุนให้: ${d.styles.map((s) => esc(s.label)).join(' · ')}</p>`;
+  app.querySelectorAll('[data-on]').forEach((b) => b.onchange = (e) => api(`api/auto/${b.dataset.on}`, { method: 'PATCH', body: { active: e.target.checked } }).then(() => { toast(e.target.checked ? 'เปิดแผนแล้ว' : 'พักแผนแล้ว'); autoView(); }).catch((x) => toast(x.message)));
+  app.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => { if (!confirm('ลบแผนนี้? (ผลงานที่สร้างไปแล้วยังอยู่)')) return; await api(`api/auto/${b.dataset.del}`, { method: 'DELETE' }); toast('ลบแล้ว'); autoView(); });
+  app.querySelectorAll('[data-run]').forEach((b) => b.onclick = async () => {
+    b.disabled = true; b.textContent = 'กำลังสั่ง…';
+    try { const r = await api(`api/auto/${b.dataset.run}/run`, { method: 'POST', body: {} }); toast(`สั่งทำ "${r.style}" แล้ว (${r.cost} ดาว)`); ME.stars -= r.cost; go(`work?id=${r.workId}`); }
+    catch (e) { toast(e.message); b.disabled = false; b.textContent = 'สร้างเลยตอนนี้'; }
+  });
+}
+function autoForm(d, p) {
+  const v = p || { name: '', goal: 'sell', product: {}, styles: ['sale_banner', 'product_luxury', 'v_mystery', 'v_show'], days: [1, 3, 5], time: '19:00', platforms: ['tiktok', 'facebook'], cap: 300, videoLen: 15 };
+  const chip = (g, val, label, on) => `<button type="button" class="chip" data-g="${g}" data-v="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
+  $('main').innerHTML = `<h1 style="font-size:22px">${p ? 'แก้ไขแผน' : 'ตั้งแผนอัตโนมัติ'}</h1>
+    <section class="card">
+      <label class="f" for="an">ชื่อสินค้า / เรื่อง<input id="an" type="text" maxlength="80" value="${esc(v.product.name || '')}" placeholder="เช่น เซรั่มหน้าใส 30ml"></label>
+      <div class="grid2"><label class="f" for="ap">ราคา (ไม่บังคับ)<input id="ap" type="text" maxlength="40" value="${esc(v.product.price || '')}" placeholder="199 บาท"></label>
+      <label class="f" for="ag">เป้าหมาย<select id="ag">${[['sell', 'ขายของ'], ['aff', 'แอฟฟิลิเอต'], ['promo', 'โปรโมตร้าน'], ['content', 'คอนเทนต์']].map(([k, l]) => `<option value="${k}" ${v.goal === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
+      <label class="f" for="ad">จุดเด่น / รายละเอียด<textarea id="ad" rows="3" maxlength="500" placeholder="เช่น ลดฝ้า ใน 7 วัน ส่งฟรี">${esc(v.product.details || '')}</textarea></label>
+      <label class="f" for="al">ลิงก์สินค้า (ไม่บังคับ)<input id="al" type="url" maxlength="300" value="${esc(v.product.link || '')}" placeholder="https://"></label>
+      ${p ? `<span class="muted">รูปสินค้า: ${p.photos} รูป (ลบแล้วตั้งใหม่ถ้าต้องเปลี่ยนรูป)</span>` : `<label class="f" for="af">รูปสินค้า 1–3 รูป (จำเป็นสำหรับคลิป)<input id="af" type="file" accept="image/*" multiple></label>`}
+    </section>
+    <section class="card"><b>แนวงานที่ให้หมุนเวียน</b><span class="muted">ระบบสลับให้ทีละแนว ไม่ซ้ำติดกัน</span>
+      <div class="chips">${d.styles.map((s) => chip('st', s.id, `${s.kind === 'video' ? '🎬' : '🖼️'} ${s.label} · ${s.est}⭐`, v.styles.includes(s.id))).join('')}</div>
+      <label class="f" for="avl">ความยาวคลิป<select id="avl"><option value="15" ${v.videoLen === 15 ? 'selected' : ''}>15 วินาที</option><option value="30" ${v.videoLen === 30 ? 'selected' : ''}>30 วินาที</option></select></label></section>
+    <section class="card"><b>วันและเวลาโพสต์</b>
+      <div class="chips">${DAYS.map((x, i) => chip('dy', i, x, v.days.includes(i))).join('')}</div>
+      <label class="f" for="at">เวลาโพสต์<input id="at" type="time" value="${esc(v.time)}"></label>
+      <b style="margin-top:6px">โพสต์ที่ไหน (เตือนตามเวลา)</b>
+      <div class="chips">${PLATS.filter(([k]) => k !== 'other').map(([k, l]) => chip('pf', k, l, v.platforms.includes(k))).join('')}</div></section>
+    <section class="card"><label class="f" for="ac">เพดานดาวต่อเดือน<input id="ac" type="number" min="10" max="5000" step="10" value="${v.cap}"></label>
+      <span class="muted" id="aest"></span></section>
+    <div class="grid2"><a class="btn dark" href="#auto">ยกเลิก</a><button type="button" class="btn" id="asave">${p ? 'บันทึก' : 'เริ่มแผน'}</button></div>`;
+  app.querySelectorAll('.chip[data-g]').forEach((b) => b.onclick = () => { b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); est(); });
+  const pick = (g) => [...app.querySelectorAll(`.chip[data-g="${g}"][aria-pressed="true"]`)].map((b) => b.dataset.v);
+  const est = () => {
+    const sts = pick('st').map((id) => d.styles.find((s) => s.id === id)); const len = Number($('#avl').value);
+    const avg = sts.length ? sts.reduce((a, s) => a + (len === 30 ? s.est30 : s.est), 0) / sts.length : 0;
+    $('#aest').textContent = `ประมาณ ${num(Math.round(avg * pick('dy').length * 4.35))} ดาว/เดือน (${pick('dy').length} ชิ้น/สัปดาห์) · ถ้าครบเพดาน ระบบจะหยุดเองจนถึงเดือนหน้า`;
+  };
+  $('#avl').onchange = est; est();
+  $('#asave').onclick = async (e) => {
+    const data = { name: $('#an').value, goal: $('#ag').value, product: { name: $('#an').value, price: $('#ap').value, details: $('#ad').value, link: $('#al').value },
+      styles: pick('st'), days: pick('dy').map(Number), time: $('#at').value, platforms: pick('pf'), cap: Number($('#ac').value), videoLen: Number($('#avl').value) };
+    e.target.disabled = true;
+    try {
+      if (p) await api(`api/auto/${p.id}`, { method: 'PATCH', body: { full: data } });
+      else {
+        const fd = new FormData(); fd.append('data', JSON.stringify(data));
+        [...($('#af')?.files || [])].slice(0, 3).forEach((f) => fd.append('refs', f));
+        await api('api/auto', { method: 'POST', body: fd });
+      }
+      toast(p ? 'บันทึกแล้ว' : 'เริ่มแผนแล้ว 🤖'); go('auto');
+    } catch (x) { toast(x.message); e.target.disabled = false; }
+  };
+}
+
 // ---------- แจ้งเตือน (โปรไฟล์) ----------
 async function notifCard() {
   const el = $('#notif'); if (!el) return;
@@ -1214,6 +1295,7 @@ async function route() {
     case 'profile': return profileView(qs);
     case 'links': return linksView().catch((e) => toast(e.message));
     case 'plan': return planView().catch((e) => toast(e.message));
+    case 'auto': return autoView(qs).catch((e) => toast(e.message));
     case 'brand': return brandView();
     case 'tags': return tagsView();
     case 'stars': return starsView().catch((e) => toast(e.message));

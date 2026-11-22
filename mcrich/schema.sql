@@ -203,3 +203,29 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 CREATE INDEX IF NOT EXISTS chat_user ON chat_messages(user_id, id DESC);
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notify JSONB NOT NULL DEFAULT '{"line": true}'::jsonb;
+
+-- โหมดอัตโนมัติ: สร้างคอนเทนต์ตามตาราง มีเพดานดาวต่อเดือน
+CREATE TABLE IF NOT EXISTS auto_plans (
+  id            BIGSERIAL PRIMARY KEY,
+  user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL DEFAULT '',
+  active        BOOLEAN NOT NULL DEFAULT TRUE,
+  goal          TEXT NOT NULL DEFAULT 'sell',
+  product       JSONB NOT NULL DEFAULT '{}'::jsonb,   -- {name, price, details, link}
+  refs          TEXT[] NOT NULL DEFAULT '{}',
+  styles        TEXT[] NOT NULL DEFAULT '{}',
+  days          INTEGER[] NOT NULL DEFAULT '{}',      -- 0=อาทิตย์ … 6=เสาร์
+  post_time     TEXT NOT NULL DEFAULT '19:00',
+  platforms     TEXT[] NOT NULL DEFAULT '{}',
+  video_len     INTEGER NOT NULL DEFAULT 15,
+  cap_month     INTEGER NOT NULL DEFAULT 300,
+  spent_month   TEXT NOT NULL DEFAULT '',
+  spent_stars   INTEGER NOT NULL DEFAULT 0,
+  rot           INTEGER NOT NULL DEFAULT 0,
+  last_run_date DATE,
+  last_work_id  BIGINT,
+  last_error    TEXT NOT NULL DEFAULT '',
+  runs          INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS auto_plans_user ON auto_plans(user_id);

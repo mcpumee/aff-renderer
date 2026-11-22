@@ -443,6 +443,38 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     } catch (e) { await c.query('ROLLBACK').catch(() => {}); refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); dropVideo(); throw e; } finally { c.release(); }
   }));
 
+  /** สร้างงานจากระบบ (โหมดอัตโนมัติ): refFiles = ไฟล์รูปบนดิสก์ จะคัดลอกเป็นของงานนี้ */
+  async function createInternal(uid, body, refFiles = [], note = '') {
+    const m = await me(uid);
+    const n = normalize(body, m.brand || {});
+    if (n.error || n.blocked) return { error: n.error || n.blocked };
+    if (n.tier.free) return { error: 'โหมดอัตโนมัติไม่ใช้ภาพฟรี' };
+    const refs = [];
+    for (const f of refFiles) {
+      if (!fs.existsSync(f)) continue;
+      const name = `${uid}-${Date.now().toString(36)}${rand(5).toLowerCase()}.jpg`;
+      fs.copyFileSync(f, path.join(REF_DIR, name)); refs.push(name);
+    }
+    n.p.nProducts = refs.length;
+    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id)) return { error: 'ต้องมีรูปสินค้า' };
+    const c = await pool.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [uid]);
+      const bal = (await c.query('SELECT COALESCE(sum(delta),0)::int s FROM star_ledger WHERE user_id=$1', [uid])).rows[0].s;
+      if (bal < n.cost) { await c.query('ROLLBACK'); refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return { error: 'ดาวไม่พอ', lowStars: true, cost: n.cost, bal }; }
+      const title = n.p.product || n.p.headline || n.style.label;
+      const w = (await c.query(`INSERT INTO works(user_id,kind,style,title,params,tier,versions,cost,free,refs,expires_at)
+        VALUES($1,$9,$2,$3,$4,$5,$6,$7,false,$8, now() + interval '${KEEP_DAYS} days') RETURNING id`,
+      [uid, n.style.id, title.slice(0, 80), { ...n.p, auto: true, warnings: n.warnings }, n.tier.id, n.versions, n.cost, refs, n.video ? 'video' : 'image'])).rows[0];
+      await c.query("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'spend',$3,$4)", [uid, -n.cost, `work:${w.id}`, `อัตโนมัติ: ${n.style.label}${note ? ` · ${note}` : ''}`]);
+      await c.query("INSERT INTO audit_log(user_id,action,detail) VALUES($1,'work_auto',$2)", [uid, { id: w.id, style: n.style.id, cost: n.cost }]);
+      await c.query('COMMIT');
+      kick();
+      return { id: w.id, cost: n.cost };
+    } catch (e) { await c.query('ROLLBACK').catch(() => {}); refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); throw e; } finally { c.release(); }
+  }
+
   // คลิปถ่ายเอง: แก้ซับ แล้วสั่งตัดต่อ
   app.put('/api/works/:id/segments', auth, wrap(async (req, res) => {
     const w = await own(req); if (!w || w.style !== 'v_self') return res.status(404).json({ error: 'ไม่พบผลงาน' });
@@ -938,5 +970,5 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     setInterval(() => sweep().catch((e) => log('sweep', e.message)), 3600e3).unref();
     setTimeout(() => sweep().catch(() => {}), 20000).unref();
   }
-  return { ready, start };
+  return { ready, start, createInternal, REF_DIR };
 }

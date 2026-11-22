@@ -149,6 +149,7 @@ function profileView(qs) {
       <a href="#links"><span><b>ลิงก์ของฉัน · สถิติคลิก</b><br><span class="muted">ลิงก์สั้นนับคลิกแยกแพลตฟอร์ม</span></span><span aria-hidden="true">›</span></a>
       <a href="#tags"><span><b>แฮชแท็กประจำ</b><br><span class="muted">${(ME.hashtags || []).length} แท็ก · ติ๊กใช้ได้ตอนสร้าง</span></span><span aria-hidden="true">›</span></a>
     </div>
+    <section class="card" id="notif"><h2 style="font-size:16px">แจ้งเตือน</h2><span class="muted">กำลังโหลด…</span></section>
     <section class="card"><h2 style="font-size:16px">การเชื่อมต่อ</h2>
       <div id="drive" class="card" style="padding:12px;background:var(--s2)"><span class="muted">Google Drive · กำลังโหลด…</span></div>
       <div class="grid2 muted">
@@ -170,6 +171,7 @@ function profileView(qs) {
   };
   $('#logout').onclick = async () => { await api('api/logout', { method: 'POST' }); ME = null; go('login'); };
   driveCard().catch(() => {});
+  notifCard().catch(() => {});
 }
 async function driveCard() {
   const d = await api('api/drive'); const el = $('#drive'); if (!el) return;
@@ -1090,6 +1092,76 @@ async function planView() {
   const t = $('#ptest'); if (t) t.onclick = () => api('api/push/test', { method: 'POST', body: {} }).then((r) => toast(r.sent ? 'ส่งแล้ว ดูที่แจ้งเตือน' : 'ยังไม่มีอุปกรณ์ที่เปิดแจ้งเตือน'));
 }
 
+
+// ---------- แจ้งเตือน (โปรไฟล์) ----------
+async function notifCard() {
+  const el = $('#notif'); if (!el) return;
+  const n = await api('api/profile/notify');
+  el.innerHTML = `<h2 style="font-size:16px">แจ้งเตือน</h2>
+    ${n.oa ? (n.hasLine ? `<label class="row between" for="nline"><span><b>แจ้งเตือนผ่าน LINE</b><br><span class="muted">ผลงานเสร็จ · ถึงเวลาโพสต์ · คุยกับน้องริชใน LINE</span></span>
+        <input id="nline" type="checkbox" class="sw-in" ${n.line ? 'checked' : ''}></label>
+        <div class="grid2"><a class="btn sm" href="${esc(n.oa.url)}" target="_blank" rel="noopener">เพิ่มเพื่อน ${esc(n.oa.id)}</a><button type="button" class="btn dark sm" id="ntest">ทดสอบ</button></div>
+        <span class="muted">ต้องเพิ่มเพื่อน LINE OA ก่อน จึงจะได้รับข้อความ</span>`
+      : '<span class="muted">แจ้งเตือนผ่าน LINE ใช้ได้กับบัญชีที่เข้าด้วย LINE</span>') : '<span class="muted">แจ้งเตือนผ่าน LINE เร็วๆ นี้</span>'}
+    <a class="btn dark sm" href="#plan" style="width:100%">แจ้งเตือนเข้ามือถือ (ปฏิทินโพสต์)</a>`;
+  const nl = $('#nline'); if (nl) nl.onchange = (e) => api('api/profile/notify', { method: 'PUT', body: { line: e.target.checked } }).then(() => toast('บันทึกแล้ว'));
+  const nt = $('#ntest'); if (nt) nt.onclick = () => api('api/chat/line-test', { method: 'POST', body: {} }).then((r) => toast(r.ok ? 'ส่งแล้ว ดูใน LINE' : 'ส่งไม่ได้ เพิ่มเพื่อน OA ก่อนนะ'));
+}
+
+// ---------- แชทน้องริช ----------
+let CHAT = null;
+function openDraft(d) {
+  D = { ...newDraft(), kind: d.kind, style: d.style, goal: d.goal || 'sell', product: d.product || '', headline: d.headline || '', price: d.price || '', details: d.details || '', step: d.style ? 2 : 1 };
+  if (d.kind === 'image') { const st = CAT?.styles?.find((x) => x.id === d.style); if (st) D.ratio = st.ratio; }
+  REFS = []; REVS = []; VFILE = null; ITEMF = []; saveDraft(); go('create');
+}
+const bubble = (m) => `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}">${m.role === 'user' ? '' : '<span class="av" aria-hidden="true">🤖</span>'}
+  <div><div class="bb">${esc(m.content).replace(/\n/g, '<br>')}</div>
+  ${m.draft ? `<button type="button" class="btn sm" data-draft="${m.id ?? ''}" style="margin-top:6px">✨ ${esc(m.draft.label || 'สร้างงานนี้')}</button>` : ''}
+  ${m.channel === 'line' ? '<span class="muted" style="font-size:11px">ผ่าน LINE</span>' : ''}</div></div>`;
+async function chatView(qs) {
+  const params = new URLSearchParams(qs || '');
+  app.innerHTML = `${topbar('น้องริช · ผู้ช่วย AI')}<main class="chat"><div id="msgs"><p class="muted">กำลังโหลด…</p></div></main>
+    <form class="chatbar" id="cf"><div id="chips" class="chips"></div><div class="row" style="gap:8px">
+      <input id="ct" type="text" maxlength="1000" placeholder="ถามน้องริชได้เลย…" autocomplete="off" aria-label="ข้อความ">
+      <button class="btn" style="width:auto;padding:0 18px" aria-label="ส่ง">ส่ง</button></div><span class="muted" id="cq" style="font-size:12px"></span></form>${nav('chat')}`;
+  CHAT = await api('api/chat');
+  if (params.get('draft') === 'last') {
+    const d = [...CHAT.items].reverse().find((m) => m.draft);
+    if (d) { if (!CAT) CAT = await api('api/create/catalog').catch(() => null); return openDraft(d.draft); }
+  }
+  const starters = ['ช่วยคิดคอนเทนต์ขายของ 7 วัน', 'เขียนแคปชั่นโปรลดราคา', 'สินค้าใหม่ควรทำคลิปแบบไหนดี', 'ทำโปสเตอร์ประชาสัมพันธ์งานวันเด็ก'];
+  const draw = (chips) => {
+    const items = CHAT.items;
+    $('#msgs').innerHTML = (items.length ? '' : `<div class="msg ai"><span class="av">🤖</span><div><div class="bb">สวัสดีค่ะ น้องริชเอง ✨<br>ให้ช่วยคิดไอเดียคอนเทนต์ เขียนแคปชั่น เลือกแนวคลิป หรือวางแผนโพสต์ได้เลย</div></div></div>`)
+      + items.map(bubble).join('')
+      + (CHAT.oa && !items.length ? `<a class="card" href="${esc(CHAT.oa.url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><b>💬 คุยกับน้องริชใน LINE ก็ได้</b><span class="muted">เพิ่มเพื่อน ${esc(CHAT.oa.id)} รับแจ้งเตือนผลงานเสร็จและเวลาโพสต์</span></a>` : '');
+    $('#chips').innerHTML = (chips || (items.length ? [] : starters)).map((c) => `<button type="button" class="chip" data-chip="${esc(c)}" style="min-height:32px;font-size:13px;white-space:nowrap">${esc(c)}</button>`).join('');
+    $('#cq').textContent = CHAT.ready ? `วันนี้คุยได้อีก ${CHAT.quota.left}/${CHAT.quota.max} ข้อความ` : 'ผู้ช่วย AI กำลังตั้งค่า';
+    app.querySelectorAll('[data-chip]').forEach((b) => b.onclick = () => send(b.dataset.chip));
+    app.querySelectorAll('[data-draft]').forEach((b) => b.onclick = async () => {
+      const m = CHAT.items.find((x) => String(x.id ?? '') === b.dataset.draft && x.draft) || [...CHAT.items].reverse().find((x) => x.draft);
+      if (!CAT) CAT = await api('api/create/catalog').catch(() => null);
+      openDraft(m.draft);
+    });
+    window.scrollTo(0, document.body.scrollHeight);
+  };
+  const send = async (text) => {
+    text = String(text || '').trim(); if (!text) return;
+    $('#ct').value = '';
+    CHAT.items.push({ role: 'user', content: text });
+    CHAT.items.push({ role: 'model', content: 'กำลังคิด…' });
+    draw([]);
+    try {
+      const r = await api('api/chat', { method: 'POST', body: { text } });
+      CHAT.items.pop(); CHAT.items.push({ id: `n${Date.now()}`, role: 'model', content: r.reply, draft: r.draft }); CHAT.quota = r.quota;
+      draw(r.chips);
+    } catch (e) { CHAT.items.pop(); CHAT.items.push({ role: 'model', content: e.message }); draw([]); }
+  };
+  $('#cf').onsubmit = (e) => { e.preventDefault(); send($('#ct').value); };
+  draw();
+}
+
 // ---------- ลิงก์สั้น + สถิติคลิก ----------
 const bars = (days) => {
   const max = Math.max(1, ...days.map((d) => d.n));
@@ -1150,7 +1222,7 @@ async function route() {
     case 'create': return createView(qs).catch((e) => toast(e.message));
     case 'works': return worksView().catch((e) => toast(e.message));
     case 'work': return workView(qs).catch((e) => toast(e.message));
-    case 'chat': return soon('chat', 'แชทผู้ช่วย AI', 'ถามเรื่องดาว ผลงาน หรือขอไอเดียคลิปได้ตลอด 24 ชม.');
+    case 'chat': return chatView(qs).catch((e) => toast(e.message));
     default: return homeView();
   }
 }

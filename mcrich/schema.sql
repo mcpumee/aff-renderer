@@ -190,3 +190,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key   TEXT PRIMARY KEY,
   value JSONB NOT NULL
 );
+
+-- แชทผู้ช่วย AI (เว็บ + LINE OA)
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL,              -- user | model
+  content    TEXT NOT NULL,
+  draft      JSONB,                      -- งานที่ AI เสนอให้สร้าง
+  channel    TEXT NOT NULL DEFAULT 'web', -- web | line
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS chat_user ON chat_messages(user_id, id DESC);
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notify JSONB NOT NULL DEFAULT '{"line": true}'::jsonb;

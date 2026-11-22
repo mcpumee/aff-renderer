@@ -6,6 +6,7 @@ const PLATFORMS = { facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTo
 
 export function registerSchedule(app, { q, auth, wrap, log, PUBLIC_URL }) {
   let vapid = null;
+  let notify = async () => false;
   async function keys() {
     if (vapid) return vapid;
     const r = (await q("SELECT value FROM app_settings WHERE key='vapid'")).rows[0];
@@ -86,9 +87,10 @@ export function registerSchedule(app, { q, auth, wrap, log, PUBLIC_URL }) {
       RETURNING s.id, s.user_id, s.work_id, s.platform, w.title`);
     for (const r of rows) {
       const n = await push(r.user_id, { title: `ถึงเวลาโพสต์ ${PLATFORMS[r.platform] || r.platform} 📣`, body: `${r.title || 'ผลงาน'} · แตะเพื่อเปิด คัดลอกแคปชั่นแล้วโพสต์ได้เลย`, url: `./#work?id=${r.work_id}&post=${r.platform}`, tag: `s${r.id}` }).catch(() => 0);
-      log('schedule due', r.id, r.platform, `push=${n}`);
+      const l = await notify(r.user_id, `📣 ถึงเวลาโพสต์ ${PLATFORMS[r.platform] || r.platform}\n${r.title || 'ผลงาน'}\nคัดลอกแคปชั่น + บันทึกคลิป 👉 ${PUBLIC_URL}/#work?id=${r.work_id}&post=${r.platform}`).catch(() => false);
+      log('schedule due', r.id, r.platform, `push=${n}`, `line=${l}`);
     }
   }
   function start() { setInterval(() => tick().catch((e) => log('schedule tick', e.message)), 60e3).unref(); setTimeout(() => tick().catch(() => {}), 15e3).unref(); }
-  return { start, push };
+  return { start, push, setNotify: (fn) => { notify = fn; } };
 }

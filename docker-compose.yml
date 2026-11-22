@@ -68,6 +68,9 @@ services:
       - MCRICH_IMAGE_MODEL=${MCRICH_IMAGE_MODEL:-}
       - MCRICH_TTS_MODEL=${MCRICH_TTS_MODEL:-}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - LINEOA_SECRET=${LINEOA_SECRET:-}
+      - LINEOA_TOKEN=${LINEOA_TOKEN:-}
+      - LINEOA_ID=${LINEOA_ID:-}
       - RENDER_TOKEN=${RENDER_TOKEN}
       - RENDERER_URL=http://aff-renderer:3000
     volumes:

@@ -95,6 +95,14 @@ if { [ -z "$GKEY" ] || [ "${SET_MCRICH_AI:-}" = "1" ]; } && [ -r /dev/tty ]; the
   echo ">> ตั้งค่า AI สร้างภาพ (ยังไม่มี กด Enter ข้ามได้)"
   askkey "   Gemini API key ของโปรเจกต์ Mc Rich (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && GKEY=$REPLY
 fi
+# ---- LINE OA (Messaging API) สำหรับแชทน้องริช + แจ้งเตือน ----
+OASEC=$(envget LINEOA_SECRET); OATOK=$(envget LINEOA_TOKEN); OAID=$(envget LINEOA_ID)
+if [ "${SET_MCRICH_LINEOA:-}" = "1" ] && [ -r /dev/tty ]; then
+  echo ">> ตั้งค่า LINE OA ของ Mc Rich (Messaging API channel ที่อยู่ Provider เดียวกับ LINE Login)"
+  askkey "   Channel secret (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && OASEC=$REPLY
+  askkey "   Channel access token (long-lived) (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && OATOK=$REPLY
+  askkey "   Basic ID ของ OA เช่น @123abcde: " 0; [ -n "$REPLY" ] && OAID=$REPLY
+fi
 ELKEY=$(envget ELEVENLABS_API_KEY)
 if [ "${SET_MCRICH_VOICE:-}" = "1" ] && [ -r /dev/tty ]; then
   echo ">> เสียงพากย์พรีเมียม ElevenLabs (แพ็กเสียเงินเท่านั้น · กด Enter ข้าม = ใช้เสียง Gemini อย่างเดียว)"
@@ -125,6 +133,9 @@ SELLER_ADDRESS="${SADDR}"
 SELLER_TAX_ID=${STAX}
 GEMINI_API_KEY=${GKEY}
 ELEVENLABS_API_KEY=${ELKEY}
+LINEOA_SECRET=${OASEC}
+LINEOA_TOKEN=${OATOK}
+LINEOA_ID=${OAID}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"
@@ -199,6 +210,7 @@ for i in $(seq 1 180); do
       echo ">> ✅ Mc Rich: $MURL/  (ทดสอบ HTTP $MC — 200 = ใช้ได้)"
       echo ">>    ลิงก์ Callback สำหรับ LINE Login: $MURL/auth/line/callback"
       echo ">>    ลิงก์ Callback สำหรับ Google:     $MURL/auth/google/callback"
+      echo ">>    Webhook URL สำหรับ LINE OA:      $MURL/line/webhook"
       docker logs mcrich-app 2>&1 | grep 'Mc Rich พร้อม' | tail -1
       echo ">>    ตั้งตัวเองเป็นแอดมิน: docker exec mcrich-app node admin.mjs <รหัสสมาชิกในหน้าโปรไฟล์>"
     fi

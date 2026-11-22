@@ -11,6 +11,7 @@ import { registerPay } from './pay.mjs';
 import { registerCreate } from './create.mjs';
 import { registerExtras } from './extras.mjs';
 import { registerSchedule } from './schedule.mjs';
+import { registerChat } from './chat.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3200);
@@ -144,7 +145,7 @@ const PROVIDERS = {
     enabled: () => !!(LINE_ID && LINE_SECRET),
     authUrl: (state, nonce) => 'https://access.line.me/oauth2/v2.1/authorize?' + new URLSearchParams({
       response_type: 'code', client_id: LINE_ID, redirect_uri: `${PUBLIC_URL}/auth/line/callback`,
-      state, nonce, scope: 'profile openid email',
+      state, nonce, scope: 'profile openid email', ...(process.env.LINEOA_ID ? { bot_prompt: 'aggressive' } : {}),
     }),
     async exchange(code, nonce) {
       const t = await post('https://api.line.me/oauth2/v2.1/token', {
@@ -183,7 +184,7 @@ async function post(url, form) {
 const app = express();
 app.set('trust proxy', true);
 app.disable('x-powered-by');
-app.use(express.json({ limit: '200kb' }));
+app.use(express.json({ limit: '200kb', verify: (req, _res, buf) => { if (req.url.startsWith('/line/')) req.rawBody = buf; } }));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -324,8 +325,17 @@ const pay = registerPay(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand });
 // ---------- สร้างภาพ ----------
 const extras = registerExtras(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC_URL, SECRET, makeToken, readToken, getCookie, setCookie, G_ID, G_SECRET });
 const sched = registerSchedule(app, { q, auth, wrap, log, PUBLIC_URL });
+const chat = registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL });
+sched.setNotify((uid, text) => chat.notifyLine(uid, text));
 const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks: extras.hooks });
-app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready(), create: create.ready(), drive: extras.driveReady() }));
+// ผลงานเสร็จ → ส่ง Drive (ถ้าเชื่อม) + แจ้งเตือน LINE
+{
+  const driveDone = extras.hooks.onDone;
+  extras.hooks.onDone = async (w) => {
+    await Promise.allSettled([driveDone(w), chat.notifyLine(w.user_id, `✅ ผลงานเสร็จแล้ว: ${w.title || 'ผลงานของคุณ'}\nดู/บันทึก/ตั้งเวลาโพสต์ 👉 ${chat.appUrl(`work?id=${w.id}`)}`)]);
+  };
+}
+app.get('/api/config', (_q, r) => r.json({ line: PROVIDERS.line.enabled(), google: PROVIDERS.google.enabled(), topup: pay.ready(), create: create.ready(), drive: extras.driveReady(), lineoa: chat.oaReady() }));
 
 // ---------- หน้าเว็บ ----------
 // index.html ห้ามจำ (ให้ได้เวอร์ชันใหม่ทุกครั้ง) ส่วน js/css ใส่เลขเวอร์ชันในลิงก์
@@ -336,5 +346,5 @@ app.get('/sw.js', (_q, r) => { r.setHeader('cache-control', 'no-cache'); r.setHe
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 app.get(['/privacy', '/terms'], (req, res) => res.sendFile(path.join(__dir, 'public', `${req.path.slice(1)}.html`)));
 
-migrate().then(() => { create.start(); sched.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()}`)); })
+migrate().then(() => { create.start(); sched.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

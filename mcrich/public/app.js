@@ -141,7 +141,7 @@ const trendRow = (x, i) => `<button type="button" class="tcard" data-open="${x.i
   <span class="tt">${esc(x.title)}</span>${x.idea?.hook ? `<span class="hk">💡 ${esc(x.idea.hook)}</span>` : ''}</span></button>`;
 // กล่องไวรัล: แท็บแพลตฟอร์ม + ชิปเฉพาะสไตล์ของผู้ใช้ (ใช้ทั้งหน้าแรกและหน้าคลิปไวรัล)
 async function viralBox(el, o = {}) {
-  const st = { pf: o.pf || prefPf(), g: o.g || 'mine', sort: o.sort || 'hot', page: 0, items: [] };
+  const st = { pf: o.pf || prefPf(), g: o.g || 'mine', sort: o.sort || 'hot', page: 0, items: [], retry: 0 };
   const limit = o.home ? 6 : 24;
   async function load(reset) {
     if (reset) { st.page = 0; st.items = []; }
@@ -153,20 +153,23 @@ async function viralBox(el, o = {}) {
     const chip = (k, label) => `<button type="button" class="chip" data-vg="${k}" aria-pressed="${st.g === k}" style="white-space:nowrap;flex:none;min-height:32px;padding:4px 12px;font-size:13px">${label}</button>`;
     el.innerHTML = `${o.home ? `<div class="row between"><h2>🔥 ไวรัลสไตล์คุณ</h2><a href="#viral?pf=${st.pf}&g=${st.g}" style="font-size:14px">ดูทั้งหมด ›</a></div>` : ''}
       <div class="hs" role="tablist" aria-label="แพลตฟอร์ม" style="padding-bottom:0">${d.tabs.map(tab).join('')}</div>
-      ${d.myChips.length > 1 ? `<div class="hs" style="padding-bottom:0">${chip('mine', '✨ ทุกสไตล์ของฉัน')}${d.myChips.map((c) => chip(c.key, `${c.emoji} ${esc(c.label)}`)).join('')}</div>` : ''}
+      ${d.myChips.length ? `<div class="hs" style="padding-bottom:0">${d.myChips.length > 1 ? chip('mine', '✨ ทุกสไตล์ของฉัน') : ''}${d.myChips.map((c) => chip(c.key, `${c.emoji} ${esc(c.label)}`)).join('')}</div>` : ''}
+      ${d.filling ? '<span class="muted" style="font-size:13px">⏳ กำลังดึงคลิปสไตล์นี้ให้ใหม่ รอสักครู่…</span>' : ''}
       ${d.needStyles ? '<a class="card" href="#interests" style="text-decoration:none;color:var(--fg);padding:12px"><b>เลือกสไตล์ของคุณก่อน</b><span class="muted" style="font-size:13px">ตั้งหมวดสินค้าและสไตล์คลิป ระบบจะคัดเฉพาะไวรัลที่ตรงกับคุณ</span></a>' : ''}
       ${google && d.general && st.items.length ? '<span class="muted" style="font-size:13px">ยังไม่มีกระแสตรงสไตล์คุณวันนี้ · นี่คือกระแสยอดนิยมในไทย</span>' : ''}
       ${!o.home && !google ? `<div class="row" style="gap:8px">${['hot', 'new'].map((k) => `<button type="button" class="chip" data-vs="${k}" aria-pressed="${st.sort === k}" style="min-height:32px;padding:4px 12px;font-size:13px">${k === 'hot' ? '🔥 มาแรง' : '🆕 ใหม่สุด'}</button>`).join('')}</div>` : ''}
       <div class="vgrid" style="display:grid;grid-template-columns:${google ? '1fr' : `repeat(auto-fill,minmax(${o.home ? 104 : 150}px,1fr))`};gap:12px 10px">
         ${st.items.length ? st.items.map((x, i) => (google ? trendRow(x, i) : clipCard(x).replace('class="vcard"', 'class="vcard" style="width:auto"'))).join('')
-          : `<p class="muted">ยังไม่มีคลิป${d.myChips.length ? 'ในสไตล์นี้' : ''}บน ${esc(d.tabs.find((t) => t.key === st.pf)?.label || '')} ลองแพลตฟอร์มอื่น หรือกลับมาใหม่อีกสักพัก</p>`}</div>
+          : d.filling ? '<p class="muted">กำลังค้นคลิปไวรัลล่าสุด ใช้เวลาประมาณ 1 นาที…</p>' : `<p class="muted">ยังไม่มีคลิป${d.myChips.length ? 'ในสไตล์นี้' : ''}บน ${esc(d.tabs.find((t) => t.key === st.pf)?.label || '')} ลองแพลตฟอร์มอื่น หรือกลับมาใหม่อีกสักพัก</p>`}</div>
       ${!o.home && st.items.length < d.total ? '<button type="button" class="btn dark" data-vmore>ดูเพิ่ม</button>' : ''}`;
-    el.querySelectorAll('[data-vpf]').forEach((b) => b.onclick = () => { st.pf = b.dataset.vpf; savePf(st.pf); load(true).catch((e) => toast(e.message)); });
-    el.querySelectorAll('[data-vg]').forEach((b) => b.onclick = () => { st.g = b.dataset.vg; load(true).catch((e) => toast(e.message)); });
+    el.querySelectorAll('[data-vpf]').forEach((b) => b.onclick = () => { st.retry = 0; st.pf = b.dataset.vpf; savePf(st.pf); load(true).catch((e) => toast(e.message)); });
+    el.querySelectorAll('[data-vg]').forEach((b) => b.onclick = () => { st.retry = 0; st.g = b.dataset.vg; load(true).catch((e) => toast(e.message)); });
     el.querySelectorAll('[data-vs]').forEach((b) => b.onclick = () => { st.sort = b.dataset.vs; load(true).catch((e) => toast(e.message)); });
     const more = el.querySelector('[data-vmore]'); if (more) more.onclick = () => { st.page++; load(false).catch((e) => toast(e.message)); };
     el.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => viralSheet(st.items.find((x) => String(x.id) === b.dataset.open), makeFromViral));
     if (!o.home) history.replaceState(null, '', `#viral?pf=${st.pf}&g=${st.g}`);
+    clearTimeout(st.t);
+    if (d.filling && st.retry < 4) { const key = `${st.pf}|${st.g}`; st.t = setTimeout(() => { if (el.isConnected && `${st.pf}|${st.g}` === key) { st.retry++; load(true).catch(() => {}); } }, 25000); } else if (!d.filling) st.retry = 0;
   }
   await load(true);
 }
@@ -211,6 +214,15 @@ const soon = (cur, title, text) => {
 function profileView(qs) {
   const dq = new URLSearchParams(qs || '').get('drive');
   if (dq) { toast({ ok: 'เชื่อม Google Drive แล้ว', fail: 'เชื่อม Google Drive ไม่สำเร็จ ลองใหม่', notready: 'Google Drive ยังไม่เปิดใช้' }[dq] || ''); history.replaceState(null, '', '#profile'); }
+  const lq = new URLSearchParams(qs || '');
+  if (lq.get('linked')) {
+    const pn = lq.get('linked') === 'line' ? 'LINE' : 'Google';
+    toast({ linked: `เชื่อม ${pn} แล้ว ล็อกอินทางไหนก็เข้าบัญชีนี้`, merged: `รวมบัญชี ${pn} เข้ามาแล้ว (ดาวและผลงานย้ายมาครบ)`, already: `${pn} เชื่อมกับบัญชีนี้อยู่แล้ว`, hasprovider: `บัญชีนี้มี ${pn} อีกบัญชีเชื่อมอยู่แล้ว` }[lq.get('r')] || 'เชื่อมไม่สำเร็จ');
+    history.replaceState(null, '', '#profile'); fetch('api/me').then((r) => r.json()).then((m) => { if (m.id) { ME = m; } }).catch(() => {});
+  }
+  const provs = ME.providers || [];
+  const linkCard = `<section class="card"><h2 style="font-size:16px">ช่องทางเข้าสู่ระบบ</h2><span class="muted" style="font-size:13px">เชื่อมไว้ทั้งสองทาง ล็อกอินด้วย LINE หรือ Google ก็เข้าบัญชีเดียวกัน · ถ้าเคยสมัครแยกไว้ ระบบจะรวมดาวและผลงานให้</span>
+    ${[['line', 'LINE', CFG.line], ['google', 'Google', CFG.google]].map(([k, l, on]) => `<div class="row between"><span>${l}</span>${provs.includes(k) ? '<span class="badge b-ok">เชื่อมแล้ว ✓</span>' : on ? `<a class="btn sm" href="auth/${k}?link=1">เชื่อม ${l}</a>` : '<span class="muted">ยังไม่เปิดใช้</span>'}</div>`).join('')}</section>`;
   const i = ME.interests || {};
   const iSum = [...(i.goals || []), ...(i.categories || []), ...(i.styles || [])].slice(0, 5).join(' · ') || 'ยังไม่ได้เลือก';
   const inviteUrl = new URL(`r/${ME.referralCode}`, location.href.split('#')[0]).href;
@@ -231,6 +243,7 @@ function profileView(qs) {
       <a href="#links"><span><b>ลิงก์ของฉัน · สถิติคลิก</b><br><span class="muted">ลิงก์สั้นนับคลิกแยกแพลตฟอร์ม</span></span><span aria-hidden="true">›</span></a>
       <a href="#tags"><span><b>แฮชแท็กประจำ</b><br><span class="muted">${(ME.hashtags || []).length} แท็ก · ติ๊กใช้ได้ตอนสร้าง</span></span><span aria-hidden="true">›</span></a>
     </div>
+    ${linkCard}
     <section class="card" id="notif"><h2 style="font-size:16px">แจ้งเตือน</h2><span class="muted">กำลังโหลด…</span></section>
     <section class="card"><h2 style="font-size:16px">การเชื่อมต่อ</h2>
       <div id="drive" class="card" style="padding:12px;background:var(--s2)"><span class="muted">Google Drive · กำลังโหลด…</span></div>

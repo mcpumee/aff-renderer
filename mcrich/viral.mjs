@@ -195,73 +195,114 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
         thumb_url = CASE WHEN viral_items.thumb_file='' AND EXCLUDED.thumb_url<>'' THEN EXCLUDED.thumb_url ELSE viral_items.thumb_url END`,
     [p, it.id, it.title, it.url, it.thumb, { platform: p, views: it.views, likes: it.likes, author: it.author, posted: it.posted, score, groups: [g.key], kw, vertical: true }, [g.interest]]);
   }
-  // YouTube Shorts ตามสไตล์ ผ่าน YouTube Data API (ฟรี โควตา 10,000 หน่วย/วัน · ค้น 1 ครั้ง ≈ 101 หน่วย)
-  async function fetchYtShorts() {
-    if (!YT_KEY()) return 0;
-    const c = await cfg();
-    if (!c.ytShorts) return 'ปิดอยู่';
-    const u = (await q("SELECT value FROM app_settings WHERE key='viral_yt'")).rows[0]?.value || {};
-    const day = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
-    const used = u.day === day ? u.used || 0 : 0;
-    const per = Math.max(0, Math.min(c.ytDaily - used, Math.ceil(c.ytDaily / 12)));
-    let cursor = u.cursor || 0, n = 0, calls = 0;
+  // ---------- ดึงคลิปทีละ (สไตล์ × แพลตฟอร์ม) ----------
+  // YouTube Shorts: YouTube Data API ฟรี (โควตา 10,000 หน่วย/วัน · ค้น 1 ครั้ง ≈ 101 หน่วย) · TikTok/IG/FB (และ YouTube ถ้าไม่มีคีย์): ScrapeCreators
+  const dayKey = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+  const provOf = (p, c) => (p === 'youtube' && YT_KEY() && c.ytShorts ? 'yt' : SC_KEY() && c.platforms[p] ? 'sc' : null);
+  async function ytSearch(g, kw, c) {
     const after = new Date(Date.now() - 7 * 864e5).toISOString();
-    for (let k = 0; k < per; k++, cursor++) {
-      const g = GROUPS[cursor % GROUPS.length];
-      const kw = g.q[Math.floor(cursor / GROUPS.length) % g.q.length];
-      try {
-        const sr = await get(`${YT_API()}/search?part=snippet&type=video&videoDuration=short&order=viewCount&maxResults=15&regionCode=TH&relevanceLanguage=th&publishedAfter=${encodeURIComponent(after)}&q=${encodeURIComponent(kw + ' #shorts')}&key=${encodeURIComponent(YT_KEY())}`, 'json');
-        calls++;
-        const ids = (sr.items || []).map((x) => x.id?.videoId).filter(Boolean);
-        if (!ids.length) continue;
-        const vr = await get(`${YT_API()}/videos?part=snippet,statistics,contentDetails&id=${ids.join(',')}&key=${encodeURIComponent(YT_KEY())}`, 'json');
-        const items = (vr.items || []).map((v) => {
-          const sn = v.snippet || {};
-          const m = String(v.contentDetails?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-          const sec = m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
-          return { id: v.id, sec, title: ent(sn.title || ''), url: `https://www.youtube.com/shorts/${v.id}`, thumb: safeUrl(sn.thumbnails?.high?.url || sn.thumbnails?.medium?.url || ''),
-            views: Number(v.statistics?.viewCount || 0), likes: Number(v.statistics?.likeCount || 0), author: sn.channelTitle || '', posted: sn.publishedAt ? new Date(sn.publishedAt) : null };
-        }).filter((x) => x.sec > 0 && x.sec <= 180).sort((a, b) => b.views - a.views).slice(0, c.perQuery);
-        for (const it of items) { await saveClip('youtube', g, kw, it); n++; }
-      } catch (e) { log('yt shorts', kw, e.message); if (/403/.test(e.message)) { lastErr = 'YouTube API: โควตาเต็มหรือคีย์ยังไม่เปิด YouTube Data API v3'; break; } }
-    }
-    await q("INSERT INTO app_settings(key,value) VALUES('viral_yt',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", [{ day, used: used + calls, cursor: cursor % (GROUPS.length * 3) }]);
-    return `${n} คลิป / ค้น ${calls} ครั้ง`;
+    const sr = await get(`${YT_API()}/search?part=snippet&type=video&videoDuration=short&order=viewCount&maxResults=15&regionCode=TH&relevanceLanguage=th&publishedAfter=${encodeURIComponent(after)}&q=${encodeURIComponent(kw + ' #shorts')}&key=${encodeURIComponent(YT_KEY())}`, 'json');
+    const ids = (sr.items || []).map((x) => x.id?.videoId).filter(Boolean);
+    samples.youtube = { at: new Date().toISOString(), kw, keys: Object.keys(sr).slice(0, 12), count: ids.length, first: JSON.stringify(sr.items?.[0] || sr).slice(0, 800) };
+    if (!ids.length) return 0;
+    const vr = await get(`${YT_API()}/videos?part=snippet,statistics,contentDetails&id=${ids.join(',')}&key=${encodeURIComponent(YT_KEY())}`, 'json');
+    const items = (vr.items || []).map((v) => {
+      const sn = v.snippet || {};
+      const m = String(v.contentDetails?.duration || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      const sec = m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0;
+      return { id: v.id, sec, title: ent(sn.title || ''), url: `https://www.youtube.com/shorts/${v.id}`, thumb: safeUrl(sn.thumbnails?.high?.url || sn.thumbnails?.medium?.url || ''),
+        views: Number(v.statistics?.viewCount || 0), likes: Number(v.statistics?.likeCount || 0), author: sn.channelTitle || '', posted: sn.publishedAt ? new Date(sn.publishedAt) : null };
+    }).filter((x) => x.sec > 0 && x.sec <= 180).sort((x, y) => y.views - x.views).slice(0, c.perQuery);
+    for (const it of items) await saveClip('youtube', g, kw, it);
+    return items.length;
   }
-  async function fetchSocial() {
-    if (!SC_KEY()) return 0;
+  async function scSearch(p, g, kw, c, u) {
+    const r = await fetch(SC_API() + SC_REQ[p](kw), { headers: { 'x-api-key': SC_KEY() }, signal: AbortSignal.timeout(45000) });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401 || r.status === 402) { lastErr = `ScrapeCreators ${r.status}: ${j.message || 'คีย์ไม่ถูกต้องหรือเครดิตหมด'}`; throw new Error('stop'); }
+    if (!r.ok) { log('sc fail', p, kw, r.status, String(j.message || '').slice(0, 120)); return 0; }
+    const remaining = j.credits_remaining ?? j.creditsRemaining;
+    if (remaining != null) u.remaining = remaining;
+    const arr = listOf(j);
+    samples[p] = { at: new Date().toISOString(), kw, keys: Object.keys(j).slice(0, 12), count: arr.length, first: JSON.stringify(arr[0] || j).slice(0, 1500) };
+    const items = arr.map((x) => normalize(p, x)).filter(Boolean)
+      .filter((x) => !x.posted || Date.now() - x.posted < 21 * 864e5)
+      .sort((x, y) => y.views - x.views || y.likes - x.likes).slice(0, c.perQuery);
+    for (const it of items) await saveClip(p, g, kw, it);
+    return items.length;
+  }
+  // ความต้องการ: สไตล์ที่ลูกค้าเลือกไว้เยอะ + สไตล์ที่ยังมีคลิปน้อย ได้ดึงก่อน
+  async function plan(c, only) {
+    const seen = (await q("SELECT value FROM app_settings WHERE key='viral_seen'")).rows[0]?.value || {};
+    const dem = Object.fromEntries((await q(`SELECT x, count(*)::int n FROM profiles, LATERAL jsonb_array_elements_text(COALESCE(interests->'categories','[]'::jsonb) || COALESCE(interests->'styles','[]'::jsonb)) x GROUP BY x`)).rows.map((r) => [r.x, r.n]));
+    const have = Object.fromEntries((await q(`SELECT source || ':' || g AS k, count(*)::int n FROM viral_items, LATERAL jsonb_array_elements_text(COALESCE(meta->'groups','[]'::jsonb)) g
+      WHERE active AND safe AND fetched_at > now() - interval '3 days' GROUP BY 1`)).rows.map((r) => [r.k, r.n]));
+    const combos = [];
+    for (const g of GROUPS) for (const p of PLATFORMS) {
+      if (only && !only.some(([og, op]) => og === g.key && op === p)) continue;
+      const prov = provOf(p, c); if (!prov) continue;
+      const key = `${g.key}:${p}`;
+      const ageH = seen[key] ? (Date.now() - seen[key].at) / 3600e3 : 999;
+      if (ageH < (only ? 2 : 6)) continue; // ดึงซ้ำคู่เดิมได้ทุก 6 ชม. (ขอทันทีได้ทุก 2 ชม.)
+      const n = have[key] || 0;
+      combos.push({ g, p, prov, key, k: seen[key]?.k || 0, pri: (1 + (dem[g.interest] || 0)) * 10 / (1 + n) + Math.min(ageH, 48) / 24 });
+    }
+    return { seen, combos: combos.sort((x, y) => y.pri - x.pri) };
+  }
+  async function runCombos(c, combos, seen, maxYt, maxSc) {
+    let n = 0, ytCalls = 0, scCalls = 0;
+    const u = await usage();
+    for (const x of combos) {
+      if (x.prov === 'yt' ? ytCalls >= maxYt : scCalls >= maxSc) continue;
+      const kw = x.g.q[x.k % x.g.q.length];
+      try {
+        if (x.prov === 'yt') { ytCalls++; n += await ytSearch(x.g, kw, c); } else { scCalls++; n += await scSearch(x.p, x.g, kw, c, u); }
+        seen[x.key] = { at: Date.now(), k: x.k + 1 };
+      } catch (e) {
+        if (e.message === 'stop') break;
+        log('viral fetch', x.p, kw, e.message);
+        if (x.prov === 'yt' && /403/.test(e.message)) { lastErr = 'YouTube API: โควตาเต็มหรือคีย์ยังไม่เปิด YouTube Data API v3'; maxYt = 0; }
+      }
+    }
+    await q("INSERT INTO app_settings(key,value) VALUES('viral_seen',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", [seen]);
+    if (ytCalls) {
+      const y = (await q("SELECT value FROM app_settings WHERE key='viral_yt'")).rows[0]?.value || {};
+      await q("INSERT INTO app_settings(key,value) VALUES('viral_yt',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", [{ day: dayKey(), used: (y.day === dayKey() ? y.used || 0 : 0) + ytCalls }]);
+    }
+    if (scCalls) await saveUsage(await usage(scCalls, u.remaining));
+    return { n, ytCalls, scCalls };
+  }
+  async function budgets(c) {
+    const y = (await q("SELECT value FROM app_settings WHERE key='viral_yt'")).rows[0]?.value || {};
+    const ytLeft = Math.max(0, c.ytDaily - (y.day === dayKey() ? y.used || 0 : 0));
+    const scLeft = Math.max(0, c.daily - (await usage()).used);
+    return { ytLeft, scLeft };
+  }
+  async function fetchClips() {
     const c = await cfg();
-    let u = await usage();
-    const left = c.daily - u.used;
-    if (left <= 0) return 'ครบงบวันนี้';
-    const per = Math.max(1, Math.min(left, Math.ceil(c.daily / 12))); // ดึง 12 รอบ/วัน (ทุก 2 ชม.)
-    const plats = PLATFORMS.filter((p) => c.platforms[p]);
-    if (!plats.length) return 0;
-    const combos = GROUPS.flatMap((g) => plats.map((p) => [g, p]));
-    let n = 0, calls = 0, cursor = u.cursor % combos.length;
-    for (let k = 0; k < per; k++) {
-      const [g, p] = combos[(cursor + k) % combos.length];
-      const kw = g.q[Math.floor((cursor + k) / combos.length) % g.q.length];
-      try {
-        const r = await fetch(SC_API() + SC_REQ[p](kw), { headers: { 'x-api-key': SC_KEY() }, signal: AbortSignal.timeout(45000) });
-        calls++;
-        const j = await r.json().catch(() => ({}));
-        if (r.status === 401 || r.status === 402) { lastErr = `ScrapeCreators ${r.status}: ${j.message || 'คีย์ไม่ถูกต้องหรือเครดิตหมด'}`; break; }
-        if (!r.ok) { log('sc fail', p, kw, r.status, String(j.message || '').slice(0, 120)); continue; }
-        const remaining = j.credits_remaining ?? j.creditsRemaining;
-        if (remaining != null) u.remaining = remaining;
-        const arr = listOf(j);
-        samples[p] = { at: new Date().toISOString(), kw, keys: Object.keys(j).slice(0, 12), count: arr.length, first: JSON.stringify(arr[0] || j).slice(0, 1500) };
-        const items = arr.map((x) => normalize(p, x)).filter(Boolean)
-          .filter((x) => !x.posted || Date.now() - x.posted < 21 * 864e5)
-          .sort((a, b) => b.views - a.views || b.likes - a.likes).slice(0, c.perQuery);
-        for (const it of items) { await saveClip(p, g, kw, it); n++; }
-      } catch (e) { log('sc error', p, kw, e.message); }
-    }
-    u = await usage(calls, u.remaining); u.cursor = (cursor + per) % combos.length; await saveUsage(u);
-    return `${n} คลิป / ${calls} เครดิต`;
+    const { ytLeft, scLeft } = await budgets(c);
+    const { seen, combos } = await plan(c);
+    if (!combos.length) return 'ไม่มีแหล่งที่เปิดใช้';
+    const r = await runCombos(c, combos, seen, Math.min(ytLeft, Math.ceil(c.ytDaily / 12)), Math.min(scLeft, Math.ceil(c.daily / 12)));
+    return `${r.n} คลิป · YouTube ${r.ytCalls} ครั้ง · ScrapeCreators ${r.scCalls} เครดิต`;
   }
-
+  // ลูกค้ากดดูสไตล์ที่ยังว่าง → ดึงให้ทันที (สูงสุด 3 คู่ต่อครั้ง กันใช้งบเกิน)
+  const filling = new Map();
+  function fillNow(pairs) {
+    const key = pairs.map((x) => x.join(':')).sort().join(',');
+    if (filling.has(key)) return true;
+    const job = (async () => {
+      const c = await cfg();
+      const { ytLeft, scLeft } = await budgets(c);
+      const { seen, combos } = await plan(c, pairs);
+      if (!combos.length) return;
+      const r = await runCombos(c, combos.slice(0, 3), seen, Math.min(ytLeft, 3), Math.min(scLeft, 3));
+      if (r.n) { await cacheThumbs(); await enrich(); cache.at = 0; }
+      log('viral fill', key, JSON.stringify(r));
+    })().catch((e) => log('viral fill', e.message)).finally(() => setTimeout(() => filling.delete(key), 60e3));
+    filling.set(key, job);
+    return true;
+  }
   // ---------- AI: กรอง + แปลงเป็นไอเดีย ----------
   const SCHEMA = { type: 'ARRAY', items: { type: 'OBJECT', required: ['i', 'safe'], properties: {
     i: { type: 'INTEGER' }, safe: { type: 'BOOLEAN' }, tags: { type: 'ARRAY', items: { type: 'STRING' } }, summary: { type: 'STRING' },
@@ -274,7 +315,7 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
   }
   async function enrichBatch() {
     const rows = (await q(`SELECT id, source, title, meta FROM viral_items WHERE idea IS NULL AND active AND fetched_at > now() - interval '3 days'
-      ORDER BY pinned DESC, (source='gtrends') DESC, COALESCE((meta->>'score')::bigint, 0) DESC, fetched_at DESC, rank LIMIT 25`)).rows;
+      ORDER BY pinned DESC, (source='gtrends') DESC, first_seen DESC, COALESCE((meta->>'score')::bigint, 0) DESC LIMIT 25`)).rows;
     if (!rows.length) return 0;
     const list = rows.map((r, i) => `${i}. [${r.source === 'gtrends' ? 'คำค้นหามาแรง' : `คลิปไวรัล ${r.source}`}] ${r.title}${r.meta?.news?.length ? ` | ข่าว: ${r.meta.news.map((n) => n.title).join(' / ')}` : ''}${r.meta?.channel ? ` | ช่อง: ${r.meta.channel}` : ''}${r.meta?.author ? ` | โดย: ${r.meta.author}` : ''}`).join('\n');
     const prompt = `คุณเป็นนักวางกลยุทธ์คอนเทนต์ให้แม่ค้าออนไลน์และร้านค้าไทย ด้านล่างคือกระแสที่กำลังมาแรงในไทยวันนี้
@@ -312,7 +353,7 @@ ${list}
     return n;
   }
   async function cacheThumbs() {
-    const rows = (await q("SELECT id, thumb_url FROM viral_items WHERE thumb_file='' AND thumb_url<>'' AND active AND fetched_at > now() - interval '2 days' ORDER BY pinned DESC, COALESCE((meta->>'score')::bigint,0) DESC LIMIT 150")).rows;
+    const rows = (await q("SELECT id, thumb_url FROM viral_items WHERE thumb_file='' AND thumb_url<>'' AND active AND fetched_at > now() - interval '2 days' ORDER BY pinned DESC, first_seen DESC LIMIT 150")).rows;
     for (const r of rows) {
       try {
         const buf = await get(r.thumb_url, 'buf');
@@ -332,7 +373,7 @@ ${list}
     if (running) return running;
     running = (async () => {
       const out = {};
-      for (const [k, fn] of [['trends', fetchTrends], ['youtube', fetchYouTube], ['ytShorts', fetchYtShorts], ['social', fetchSocial], ['thumbs', cacheThumbs], ['ideas', enrich], ['cleanup', cleanup]]) {
+      for (const [k, fn] of [['trends', fetchTrends], ['youtube', fetchYouTube], ['clips', fetchClips], ['thumbs', cacheThumbs], ['ideas', enrich], ['cleanup', cleanup]]) {
         try { out[k] = await fn(); } catch (e) { out[k] = `ERR ${e.message}`; lastErr = `${k}: ${e.message}`; log('viral', k, e.message); }
       }
       lastRun = new Date(); log('viral refresh', JSON.stringify(out));
@@ -412,11 +453,16 @@ ${list}
       else list = base.filter((r) => (r.meta?.groups || []).includes(g));
       list.sort(req.query.sort === 'new' ? (x, y) => new Date(y.meta?.posted || y.first_seen) - new Date(x.meta?.posted || x.first_seen) : byScore);
     }
-    // ชิปสไตล์: เฉพาะสไตล์ของผู้ใช้ที่มีคลิปในแพลตฟอร์มนี้
+    // ชิปสไตล์: ทุกสไตล์ที่ผู้ใช้เลือกไว้ (สไตล์ที่ยังว่าง ระบบจะดึงให้ทันทีเมื่อกดดู)
     const myChips = GROUPS.filter((x) => myGroups.includes(x.key)).map((x) => ({ key: x.key, label: x.label, emoji: x.emoji,
-      n: pf === 'google' ? all.filter((r) => r.source === 'gtrends' && (r.tags || []).includes(x.interest)).length : clipsOf(pf).filter((r) => (r.meta?.groups || []).includes(x.key)).length })).filter((x) => x.n);
+      n: pf === 'google' ? all.filter((r) => r.source === 'gtrends' && (r.tags || []).includes(x.interest)).length : clipsOf(pf).filter((r) => (r.meta?.groups || []).includes(x.key)).length }));
+    let fillingNow = false;
+    if (pf !== 'google' && !page) {
+      const want = g === 'mine' ? myChips.filter((x) => x.n < 4).map((x) => x.key) : list.length < 4 ? [g] : [];
+      if (want.length) { const c = await cfg(); const pairs = want.filter((k) => GROUPS.some((x) => x.key === k)).slice(0, 3).map((k) => [k, pf]); if (pairs.length && provOf(pf, c)) fillingNow = fillNow(pairs); }
+    }
     res.json({ platform: pf, tabs, items: list.slice(page * limit, page * limit + limit).map(view), total: list.length, general,
-      myChips, needStyles: !myGroups.length });
+      myChips, needStyles: !myGroups.length, filling: fillingNow && list.length < 4 });
   }));
   app.get('/api/viral/:id/thumb', auth, wrap(async (req, res) => {
     const r = (await q('SELECT thumb_file FROM viral_items WHERE id=$1', [Number(req.params.id) || 0])).rows[0];

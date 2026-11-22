@@ -133,6 +133,55 @@ async function loginOrSignup(provider, subject, info, req) {
   } catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); }
 }
 
+// ---------- เชื่อม/รวมบัญชี ----------
+// เพิ่มช่องทางล็อกอินเข้าบัญชีปัจจุบัน · ถ้าช่องทางนั้นเคยสร้างบัญชีแยกไว้ (เจ้าของพิสูจน์แล้วว่าเป็นคนเดียวกันเพราะล็อกอินได้ทั้งสองทาง) → รวมบัญชีนั้นเข้ามา
+async function linkIdentity(uid, provider, info, req) {
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    const me_ = (await c.query('SELECT id FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [uid])).rows[0];
+    if (!me_) { await c.query('ROLLBACK'); return 'nouser'; }
+    const cur = (await c.query('SELECT user_id FROM identities WHERE provider=$1 AND subject=$2', [provider, info.subject])).rows[0];
+    let r = 'linked';
+    if (cur && Number(cur.user_id) === uid) r = 'already';
+    else if (cur) { await mergeUsers(c, Number(cur.user_id), uid); r = 'merged'; }
+    else {
+      const has = (await c.query('SELECT 1 FROM identities WHERE user_id=$1 AND provider=$2', [uid, provider])).rows.length;
+      if (has) { await c.query('ROLLBACK'); return 'hasprovider'; }
+      await c.query('INSERT INTO identities(provider,subject,user_id) VALUES($1,$2,$3)', [provider, info.subject, uid]);
+    }
+    await c.query("UPDATE users SET email = CASE WHEN email='' THEN $2 ELSE email END WHERE id=$1", [uid, info.email || '']);
+    await c.query('INSERT INTO audit_log(user_id,action,detail,ip) VALUES($1,$2,$3,$4)', [uid, 'link_' + r, { provider }, req.ip || '']);
+    await c.query('COMMIT');
+    log('link', uid, provider, r);
+    return r;
+  } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
+}
+async function mergeUsers(c, from, into) {
+  if (from === into) return;
+  await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [from]);
+  // โบนัสสมัคร/ชวนเพื่อนที่ซ้ำกันเก็บไว้ชุดเดียว (ของบัญชีหลัก)
+  await c.query(`DELETE FROM star_ledger f WHERE f.user_id=$1 AND (f.kind='signup_bonus' AND EXISTS (SELECT 1 FROM star_ledger t WHERE t.user_id=$2 AND t.kind='signup_bonus')
+    OR f.kind IN ('referral','refund') AND EXISTS (SELECT 1 FROM star_ledger t WHERE t.user_id=$2 AND t.kind=f.kind AND t.ref=f.ref))`, [from, into]);
+  for (const t of ['identities', 'star_ledger', 'topups', 'works', 'links', 'schedules', 'push_subs', 'chat_messages', 'auto_plans', 'audit_log']) {
+    await c.query(`UPDATE ${t} SET user_id=$2 WHERE user_id=$1`, [from, into]);
+  }
+  await c.query('UPDATE users SET referred_by=$2 WHERE referred_by=$1 AND id<>$2', [from, into]);
+  await c.query('UPDATE drive_accounts SET user_id=$2 WHERE user_id=$1 AND NOT EXISTS (SELECT 1 FROM drive_accounts WHERE user_id=$2)', [from, into]);
+  // โปรไฟล์: ใช้ของบัญชีหลัก เติมช่องที่ว่างจากบัญชีที่รวมเข้ามา
+  await c.query(`UPDATE profiles t SET brand = f.brand || t.brand, hashtags = CASE WHEN cardinality(t.hashtags)=0 THEN f.hashtags ELSE t.hashtags END,
+    interests = CASE WHEN t.interests='{}'::jsonb THEN f.interests ELSE t.interests END FROM profiles f WHERE t.user_id=$2 AND f.user_id=$1`, [from, into]);
+  await c.query(`UPDATE users t SET is_admin = t.is_admin OR f.is_admin, onboarded = t.onboarded OR f.onboarded,
+    terms_version = GREATEST(t.terms_version, f.terms_version), avatar_url = CASE WHEN t.avatar_url='' THEN f.avatar_url ELSE t.avatar_url END
+    FROM users f WHERE t.id=$2 AND f.id=$1`, [from, into]);
+  await c.query('DELETE FROM profiles WHERE user_id=$1', [from]);
+  await c.query('DELETE FROM free_quota WHERE user_id=$1', [from]);
+  await c.query('DELETE FROM drive_accounts WHERE user_id=$1', [from]);
+  await c.query(`UPDATE users SET name='รวมเข้ากับบัญชีอื่นแล้ว', avatar_url='', email='', banned=TRUE, is_admin=FALSE, deleted_at=now() WHERE id=$1`, [from]);
+  await c.query('INSERT INTO audit_log(user_id,action,detail) VALUES($1,$2,$3)', [into, 'account_merge', { from }]);
+  BANNED.add(Number(from));
+}
+
 async function me(userId) {
   const u = (await q(`SELECT u.id,u.public_id,u.name,u.avatar_url,u.email,u.is_admin,u.onboarded,u.referral_code,u.created_at,u.terms_version,
       p.interests,p.brand,p.hashtags,
@@ -223,7 +272,10 @@ app.get('/auth/:p', (req, res) => {
   if (!p) return res.status(404).end();
   if (!p.enabled()) return res.redirect(`${PUBLIC_URL}/#login?err=notready`);
   const state = rand(24), nonce = rand(24);
-  setCookie(res, 'mr_oauth', makeToken({ p: req.params.p, state, nonce }, 600), 600);
+  // เชื่อมบัญชี: ต้องล็อกอินอยู่แล้ว แล้วเพิ่มช่องทางล็อกอินอีกทาง (LINE/Google) เข้าบัญชีเดิม
+  const link = req.query.link ? readToken(getCookie(req, 'mr_sid'))?.uid : null;
+  if (req.query.link && !link) return res.redirect(`${PUBLIC_URL}/#login`);
+  setCookie(res, 'mr_oauth', makeToken({ p: req.params.p, state, nonce, link: link || undefined }, 600), 600);
   res.redirect(p.authUrl(state, nonce));
 });
 app.get('/auth/:p/callback', async (req, res) => {
@@ -235,6 +287,10 @@ app.get('/auth/:p/callback', async (req, res) => {
   }
   try {
     const info = await p.exchange(String(req.query.code), st.nonce);
+    if (st.link) {
+      const r = await linkIdentity(Number(st.link), req.params.p, info, req);
+      return res.redirect(`${PUBLIC_URL}/#profile?linked=${req.params.p}&r=${r}`);
+    }
     const { userId, isNew } = await loginOrSignup(req.params.p, info.subject, info, req);
     setCookie(res, 'mr_sid', makeToken({ uid: userId }, 60 * 86400), 60 * 86400);
     const u = (await q('SELECT onboarded FROM users WHERE id=$1', [userId])).rows[0];
@@ -248,6 +304,8 @@ app.post('/api/logout', (_q, res) => { setCookie(res, 'mr_sid', '', 0); res.json
 // ใช้ทดสอบบนเครื่องนักพัฒนาเท่านั้น (ต้องเปิด TEST_LOGIN และรันบน localhost)
 if (process.env.TEST_LOGIN === '1' && PUBLIC_URL.startsWith('http://localhost')) {
   app.get('/auth/test/:sub', async (req, res) => {
+    const link = req.query.link ? readToken(getCookie(req, 'mr_sid'))?.uid : null;
+    if (link) return res.json({ r: await linkIdentity(Number(link), 'test', { subject: req.params.sub, email: '' }, req) });
     const { userId } = await loginOrSignup('test', req.params.sub, { name: 'คุณแพรว', email: '' }, req);
     setCookie(res, 'mr_sid', makeToken({ uid: userId }, 3600), 3600);
     res.redirect(`${PUBLIC_URL}/#home`);

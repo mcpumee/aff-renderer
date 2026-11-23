@@ -1181,9 +1181,16 @@ Lighting: soft even key light, natural skin texture with pores, sharp focus on t
     let pct = 12; const tk = setInterval(() => { pct = Math.min(90, pct + 2); stage('AI กำลังสร้างวิดีโอ', pct); }, 5000);
     try { stage('AI กำลังสร้างวิดีโอ', 12); await V.genMotion({ prompt: m.prompt, image: img, outFile: mp4 }); }
     catch (e) {
-      log('motion gen fail', w.id, e.message.slice(0, 300));
+      log('motion gen fail', w.id, e.message.slice(0, 500));
       fs.rm(mp4, { force: true }, () => {});
-      return fail(/safety|policy|blocked|400/i.test(e.message) ? 'AI สร้างวิดีโอนี้ไม่ได้ (อาจขัดนโยบายเนื้อหา) ลองเปลี่ยนไอเดีย · คืนดาวแล้ว' : 'สร้างวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว');
+      // เก็บสาเหตุจริงไว้ให้แอดมินดู (หน้าหลังบ้าน > ผลงาน)
+      await q("UPDATE works SET params = params || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ failDetail: e.message.slice(0, 500) })]).catch(() => {});
+      const msg = e.message;
+      const why = /person|people|child|minor|face|celebrit|likeness/i.test(msg) ? 'AI ไม่รับรูปที่มีคนหรือใบหน้าชัด ลองใช้รูปสินค้าล้วน หรือไม่ใส่รูป'
+        : /safety|policy|blocked|prohibit|harm|sensitive/i.test(msg) ? 'AI สร้างวิดีโอนี้ไม่ได้ (ขัดนโยบายเนื้อหา) ลองเปลี่ยนไอเดีย'
+        : /quota|429|exhaust|billing|permission|403|not found|404|unsupported|not supported/i.test(msg) ? 'ระบบวิดีโอ AI ยังไม่พร้อมใช้งาน แจ้งแอดมินแล้ว'
+        : 'สร้างวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง';
+      return fail(`${why} · คืนดาวแล้ว`);
     } finally { clearInterval(tk); }
     stage('เกือบเสร็จ', 95);
     let thumb = '';

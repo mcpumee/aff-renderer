@@ -655,7 +655,7 @@ async function adminWorks(st) {
     <div class="list">${d.items.map((w) => `<a href="#admin?t=users&u=${esc(w.public_id)}" style="text-decoration:none;color:inherit;display:block"><b>#${w.id} ${esc(w.title || w.style)}</b><br>
       <span class="muted">${esc(w.name)} (${esc(w.public_id)}) · ${esc(w.style)} · ${w.cost} ดาว${w.status === 'failed' ? (w.refunded ? ' · คืนดาวแล้ว ✓' : w.cost ? ' · ยังไม่คืนดาว' : '') : ''}</span><br>
       <span class="muted">${new Date(w.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}${w.done_at ? ' → ' + new Date(w.done_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-      ${w.error ? `<br><span style="color:var(--bad);font-size:14px;overflow-wrap:anywhere">${esc(w.error)}</span>` : ''}</a>`).join('') || '<div class="muted">ไม่มีรายการ</div>'}</div>`;
+      ${w.error ? `<br><span style="color:var(--bad);font-size:14px;overflow-wrap:anywhere">${esc(w.error)}</span>` : ''}${w.fail_detail ? `<br><span class="muted" style="font-size:12px;overflow-wrap:anywhere">สาเหตุจากระบบ: ${esc(w.fail_detail)}</span>` : ''}</a>`).join('') || '<div class="muted">ไม่มีรายการ</div>'}</div>`;
 }
 async function adminPrices() {
   const d = await api('api/admin/prices');
@@ -875,6 +875,15 @@ function stepShell(inner, { next = 'ถัดไป', nextId = 'next', disabled 
   const p = $('#prev'); if (p) p.onclick = () => { D.step--; drawStep(); };
   $('#reset').onclick = () => { D = newDraft(); REFS = []; REVS = []; VFILE = null; ITEMF = []; saveDraft(); drawStep(); };
 }
+// แนวงานที่ตรงกับเป้าหมาย (ไม่ปนหมวด) — ดูทั้งหมดได้จากปุ่ม "ดูแนวอื่นทั้งหมด"
+function goalStyles(list) {
+  const vid = D.kind === 'video';
+  if (D.goal === 'agent') return ['ตัวแทน / นายหน้า', [...list.filter((x) => x.agent), ...list.filter((x) => x.id === 'v_avatar')]];
+  if (D.goal === 'pr') return ['ประชาสัมพันธ์องค์กร', list.filter((x) => x.pr)];
+  const biz = list.filter((x) => !x.pr && !x.agent);
+  const label = { sell: 'ขายของตัวเอง', aff: 'Affiliate', promo: 'โปรโมตร้าน', content: 'ทำคอนเทนต์' }[D.goal] || 'ขายของ / คอนเทนต์';
+  return [`${vid ? 'คลิป' : 'ภาพ'}สำหรับ${label}`, biz];
+}
 const chipRow = (items, sel, key, multi) => `<div class="chips">${items.map((v) => {
   const id = typeof v === 'object' ? v.id : v; const label = typeof v === 'object' ? v.label : v;
   const on = multi ? sel.includes(id) : sel === id;
@@ -929,12 +938,12 @@ function drawStep() {
         const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>`;
         const g2 = pr.length ? `<h2>ประชาสัมพันธ์องค์กร</h2><div class="grid2">${pr.map(card).join('')}</div>` : '';
         const g3 = ag.length ? `<h2>ตัวแทน / นายหน้า (ประกัน อสังหา รถ สินเชื่อ)</h2><div class="grid2">${ag.map(card).join('')}</div>` : '';
-        if (D.goal === 'agent' && !D.showAllStyles) {
-          const extra = list.filter((x) => x.id === 'v_avatar'); // อวตารพูดได้ เหมาะกับตัวแทนด้วย
-          return `<h2>ตัวแทน / นายหน้า</h2><div class="grid2">${[...ag, ...extra].map(card).join('')}</div><button type="button" class="btn ghost sm" id="showAll">ดูแนวอื่นทั้งหมด</button>`;
+        if (!D.showAllStyles) {
+          const [title, mine] = goalStyles(list);
+          return `<h2>${title}</h2><div class="grid2">${mine.map(card).join('')}</div><button type="button" class="btn ghost sm" id="showAll">ดูแนวอื่นทั้งหมด</button>`;
         }
         return D.goal === 'pr' ? g2 + g1 + g3 : D.goal === 'agent' ? g3 + g1 + g2 : g1 + g3 + g2;
-      })()}`, { disabled: !D.style || !list.some((x) => x.id === D.style) });
+      })()}`, { disabled: !D.style || !(D.showAllStyles ? list : goalStyles(list)[1]).some((x) => x.id === D.style) });
     app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
     const sa = $('#showAll'); if (sa) sa.onclick = () => { D.showAllStyles = true; drawStep(); };
     app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => {

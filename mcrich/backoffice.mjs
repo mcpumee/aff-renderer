@@ -95,7 +95,7 @@ export function registerBackoffice(app, { q, pool, auth, wrap, log, banned }) {
   // ---------- ผลงาน ----------
   app.get('/api/admin/works', auth, admin, wrap(async (req, res) => {
     const st = ['failed', 'working', 'queued', 'review', 'done'].includes(req.query.status) ? req.query.status : 'failed';
-    const { rows } = await q(`SELECT w.id, w.kind, w.style, w.title, w.status, w.error, w.cost, w.created_at, w.done_at, u.public_id, u.name,
+    const { rows } = await q(`SELECT w.id, w.kind, w.style, w.title, w.status, w.error, w.params->>'failDetail' fail_detail, w.cost, w.created_at, w.done_at, u.public_id, u.name,
       (SELECT count(*) FROM star_ledger s WHERE s.kind='refund' AND s.ref=w.id::text)::int refunded
       FROM works w JOIN users u ON u.id=w.user_id WHERE w.status=$1 ORDER BY w.id DESC LIMIT 60`, [st]);
     const errs = (await q(`SELECT left(error, 80) e, count(*)::int n FROM works WHERE status='failed' AND created_at >= now() - interval '7 days' GROUP BY 1 ORDER BY n DESC LIMIT 6`)).rows;

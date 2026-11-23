@@ -279,3 +279,17 @@ CREATE TABLE IF NOT EXISTS style_samples (
   error      TEXT NOT NULL DEFAULT '',
   at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- อวตารของผู้ใช้ (ออกแบบด้วย AI หรืออัปโหลดรูปตัวเอง) ใช้ซ้ำได้ทุกผลงาน
+CREATE TABLE IF NOT EXISTS avatars (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL DEFAULT '',
+  file        TEXT NOT NULL,
+  gender      TEXT NOT NULL DEFAULT 'female',
+  source      TEXT NOT NULL DEFAULT 'design',   -- design | upload
+  spec        JSONB NOT NULL DEFAULT '{}'::jsonb,
+  voice       TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS avatars_user ON avatars(user_id);

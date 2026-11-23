@@ -120,6 +120,12 @@ if [ "${SET_MCRICH_VIRAL:-}" = "1" ] && [ -r /dev/tty ]; then
   echo ">> ScrapeCreators API key (สมัครที่ scrapecreators.com · กด Enter ข้าม)"
   askkey "   ScrapeCreators API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && SCKEY=$REPLY
 fi
+# ---- HeyGen (วิดีโออวตารพูดได้ · ขยับปากตรงเสียง · กด Enter ข้าม) ----
+HGKEY=$(envget HEYGEN_API_KEY)
+if [ "${SET_MCRICH_AVATAR:-}" = "1" ] && [ -r /dev/tty ]; then
+  echo ">> HeyGen API key (app.heygen.com > Settings > API · เติมเครดิต API ก่อน · กด Enter ข้าม)"
+  askkey "   HeyGen API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && HGKEY=$REPLY
+fi
 
 cat > .env <<EOF
 PUBLIC_BASE=${PB}
@@ -150,6 +156,7 @@ LINEOA_TOKEN=${OATOK}
 LINEOA_ID=${OAID}
 YOUTUBE_API_KEY=${YTKEY}
 SCRAPECREATORS_API_KEY=${SCKEY}
+HEYGEN_API_KEY=${HGKEY}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"

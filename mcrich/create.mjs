@@ -5,6 +5,8 @@ import path from 'node:path';
 import multer from 'multer';
 import sharp from 'sharp';
 import * as V from './video.mjs';
+import crypto from 'node:crypto';
+const rand = (n) => crypto.randomBytes(n).toString('hex').toUpperCase();
 
 const KEY = () => process.env.GEMINI_API_KEY || '';
 const API = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
@@ -287,6 +289,21 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       const cost = V.VIDEO_PRICE[p.length] + (premium ? V.PREMIUM_VOICE_EXTRA : 0) + (p.genBg ? 5 : 0);
       return { video: true, style, tier: { id: 'info', free: false, stars: cost }, versions: 1, p, cost, ...cI };
     }
+    if (style.id === 'v_avatar') {
+      const lang = V.AVATAR_LANGS.some((l) => l.id === b.lang) ? b.lang : 'th';
+      const length = V.AVATAR_PRICE[Number(b.length)] ? Number(b.length) : 30;
+      const own = b.scriptMode === 'own';
+      const script = own ? V.splitScript(clean(b.script, 2000)) : [];
+      Object.assign(p, { avatarId: Math.max(0, Number(b.avatarId) || 0), lang, length, scriptMode: own ? 'own' : 'ai', script, subs: b.subs !== false,
+        captionStyle: V.CAPTION_STYLES.some((c) => c.id === b.captionStyle) ? b.captionStyle : 'pop', voice: V.VOICES.some((v) => v.id === b.voice) ? b.voice : '', dialogue: false, premium: false });
+      if (!p.avatarId) return { error: 'เลือกอวตารก่อน' };
+      if (own && !script.length) return { error: 'พิมพ์บทพูดก่อน' };
+      if (own && script.join('').length > V.avatarMaxChars(lang, length)) return { error: `บทยาวเกิน ${length} วินาที (สูงสุดประมาณ ${V.avatarMaxChars(lang, length)} ตัวอักษร) · เลือกความยาวมากขึ้นหรือตัดบท` };
+      if (!own && !p.product && !p.details) return { error: 'ใส่หัวข้อหรือสินค้าที่ให้อวตารพูดก่อน' };
+      const cA = checkContent([p.product, p.details, p.price, script.join(' ')].join(' '));
+      const cost = V.AVATAR_PRICE[length];
+      return { video: true, style, tier: { id: 'avatar', free: false, stars: cost }, versions: 1, p, cost, ...cA };
+    }
     if (style.id === 'v_motion') {
       Object.assign(p, { preset: V.MOTION_PRESETS.some((x) => x.id === b.preset) ? b.preset : 'spin', plot: clean(b.plot, 500), dialogue: false, premium: false });
       if (!p.product && !p.plot) return { error: 'ใส่ชื่อสินค้าหรือไอเดียฉากก่อน' };
@@ -359,6 +376,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
         genres: V.GENRES, art: V.ART.map(({ id, label }) => ({ id, label })), dramaPrices: V.DRAMA_PRICE, seriesGenres: V.SERIES_GENRES, seriesPrices: V.SERIES_PRICE, seriesLen: V.SERIES_LEN,
         motionPresets: V.MOTION_PRESETS.map(({ id, label, desc }) => ({ id, label, desc })), motionPrice: V.MOTION_PRICE.std,
+        avatar: { ready: V.avatarReady(), prices: V.AVATAR_PRICE, langs: V.AVATAR_LANGS.map(({ id, label, cps }) => ({ id, label, cps })), designPrice: V.AVATAR_DESIGN_PRICE.std },
         captionStyles: V.CAPTION_STYLES, selfMaxSec: V.SELF_MAX_SEC, selfPrices: { subs: [V.selfPrice(60, 'subs'), V.selfPrice(120, 'subs'), V.selfPrice(180, 'subs')], voiceExtra: 5 },
         voices: V.VOICES.map(({ id, label, gender }) => ({ id, label, gender })),
         premiumVoices: V.premiumReady() ? V.EL_VOICES.map(({ id, label, gender }) => ({ id, label, gender })) : [],
@@ -429,10 +447,15 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     }
 
     if (n.style.id === 'v_top' && n.p.nProducts !== n.p.items.length) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปให้ครบทุกสินค้าในอันดับ' }); }
+    if (n.style.id === 'v_avatar') {
+      if (!V.avatarReady()) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(503).json({ error: 'ระบบอวตารกำลังตั้งค่า' }); }
+      const av = (await q('SELECT id FROM avatars WHERE id=$1 AND user_id=$2', [n.p.avatarId, req.uid])).rows[0];
+      if (!av) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ไม่พบอวตารนี้ เลือกใหม่อีกครั้ง' }); }
+    }
     if (n.style.id === 'v_drama' && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ละครต้องมีรูปสินค้า 1 รูป' }); }
     if (['v_shop', 'v_pr_recap'].includes(n.style.id) && n.p.nProducts < 1) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3–8 รูป)' }); }
     if (n.style.id !== 'v_show' && n.style.id !== 'v_top' && !V.INFO_STYLES.includes(n.style.id) && (req.files?.refs || []).length > 3) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'รูปสินค้าได้สูงสุด 3 รูป' }); }
-    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion'].includes(n.style.id) && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
+    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar'].includes(n.style.id) && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -474,7 +497,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       fs.copyFileSync(f, path.join(REF_DIR, name)); refs.push(name);
     }
     n.p.nProducts = refs.length;
-    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion'].includes(n.style.id)) return { error: 'ต้องมีรูปสินค้า' };
+    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar'].includes(n.style.id)) return { error: 'ต้องมีรูปสินค้า' };
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -853,6 +876,180 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     log('drama done', w.id, d.scenes.length, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
 
+  // ---------- อวตาร: ออกแบบ / อัปโหลด / ใช้ซ้ำ ----------
+  const AV_DIR = path.join(DATA_DIR, 'avatars');
+  fs.mkdirSync(AV_DIR, { recursive: true });
+  const AV_OPT = {
+    gender: { female: 'woman', male: 'man' },
+    age: { '20': 'in her/his mid 20s', '30': 'in her/his 30s', '40': 'in her/his 40s', '50': 'in her/his 50s', '60': 'in her/his early 60s' },
+    look: { thai: 'Thai', chinese: 'Thai-Chinese / East Asian', malay: 'Malay', indian: 'South Asian', western: 'Caucasian', korean: 'Korean-style East Asian', african: 'Black / African' },
+    hair: { short: 'short neat hair', long: 'long straight hair', wavy: 'shoulder-length wavy hair', bun: 'hair tied in a neat bun', bob: 'bob haircut', bald: 'shaved head', hijab: 'wearing a neat hijab' },
+    outfit: { business: 'a smart business suit', casual: 'a clean casual shirt', smart: 'smart-casual blouse/shirt', thai: 'elegant modern Thai traditional outfit', chef: 'a white chef uniform', doctor: 'a medical white coat', apron: "a shop owner's apron over a casual shirt", sport: 'sporty athleisure wear' },
+    bg: { studio: 'plain soft-grey studio backdrop', shop: 'a bright tidy retail shop interior, softly blurred', office: 'a modern office, softly blurred', cafe: 'a cozy cafe, softly blurred', home: 'a warm living room, softly blurred', outdoor: 'an outdoor city street in daylight, softly blurred', kitchen: 'a clean modern kitchen, softly blurred' },
+    mood: { smile: 'warm genuine smile', confident: 'confident friendly expression', calm: 'calm trustworthy expression' },
+  };
+  const avView = (a) => ({ id: Number(a.id), name: a.name, gender: a.gender, source: a.source, spec: a.spec, voice: a.voice, img: `api/avatars/${a.id}/img`, createdAt: a.created_at });
+  app.get('/api/avatars', auth, wrap(async (req, res) => {
+    const { rows } = await q('SELECT * FROM avatars WHERE user_id=$1 ORDER BY id DESC', [req.uid]);
+    res.json({ items: rows.map(avView), ready: V.avatarReady(), designPrice: V.AVATAR_DESIGN_PRICE.std, options: Object.fromEntries(Object.entries(AV_OPT).map(([k, v]) => [k, Object.keys(v)])) });
+  }));
+  app.get('/api/avatars/:id/img', auth, wrap(async (req, res) => {
+    const a = (await q('SELECT file FROM avatars WHERE id=$1 AND user_id=$2', [Number(req.params.id) || 0, req.uid])).rows[0];
+    const f = a && path.join(AV_DIR, path.basename(a.file));
+    if (!f || !fs.existsSync(f)) return res.status(404).end();
+    res.setHeader('cache-control', 'private, max-age=86400'); res.sendFile(f);
+  }));
+  app.get('/api/avatars/cand/:name', auth, (req, res) => {
+    const n = path.basename(req.params.name);
+    if (!n.startsWith(`c${req.uid}-`)) return res.status(404).end();
+    res.sendFile(path.join(AV_DIR, n), (e) => e && res.status(404).end());
+  });
+  // ออกแบบ: AI วาดภาพคนเหมือนจริง 2 แบบให้เลือก (ตัดดาว · ไม่สำเร็จคืนดาว)
+  app.post('/api/avatars/design', auth, wrap(async (req, res) => {
+    if (!KEY()) return res.status(503).json({ error: 'ระบบสร้างภาพกำลังตั้งค่า' });
+    const b = req.body || {};
+    const pick = (k, d) => (AV_OPT[k][b[k]] ? b[k] : d);
+    const sp = { gender: pick('gender', 'female'), age: pick('age', '30'), look: pick('look', 'thai'), hair: pick('hair', 'long'), outfit: pick('outfit', 'smart'), bg: pick('bg', 'studio'), mood: pick('mood', 'smile'), extra: clean(b.extra, 200) };
+    const cX = checkContent(sp.extra);
+    if (cX.error) return res.status(400).json({ error: cX.error });
+    const cost = V.AVATAR_DESIGN_PRICE.std;
+    const ref = `avatar:${Date.now().toString(36)}${rand(4)}`;
+    const c = await pool.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [req.uid]);
+      const bal = (await c.query('SELECT COALESCE(sum(delta),0)::int s FROM star_ledger WHERE user_id=$1', [req.uid])).rows[0].s;
+      if (bal < cost) { await c.query('ROLLBACK'); return res.status(402).json({ error: `ดาวไม่พอ (ต้องใช้ ${cost} ดาว)` }); }
+      await c.query("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'spend',$3,'ออกแบบอวตาร')", [req.uid, -cost, ref]);
+      await c.query('COMMIT');
+    } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
+    const g = AV_OPT.gender[sp.gender], ageTxt = AV_OPT.age[sp.age].replace('her/his', sp.gender === 'male' ? 'his' : 'her');
+    const prompt = `Ultra-realistic professional portrait photograph of a single adult ${AV_OPT.look[sp.look]} ${g} ${ageTxt}, ${AV_OPT.hair[sp.hair]}, wearing ${AV_OPT.outfit[sp.outfit]}, ${AV_OPT.mood[sp.mood]}, looking straight into the camera with mouth gently closed.
+Framing: vertical 9:16, head and upper body centered, shoulders visible, face large and clear, eye level, camera about 1 meter away.
+Background: ${AV_OPT.bg[sp.bg]}.${sp.extra ? `\nExtra details: ${sp.extra}` : ''}
+Lighting: soft even key light, natural skin texture with pores, sharp focus on the eyes, shot on a full-frame camera, 50mm lens. Fictional person, not a celebrity. No text, no logo, no watermark, no hands covering the face, no sunglasses.`;
+    const model = MODEL_OVERRIDE || TIERS[1].model;
+    const out = await Promise.all([0, 1].map(async (i) => {
+      try {
+        const buf = await genImage({ model, prompt: i ? `${prompt}\nSlightly different face and pose from other takes.` : prompt, refs: [], ratio: '9:16', size: '1K' });
+        const name = `c${req.uid}-${Date.now().toString(36)}${rand(4).toLowerCase()}.jpg`;
+        await sharp(buf).rotate().jpeg({ quality: 92 }).toFile(path.join(AV_DIR, name));
+        return name;
+      } catch (e) { log('avatar design fail', req.uid, e.message.slice(0, 200)); return null; }
+    }));
+    const cands = out.filter(Boolean);
+    if (!cands.length) {
+      await q("INSERT INTO star_ledger(user_id,delta,kind,ref,note) VALUES($1,$2,'refund',$3,'คืนดาว ออกแบบอวตารไม่สำเร็จ') ON CONFLICT DO NOTHING", [req.uid, cost, ref]);
+      return res.status(502).json({ error: 'AI วาดอวตารไม่สำเร็จ ลองปรับรายละเอียด · คืนดาวแล้ว' });
+    }
+    res.json({ cands: cands.map((n) => ({ name: n, url: `api/avatars/cand/${n}` })), spec: sp, me: await me(req.uid) });
+  }));
+  app.post('/api/avatars', auth, wrap(async (req, res) => {
+    const b = req.body || {};
+    const n = (await q('SELECT count(*)::int n FROM avatars WHERE user_id=$1', [req.uid])).rows[0].n;
+    if (n >= 20) return res.status(429).json({ error: 'เก็บอวตารได้สูงสุด 20 ตัว ลบตัวที่ไม่ใช้ก่อน' });
+    const cand = path.basename(String(b.cand || ''));
+    if (!cand.startsWith(`c${req.uid}-`) || !fs.existsSync(path.join(AV_DIR, cand))) return res.status(400).json({ error: 'ไม่พบภาพที่เลือก ออกแบบใหม่อีกครั้ง' });
+    const file = `a${req.uid}-${Date.now().toString(36)}${rand(4).toLowerCase()}.jpg`;
+    fs.renameSync(path.join(AV_DIR, cand), path.join(AV_DIR, file));
+    const spec = b.spec && typeof b.spec === 'object' ? b.spec : {};
+    const gender = spec.gender === 'male' ? 'male' : 'female';
+    const a = (await q('INSERT INTO avatars(user_id,name,file,gender,source,spec,voice) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [req.uid, clean(b.name, 40) || 'อวตารของฉัน', file, gender, 'design', spec, V.VOICES.find((v) => v.gender === gender)?.id || ''])).rows[0];
+    res.json(avView(a));
+  }));
+  const avUpload = multer({ dest: UP_TMP, limits: { fileSize: 12 * 1024 * 1024, files: 1 } });
+  app.post('/api/avatars/upload', auth, avUpload.single('photo'), wrap(async (req, res) => {
+    const drop = () => req.file && fs.rm(req.file.path, { force: true }, () => {});
+    try {
+      if (req.body?.consent !== 'yes') return res.status(400).json({ error: 'ยืนยันก่อนว่าเป็นรูปของคุณเอง หรือได้รับอนุญาตจากเจ้าของรูป' });
+      if (!req.file || !/^image\//.test(req.file.mimetype)) return res.status(400).json({ error: 'เลือกรูปภาพ 1 รูป' });
+      const n = (await q('SELECT count(*)::int n FROM avatars WHERE user_id=$1', [req.uid])).rows[0].n;
+      if (n >= 20) return res.status(429).json({ error: 'เก็บอวตารได้สูงสุด 20 ตัว ลบตัวที่ไม่ใช้ก่อน' });
+      const file = `a${req.uid}-${Date.now().toString(36)}${rand(4).toLowerCase()}.jpg`;
+      await sharp(req.file.path).rotate().resize({ width: 1080, height: 1920, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toFile(path.join(AV_DIR, file));
+      const gender = req.body?.gender === 'male' ? 'male' : 'female';
+      const a = (await q('INSERT INTO avatars(user_id,name,file,gender,source,spec,voice) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+        [req.uid, clean(req.body?.name, 40) || 'รูปของฉัน', file, gender, 'upload', { consentAt: new Date().toISOString() }, V.VOICES.find((v) => v.gender === gender)?.id || ''])).rows[0];
+      await q('INSERT INTO audit_log(user_id,action,detail,ip) VALUES($1,$2,$3,$4)', [req.uid, 'avatar_upload_consent', { avatar: a.id }, req.ip || '']);
+      res.json(avView(a));
+    } finally { drop(); }
+  }));
+  app.patch('/api/avatars/:id', auth, wrap(async (req, res) => {
+    const b = req.body || {};
+    const a = (await q('SELECT * FROM avatars WHERE id=$1 AND user_id=$2', [Number(req.params.id) || 0, req.uid])).rows[0];
+    if (!a) return res.status(404).json({ error: 'ไม่พบอวตาร' });
+    const voice = V.VOICES.some((v) => v.id === b.voice) ? b.voice : a.voice;
+    const r = (await q('UPDATE avatars SET name=$2, voice=$3, gender=$4 WHERE id=$1 RETURNING *', [a.id, clean(b.name, 40) || a.name, voice, ['male', 'female'].includes(b.gender) ? b.gender : a.gender])).rows[0];
+    res.json(avView(r));
+  }));
+  app.delete('/api/avatars/:id', auth, wrap(async (req, res) => {
+    const a = (await q('DELETE FROM avatars WHERE id=$1 AND user_id=$2 RETURNING file', [Number(req.params.id) || 0, req.uid])).rows[0];
+    if (a) fs.rm(path.join(AV_DIR, path.basename(a.file)), () => {});
+    res.json({ ok: true });
+  }));
+  // ลบภาพตัวเลือกที่ไม่ได้บันทึก (เก่ากว่า 1 วัน)
+  setInterval(() => { try { for (const f of fs.readdirSync(AV_DIR)) if (f.startsWith('c') && Date.now() - fs.statSync(path.join(AV_DIR, f)).mtimeMs > 864e5) fs.rm(path.join(AV_DIR, f), () => {}); } catch { /* */ } }, 3600e3).unref();
+
+  async function processAvatar(w) {
+    const p = w.params;
+    const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    const fail = (msg) => { PROG.delete(w.id); return refund(w, msg); };
+    const t0 = Date.now();
+    const av = (await q('SELECT * FROM avatars WHERE id=$1 AND user_id=$2', [p.avatarId, w.user_id])).rows[0];
+    const avFile = av && path.join(AV_DIR, path.basename(av.file));
+    if (!avFile || !fs.existsSync(avFile)) return fail('ไม่พบอวตาร · คืนดาวแล้ว');
+    let lines, capSrc;
+    try {
+      stage('AI กำลังเขียนบทพูด', 5);
+      if (p.scriptMode === 'own') { lines = p.script; capSrc = null; }
+      else { const s = await V.writeAvatarScript(p); lines = s.lines; capSrc = s.captions; }
+    } catch (e) { log('avatar script fail', w.id, e.message); return fail('AI เขียนบทไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว'); }
+    let voice;
+    try {
+      stage('กำลังพากย์เสียง', 15);
+      const vid = p.voice || av.voice || V.VOICES.find((v) => v.gender === av.gender)?.id || 'Kore';
+      voice = await V.voiceGemini(lines, vid, p.tone || 'เป็นกันเอง');
+    } catch (e) { log('avatar voice fail', w.id, e.message); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    const audio = Buffer.from(voice.audio_base64, 'base64');
+    const sec = V.speechEnd(voice.alignment);
+    if (sec > p.length * 1.35 + 3) return fail(`บทยาวเกินความยาวที่เลือก (${Math.round(sec)} วิ) · คืนดาวแล้ว`);
+    const base = `${w.user_id}-${w.id}-a-${rand(6).toLowerCase()}`;
+    const raw = path.join(WORK_DIR, `${base}-raw.mp4`);
+    const img = await sharp(avFile).rotate().jpeg({ quality: 92 }).toBuffer();
+    let pct = 25; const tk = setInterval(() => { pct = Math.min(p.subs ? 78 : 92, pct + 1); stage('อวตารกำลังพูด (สร้างวิดีโอ)', pct); }, 8000);
+    try { stage('อวตารกำลังพูด (สร้างวิดีโอ)', 25); await V.heygenAvatar({ image: img, audio, outFile: raw }); }
+    catch (e) { log('avatar heygen fail', w.id, e.message.slice(0, 300)); fs.rm(raw, { force: true }, () => {}); return fail(/moderation|policy|face|celebr/i.test(e.message) ? 'ระบบอวตารไม่รับภาพหรือเนื้อหานี้ ลองอวตารอื่น · คืนดาวแล้ว' : 'สร้างวิดีโออวตารไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว'); }
+    finally { clearInterval(tk); }
+    let final = path.join(WORK_DIR, `${base}.mp4`);
+    if (p.subs) {
+      // ซับจากเวลาของแต่ละประโยค (ตัวเลขจากเสียงพากย์ที่ใช้ขยับปากจริง)
+      const st = V.lineStarts(voice.alignment, lines);
+      const segments = lines.map((t, i) => ({ start: st[i], end: i + 1 < lines.length ? st[i + 1] : sec + 0.3, text: t }));
+      try {
+        stage('กำลังใส่ซับ', 80);
+        const out = await V.render({ type: 'self', videoUrl: V.fileUrl(raw), segments, origVolume: 1, captionStyle: p.captionStyle, price: p.price || '', cta: p.lang === 'th' ? CTA[p.goal] || CTA.sell : { en: 'Tap the link below 👇', zh: '点击下方链接 👇', ms: 'Tekan pautan di bawah 👇' }[p.lang], metadata: { mcrich: w.id } },
+          (s) => stage(s.status === 'queued' ? 'รอคิวใส่ซับ' : 'กำลังใส่ซับ', 80 + Math.round((s.progress || 0) * 0.15)));
+        V.moveFile(out.mp4, final); fs.rm(raw, () => {}); if (out.jpg) fs.rm(out.jpg, () => {});
+      } catch (e) { log('avatar subs fail (ส่งแบบไม่มีซับ)', w.id, e.message); V.moveFile(raw, final); }
+    } else V.moveFile(raw, final);
+    stage('เกือบเสร็จ', 96);
+    let thumb = '';
+    try { await V.videoThumb(final, path.join(WORK_DIR, `${base}.jpg`)); await sharp(path.join(WORK_DIR, `${base}.jpg`)).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); fs.rm(path.join(WORK_DIR, `${base}.jpg`), () => {}); thumb = `${base}.webp`; }
+    catch (e) { log('avatar thumb', w.id, e.message); }
+    let captions, tags;
+    try { ({ captions, tags } = await finalizeCaptions(w, p, capSrc || await genCaptions(avCapPrompt(p, lines)))); }
+    catch { ({ captions, tags } = await finalizeCaptions(w, p, { facebook: lines.join(' '), instagram: lines.join(' '), tiktok: lines[0], shopee: lines.join(' '), hashtags: [] })); }
+    const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
+    await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: lines, avatarName: av.name, seconds: Math.round(sec) })]);
+    PROG.delete(w.id);
+    if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
+    log('avatar done', w.id, `${Math.round(sec)}s`, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+  const avCapPrompt = (p, lines) => `เขียนแคปชั่นโซเชียลภาษาไทยสำหรับคลิปอวตารพูดเรื่อง "${p.product || ''}" บทพูด: ${lines.join(' ')}
+ตอบ JSON เท่านั้น: {"facebook":"","instagram":"","tiktok":"","shopee":"","hashtags":["5-8 แท็ก"]}`;
+
   // ---------- คลิป AI ภาพเคลื่อนไหวจริง (Gemini Omni Flash) ----------
   async function processMotion(w) {
     const p = w.params;
@@ -1043,6 +1240,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (w.style === 'v_drama') return processDrama(w);
     if (w.style === 'v_series') return processSeries(w);
     if (w.style === 'v_motion') return processMotion(w);
+    if (w.style === 'v_avatar') return processAvatar(w);
     if (V.INFO_STYLES.includes(w.style)) return processInfo(w);
     if (w.kind === 'video') return processVideo(w);
     const style = STYLES.find((s) => s.id === w.style);

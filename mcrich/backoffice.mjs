@@ -105,7 +105,7 @@ export function registerBackoffice(app, { q, pool, auth, wrap, log, banned }) {
   // ---------- ราคา ----------
   const priceNow = () => ({
     tiers: Object.fromEntries(TIERS.filter((t) => !t.free).map((t) => [t.id, t.stars])),
-    video: { ...V.VIDEO_PRICE }, drama: { ...V.DRAMA_PRICE }, series: { ...V.SERIES_PRICE }, motion: { ...V.MOTION_PRICE }, premiumVoice: V.PREMIUM_VOICE_EXTRA,
+    video: { ...V.VIDEO_PRICE }, drama: { ...V.DRAMA_PRICE }, series: { ...V.SERIES_PRICE }, motion: { ...V.MOTION_PRICE }, avatar: { ...V.AVATAR_PRICE }, avatarDesign: { ...V.AVATAR_DESIGN_PRICE }, premiumVoice: V.PREMIUM_VOICE_EXTRA,
   });
   const DEFAULTS = priceNow();
   function apply(p) {
@@ -115,6 +115,8 @@ export function registerBackoffice(app, { q, pool, auth, wrap, log, banned }) {
     for (const k of Object.keys(V.DRAMA_PRICE)) if (p?.drama?.[k] != null) V.DRAMA_PRICE[k] = n(p.drama[k], V.DRAMA_PRICE[k]);
     for (const k of Object.keys(V.SERIES_PRICE)) if (p?.series?.[k] != null) V.SERIES_PRICE[k] = n(p.series[k], V.SERIES_PRICE[k]);
     if (p?.motion?.std != null) V.MOTION_PRICE.std = n(p.motion.std, V.MOTION_PRICE.std);
+    for (const k of Object.keys(V.AVATAR_PRICE)) if (p?.avatar?.[k] != null) V.AVATAR_PRICE[k] = n(p.avatar[k], V.AVATAR_PRICE[k]);
+    if (p?.avatarDesign?.std != null) V.AVATAR_DESIGN_PRICE.std = n(p.avatarDesign.std, V.AVATAR_DESIGN_PRICE.std);
     if (p?.premiumVoice != null) V.setPremiumExtra(n(p.premiumVoice, V.PREMIUM_VOICE_EXTRA));
   }
   async function load() {

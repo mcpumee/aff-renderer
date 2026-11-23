@@ -282,3 +282,10 @@ body.kb nav.tab { display: none; }
 .stylecard[aria-pressed="true"] .sx { box-shadow: 0 0 0 2px var(--lime); }
 .stylecard .sxe { display: grid; place-items: center; font-size: 40px; }
 .chip[aria-pressed="true"] .muted { color: rgba(18,19,22,.62); }
+
+/* อวตาร */
+.avgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.avcard{display:flex;flex-direction:column;gap:6px;padding:8px;border-radius:16px;background:var(--s1);border:2px solid transparent;color:inherit;text-align:left;font:inherit}
+.avcard img{width:100%;aspect-ratio:9/16;object-fit:cover;border-radius:12px;background:#0003}
+.avcard[aria-pressed="true"]{border-color:#C6FF36}
+.avcard input{width:100%}

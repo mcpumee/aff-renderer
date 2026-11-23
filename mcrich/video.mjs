@@ -37,6 +37,7 @@ export const VIDEO_STYLES = [
   { id: 'v_shop', label: 'โปรโมตร้าน / แนะนำร้าน', emoji: '🏪', color: '#8C4A1F', reveal: 'info', open: '', hook: '', variants: [] },
   { id: 'v_pr_announce', label: 'ประกาศ / แจ้งข่าวองค์กร', emoji: '📢', color: '#1F4E79', reveal: 'info', open: '', hook: '', variants: [], pr: true },
   { id: 'v_pr_recap', label: 'สรุปกิจกรรม / ข่าวองค์กร', emoji: '📰', color: '#24476B', reveal: 'info', open: '', hook: '', variants: [], pr: true },
+  { id: 'v_avatar', label: 'อวตารพูดได้ (คนเหมือนจริง)', emoji: '🧑‍💼', color: '#5B3A8C', reveal: 'avatar', open: '', hook: '', variants: [] },
   { id: 'v_motion', label: 'คลิป AI ภาพเคลื่อนไหวจริง', emoji: '🎥', color: '#0F5257', reveal: 'motion', open: '', hook: '', variants: [] },
   { id: 'v_series', label: 'ซีรีส์แนวตั้ง (เล่าเรื่อง ไม่ขายของ)', emoji: '🔮', color: '#3B2A7A', reveal: 'drama', open: '', hook: '', variants: [] },
   { id: 'v_drama', label: 'ละครสั้นขายของ', emoji: '🎭', color: '#7A1E48', reveal: 'drama', open: '', hook: '', variants: [] },
@@ -489,6 +490,75 @@ Characters (keep exactly this appearance):
 ${cast}
 ${refKind === 'prev' ? 'The reference image is a frame from earlier in this same series: keep the same characters, faces, outfits and art style.' : refKind === 'first' ? 'The reference image is an earlier frame of this same episode: keep the same characters, faces, outfits and art style.' : ''}
 Dramatic composition, expressive faces. No text, no letters, no subtitles, no watermark. Leave the top 15% and bottom 25% of the frame visually simple for captions.`;
+}
+
+// ---------- อวตารพูดได้ (ภาพอวตาร + เสียง AI → HeyGen ขยับปาก) ----------
+const HEYGEN = () => (process.env.HEYGEN_URL || 'https://api.heygen.com').replace(/\/+$/, '');
+const HEYGEN_KEY = () => process.env.HEYGEN_API_KEY || '';
+export const avatarReady = () => !!HEYGEN_KEY();
+export const AVATAR_PRICE = { 15: 45, 30: 75, 60: 140 };
+export const AVATAR_DESIGN_PRICE = { std: 8 };
+export const AVATAR_LANGS = [
+  { id: 'th', label: 'ไทย', name: 'Thai', cps: 9 }, { id: 'en', label: 'English', name: 'English', cps: 15 },
+  { id: 'zh', label: '中文', name: 'Mandarin Chinese (Simplified)', cps: 4.5 }, { id: 'ms', label: 'Bahasa Melayu', name: 'Malay', cps: 14 },
+];
+/** ความยาวบทสูงสุด (ตัวอักษร) ตามภาษาและความยาวคลิป */
+export const avatarMaxChars = (lang, sec) => Math.round((AVATAR_LANGS.find((l) => l.id === lang) || AVATAR_LANGS[0]).cps * sec * 1.1);
+export async function writeAvatarScript(p) {
+  const L = AVATAR_LANGS.find((l) => l.id === p.lang) || AVATAR_LANGS[0];
+  const maxC = avatarMaxChars(L.id, p.length);
+  const prompt = `You write short spoken scripts for a realistic AI presenter talking to camera in a vertical social video.
+Language of the script: ${L.name} (write natural spoken ${L.name}, not a translation style).
+Length: about ${p.length} seconds when spoken, at most ${maxC} characters in total. 2-6 short sentences, one sentence per line.
+Topic / product: ${p.product || '-'}
+Details: ${p.details || '-'}
+Price / offer: ${p.price || '-'}
+Goal: ${({ sell: 'sell the product', aff: 'get viewers to tap the affiliate link', promo: 'invite people to visit the shop', content: 'share useful content and gain followers', pr: 'formal announcement for an organization' })[p.goal] || 'sell the product'}
+Tone: ${p.tone || 'friendly'}
+Rules: hook in the first sentence; end with a short call to action; no exaggerated or medical claims; no emojis, no stage directions, no brackets.
+Also write social captions in ${L.name}.
+Return JSON only: {"lines":["sentence 1","sentence 2"],"hookText":"2 short lines separated by \\n in ${L.name}","facebook":"","instagram":"","tiktok":"","shopee":"","hashtags":["5-8 hashtags"]}`;
+  const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.9 },
+  }, 90000);
+  const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
+  const lines = (Array.isArray(o.lines) ? o.lines : []).map((x) => String(x).replace(/[\u{1F000}-\u{1FFFF}☀-➿()[\]{}*#"]/gu, '').trim()).filter(Boolean).slice(0, 8);
+  if (!lines.length) throw new Error('avatar_no_script');
+  return { lines, captions: o };
+}
+export const splitScript = (t) => String(t || '').replace(/\r/g, '').split(/\n+|(?<=[.!?。！？])\s+/).map((x) => x.trim()).filter(Boolean).slice(0, 20);
+/** HeyGen: อัปโหลดเสียง → สร้างวิดีโอจากภาพ (Avatar IV) → รอเสร็จ → ดาวน์โหลด */
+export async function heygenAvatar({ image, audio, outFile, motion, onStage }) {
+  const H = { 'X-Api-Key': HEYGEN_KEY() };
+  const fd = new FormData();
+  fd.append('file', new Blob([audio], { type: 'audio/wav' }), 'voice.wav');
+  const up = await fetch(`${HEYGEN()}/v3/assets`, { method: 'POST', headers: H, body: fd, signal: AbortSignal.timeout(120000) });
+  const uj = await up.json().catch(() => ({}));
+  const assetId = uj.data?.id || uj.data?.asset_id || uj.id;
+  if (!up.ok || !assetId) throw new Error(`heygen_upload ${up.status} ${JSON.stringify(uj).slice(0, 200)}`);
+  const body = { type: 'image', image: { type: 'base64', media_type: 'image/jpeg', data: image.toString('base64') }, audio_asset_id: assetId,
+    aspect_ratio: '9:16', resolution: '1080p', fit: 'cover', expressiveness: 'medium',
+    motion_prompt: motion || 'natural, friendly presenter talking to the camera with subtle head movement and small hand gestures' };
+  const cr = await fetch(`${HEYGEN()}/v3/videos`, { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
+  const cj = await cr.json().catch(() => ({}));
+  const vid = cj.data?.video_id;
+  if (!cr.ok || !vid) throw new Error(`heygen_create ${cr.status} ${cj.error?.message || cj.message || JSON.stringify(cj).slice(0, 200)}`);
+  const t0 = Date.now();
+  while (Date.now() - t0 < 25 * 60e3) {
+    await sleep(6000);
+    const s = await fetch(`${HEYGEN()}/v3/videos/${vid}`, { headers: H }).then((x) => x.json()).catch(() => ({}));
+    const d = s.data || {};
+    onStage?.(d.status);
+    if (d.status === 'completed' && d.video_url) {
+      const r = await fetch(d.video_url, { signal: AbortSignal.timeout(5 * 60e3) });
+      if (!r.ok) throw new Error(`heygen_download ${r.status}`);
+      fs.writeFileSync(outFile, Buffer.from(await r.arrayBuffer()));
+      return outFile;
+    }
+    if (d.status === 'failed') throw new Error(`heygen_failed ${d.failure_message || ''}`);
+  }
+  throw new Error('heygen_timeout');
 }
 
 // ---------- คลิป AI ภาพเคลื่อนไหวจริง (Gemini Omni Flash · 9:16 · มีเสียงดนตรี/เอฟเฟกต์จากโมเดล) ----------

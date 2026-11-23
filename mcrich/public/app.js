@@ -310,6 +310,7 @@ function profileView(qs) {
     <div class="list">
       <a href="#interests"><span><b>ความสนใจ</b><br><span class="muted">${esc(iSum)}</span></span><span aria-hidden="true">แก้ไข ›</span></a>
       <a href="#brand"><span><b>ชุดแบรนด์</b><br><span class="muted">${ME.brand?.shopName ? esc(ME.brand.shopName) : 'โลโก้ สี ฟอนต์ ชื่อร้าน ช่องทางสั่งซื้อ'}</span></span><span aria-hidden="true">›</span></a>
+      <a href="#avatars"><span><b>อวตารของฉัน</b><br><span class="muted">ออกแบบคนเหมือนจริง เก็บไว้ใช้ทำวิดีโอพูดได้ 4 ภาษา</span></span><span aria-hidden="true">›</span></a>
       <a href="#auto"><span><b>โหมดอัตโนมัติ</b><br><span class="muted">สร้างคอนเทนต์ให้เองตามวัน-เวลา คุมงบดาวต่อเดือน</span></span><span aria-hidden="true">›</span></a>
       <a href="#links"><span><b>ลิงก์ของฉัน · สถิติคลิก</b><br><span class="muted">ลิงก์สั้นนับคลิกแยกแพลตฟอร์ม</span></span><span aria-hidden="true">›</span></a>
       <a href="#tags"><span><b>แฮชแท็กประจำ</b><br><span class="muted">${(ME.hashtags || []).length} แท็ก · ติ๊กใช้ได้ตอนสร้าง</span></span><span aria-hidden="true">›</span></a>
@@ -356,6 +357,88 @@ async function driveCard() {
   $('#dauto').onchange = (e) => api('api/drive', { method: 'PUT', body: { auto: e.target.checked } }).then(() => toast('บันทึกแล้ว')).catch((er) => toast(er.message));
   $('#dcut').onclick = async () => { if (!confirm('ยกเลิกการเชื่อม Google Drive? ไฟล์ที่ส่งไปแล้วยังอยู่ในไดรฟ์')) return; await api('api/drive', { method: 'DELETE' }); toast('ยกเลิกแล้ว'); driveCard(); };
 }
+
+let AVS = [], AVS_LOADED = false, AVOPT = null;
+async function loadAvatars() { const r = await api('api/avatars'); AVS = r.items; AVOPT = r; AVS_LOADED = true; return r; }
+const AV_LABEL = {
+  gender: { female: 'ผู้หญิง', male: 'ผู้ชาย' }, age: { 20: '20+', 30: '30+', 40: '40+', 50: '50+', 60: '60+' },
+  look: { thai: 'ไทย', chinese: 'ไทยเชื้อสายจีน', malay: 'มลายู', indian: 'เอเชียใต้', western: 'ตะวันตก', korean: 'สไตล์เกาหลี', african: 'แอฟริกัน' },
+  hair: { short: 'ผมสั้น', long: 'ผมยาวตรง', wavy: 'ผมลอนประบ่า', bun: 'มัดมวย', bob: 'บ๊อบ', bald: 'โกนหัว', hijab: 'คลุมฮิญาบ' },
+  outfit: { business: 'สูททำงาน', casual: 'เสื้อลำลอง', smart: 'สมาร์ทแคชชวล', thai: 'ชุดไทยประยุกต์', chef: 'ชุดเชฟ', doctor: 'เสื้อกาวน์', apron: 'ผ้ากันเปื้อนเจ้าของร้าน', sport: 'ชุดกีฬา' },
+  bg: { studio: 'สตูดิโอเรียบ', shop: 'ในร้าน', office: 'ออฟฟิศ', cafe: 'คาเฟ่', home: 'ในบ้าน', outdoor: 'ถนนกลางแจ้ง', kitchen: 'ห้องครัว' },
+  mood: { smile: 'ยิ้มอบอุ่น', confident: 'มั่นใจ', calm: 'สุขุมน่าเชื่อถือ' },
+};
+let AVD = null;
+async function avatarsView(qs) { await loadAvatars(); drawAvatars(qs); }
+function drawAvatars(qs) {
+  const from = new URLSearchParams(qs || '').get('from');
+  const r = AVOPT;
+  AVD = AVD || { gender: 'female', age: '30', look: 'thai', hair: 'long', outfit: 'smart', bg: 'studio', mood: 'smile', extra: '', cands: null, spec: null, tab: AVS.length ? 'list' : 'design' };
+  const back = from === 'create' ? 'create' : 'profile';
+  const tabs = `<div class="chips"><button type="button" class="chip" data-tab="list" aria-pressed="${AVD.tab === 'list'}">อวตารของฉัน (${AVS.length})</button><button type="button" class="chip" data-tab="design" aria-pressed="${AVD.tab === 'design'}">ออกแบบใหม่</button><button type="button" class="chip" data-tab="upload" aria-pressed="${AVD.tab === 'upload'}">ใช้รูปตัวเอง</button></div>`;
+  let body = '';
+  if (AVD.tab === 'list') {
+    body = AVS.length ? `<div class="avgrid">${AVS.map((a) => `<div class="avcard"><img src="${a.img}" alt="" loading="lazy"><b>${esc(a.name)}</b>
+        <span class="muted">${a.source === 'upload' ? 'รูปของฉัน' : 'ออกแบบ'} · ${esc(CAT0voice(a.voice))}</span>
+        <div class="row" style="gap:6px"><button type="button" class="btn ghost sm" data-ren="${a.id}">แก้ชื่อ</button><button type="button" class="btn ghost sm" data-del="${a.id}">ลบ</button></div></div>`).join('')}</div>
+        ${from === 'create' ? '<a class="btn" href="#create">กลับไปสร้างวิดีโอ</a>' : '<a class="btn" href="#create?style=v_avatar">สร้างวิดีโออวตาร</a>'}`
+      : '<section class="card"><b>ยังไม่มีอวตาร</b><span class="muted">กด "ออกแบบใหม่" หรือ "ใช้รูปตัวเอง"</span></section>';
+  } else if (AVD.tab === 'design' && AVD.cands) {
+    body = `<h2>เลือก 1 แบบที่ชอบ</h2><div class="avgrid">${AVD.cands.map((c, i) => `<button type="button" class="avcard" data-pick="${i}" aria-pressed="${AVD.pick === i}"><img src="${c.url}" alt="ตัวเลือก ${i + 1}"></button>`).join('')}</div>
+      <label class="f" for="avname">ตั้งชื่ออวตาร<input id="avname" type="text" maxlength="40" placeholder="เช่น น้องมิน พรีเซนเตอร์" value="${esc(AVD.name || '')}"></label>
+      <div class="grid2"><button type="button" class="btn dark" id="redo">ออกแบบใหม่</button><button type="button" class="btn" id="save">บันทึกอวตาร</button></div>`;
+  } else if (AVD.tab === 'design') {
+    const grp = (k, t) => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${t}</h2><div class="chips">${(r.options[k] || []).map((v) => `<button type="button" class="chip" data-ak="${k}" data-v="${v}" aria-pressed="${AVD[k] === v}">${esc(AV_LABEL[k][v] || v)}</button>`).join('')}</div></section>`;
+    body = `${r.ready ? '' : '<p class="muted">ระบบวิดีโออวตารกำลังตั้งค่า ออกแบบเก็บไว้ก่อนได้</p>'}
+      ${grp('gender', 'เพศ')}${grp('age', 'อายุ')}${grp('look', 'หน้าตา')}${grp('hair', 'ทรงผม')}${grp('outfit', 'ชุด')}${grp('bg', 'ฉากหลัง')}${grp('mood', 'สีหน้า')}
+      <label class="f" for="extra">รายละเอียดเพิ่ม (ไม่บังคับ)<input id="extra" type="text" maxlength="200" placeholder="เช่น ใส่แว่นกรอบบาง ต่างหูมุก" value="${esc(AVD.extra)}"></label>
+      <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">ออกแบบ 1 ครั้ง ได้ 2 แบบให้เลือก</span><b class="num" style="font-size:22px">${ICON.star}${r.designPrice} ดาว</b></div>
+        <span class="muted">ภาพคนเหมือนจริง (บุคคลสมมติ) · บันทึกแล้วใช้ได้ทุกงาน ไม่เสียดาวซ้ำ</span></section>
+      <button type="button" class="btn" id="design">ออกแบบอวตาร</button>`;
+  } else {
+    body = `<section class="card"><b>ใช้รูปตัวเองเป็นอวตาร</b><span class="muted">รูปหน้าตรง เห็นหน้าชัด ไหล่ขึ้นไป แสงสว่าง ไม่ใส่แว่นดำ ไม่มีคนอื่นในรูป</span>
+        <label class="f" for="upname">ชื่ออวตาร<input id="upname" type="text" maxlength="40" placeholder="เช่น พี่แม็ก"></label>
+        <div class="chips"><button type="button" class="chip" data-ug="female" aria-pressed="${AVD.ug !== 'male'}">ผู้หญิง</button><button type="button" class="chip" data-ug="male" aria-pressed="${AVD.ug === 'male'}">ผู้ชาย</button></div>
+        <label class="btn dark" for="upf" style="cursor:pointer">เลือกรูป<input id="upf" type="file" accept="image/*" hidden></label><span class="muted" id="upn"></span>
+        <label class="row" for="consent" style="gap:10px;align-items:flex-start"><input id="consent" type="checkbox"><span>ฉันยืนยันว่าเป็นรูปของฉันเอง หรือได้รับอนุญาตจากเจ้าของรูปให้ใช้สร้างวิดีโอ และจะไม่ใช้ปลอมเป็นผู้อื่น</span></label>
+        <button type="button" class="btn" id="upgo">บันทึกอวตาร (ฟรี)</button></section>`;
+  }
+  app.innerHTML = `${topbar('อวตารของฉัน', back)}<main>${tabs}${body}</main>${nav('profile')}`;
+  app.querySelectorAll('[data-tab]').forEach((b) => b.onclick = () => { AVD.tab = b.dataset.tab; drawAvatars(qs); });
+  app.querySelectorAll('[data-ak]').forEach((b) => b.onclick = () => { const e = $('#extra'); if (e) AVD.extra = e.value; AVD[b.dataset.ak] = b.dataset.v; drawAvatars(qs); });
+  app.querySelectorAll('[data-ug]').forEach((b) => b.onclick = () => { AVD.ug = b.dataset.ug; app.querySelectorAll('[data-ug]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); });
+  app.querySelectorAll('[data-pick]').forEach((b) => b.onclick = () => { const n = $('#avname'); if (n) AVD.name = n.value; AVD.pick = Number(b.dataset.pick); drawAvatars(qs); });
+  app.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
+    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'แตะอีกครั้งเพื่อลบ'; return; }
+    await api(`api/avatars/${b.dataset.del}`, { method: 'DELETE' }).catch((e) => toast(e.message)); avatarsView(qs);
+  });
+  app.querySelectorAll('[data-ren]').forEach((b) => b.onclick = () => {
+    const a = AVS.find((x) => x.id === Number(b.dataset.ren)); const card = b.closest('.avcard');
+    card.querySelector('b').outerHTML = `<input type="text" maxlength="40" value="${esc(a.name)}" aria-label="ชื่ออวตาร">`;
+    b.textContent = 'บันทึก'; b.onclick = async () => { await api(`api/avatars/${a.id}`, { method: 'PATCH', body: { name: card.querySelector('input').value } }).catch((e) => toast(e.message)); avatarsView(qs); };
+  });
+  const dz = $('#design'); if (dz) dz.onclick = async () => {
+    AVD.extra = $('#extra').value; dz.disabled = true; dz.textContent = 'AI กำลังออกแบบ… (ประมาณ 20–40 วิ)';
+    try { const x = await api('api/avatars/design', { method: 'POST', body: AVD }); AVD.cands = x.cands; AVD.spec = x.spec; AVD.pick = 0; if (x.me) ME = x.me; CAT = null; drawAvatars(qs); }
+    catch (e) { toast(e.message); dz.disabled = false; dz.textContent = 'ออกแบบอวตาร'; }
+  };
+  const rd = $('#redo'); if (rd) rd.onclick = () => { AVD.cands = null; drawAvatars(qs); };
+  const sv = $('#save'); if (sv) sv.onclick = async () => {
+    sv.disabled = true;
+    try { const a = await api('api/avatars', { method: 'POST', body: { cand: AVD.cands[AVD.pick || 0].name, name: $('#avname').value, spec: AVD.spec } }); AVD.cands = null; AVD.tab = 'list'; AVD.name = ''; if (D && D.style === 'v_avatar') D.avatarId = a.id; toast('บันทึกอวตารแล้ว'); if (from === 'create') return go('create'); avatarsView(qs); }
+    catch (e) { toast(e.message); sv.disabled = false; }
+  };
+  let UPF = null;
+  const uf = $('#upf'); if (uf) uf.onchange = (e) => { UPF = e.target.files[0] || null; $('#upn').textContent = UPF ? UPF.name : ''; };
+  const ug = $('#upgo'); if (ug) ug.onclick = async () => {
+    if (!UPF) return toast('เลือกรูปก่อน'); if (!$('#consent').checked) return toast('ติ๊กยืนยันสิทธิ์ในรูปก่อน');
+    const fd = new FormData(); fd.append('photo', UPF); fd.append('name', $('#upname').value); fd.append('gender', AVD.ug === 'male' ? 'male' : 'female'); fd.append('consent', 'yes');
+    ug.disabled = true;
+    try { const a = await api('api/avatars/upload', { method: 'POST', body: fd }); AVD.tab = 'list'; if (D && D.style === 'v_avatar') D.avatarId = a.id; toast('บันทึกอวตารแล้ว'); if (from === 'create') return go('create'); avatarsView(qs); }
+    catch (e) { toast(e.message); ug.disabled = false; }
+  };
+}
+const CAT0voice = (id) => { const v = (CAT?.video?.voices || []).find((x) => x.id === id); return v ? v.label : 'เสียงตามเพศ'; };
 
 function brandView() {
   const b = ME.brand || {};
@@ -580,6 +663,7 @@ async function adminPrices() {
     <section class="card"><b>คลิปทั่วไป (ดาว/คลิป)</b><div class="grid2">${Object.keys(p.video).map((k) => inp('v_' + k, p.video[k], df.video[k], `${k} วินาที`)).join('')}${inp('pv', p.premiumVoice, df.premiumVoice, 'บวกเสียงพรีเมียม')}</div></section>
     <section class="card"><b>ละครสั้น (ดาว/เรื่อง)</b><div class="grid2">${Object.keys(p.drama).map((k) => inp('d_' + k, p.drama[k], df.drama[k], `${k} ฉาก`)).join('')}</div></section>
     ${p.series ? `<section class="card"><b>ซีรีส์แนวตั้ง (ดาว/ตอน)</b><div class="grid2">${Object.keys(p.series).map((k) => inp('sr_' + k, p.series[k], df.series[k], `${k} ฉาก`)).join('')}</div></section>` : ''}
+    ${p.avatar ? `<section class="card"><b>วิดีโออวตาร (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน HeyGen ราว $2.3/นาที ≈ 85 บาท/นาที (+ ออกแบบภาพ ~2 บาท/ครั้ง)</span><div class="grid2">${Object.keys(p.avatar).map((k) => inp('av_' + k, p.avatar[k], df.avatar[k], `${k} วิ`)).join('')}${inp('avd_std', p.avatarDesign.std, df.avatarDesign.std, 'ออกแบบอวตาร/ครั้ง')}</div></section>` : ''}
     ${p.motion ? `<section class="card"><b>คลิป AI ภาพเคลื่อนไหวจริง (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน Omni Flash ราว $0.10/วิ (720p) ≈ 35 บาท/คลิป 10 วิ</span><div class="grid2">${inp('mo_std', p.motion.std, df.motion.std, '~10 วิ 720p')}</div></section>` : ''}
     <p class="muted" style="font-size:13px">มีผลทันทีกับงานใหม่ งานที่สั่งไปแล้วไม่เปลี่ยน · ราคาต้นทุน+80% คำนวณไว้แล้วในค่าเดิม</p>
     <div class="grid2"><button type="button" class="btn ghost" id="preset">คืนค่าเดิม</button><button type="button" class="btn" id="psave">บันทึกราคา</button></div>`;
@@ -587,7 +671,7 @@ async function adminPrices() {
   $('#psave').onclick = async () => {
     const body = { tiers: Object.fromEntries(Object.keys(p.tiers).map((k) => [k, val('t_' + k)])), video: Object.fromEntries(Object.keys(p.video).map((k) => [k, val('v_' + k)])),
       drama: Object.fromEntries(Object.keys(p.drama).map((k) => [k, val('d_' + k)])), premiumVoice: val('pv'),
-      ...(p.series ? { series: Object.fromEntries(Object.keys(p.series).map((k) => [k, val('sr_' + k)])) } : {}), ...(p.motion ? { motion: { std: val('mo_std') } } : {}) };
+      ...(p.series ? { series: Object.fromEntries(Object.keys(p.series).map((k) => [k, val('sr_' + k)])) } : {}), ...(p.motion ? { motion: { std: val('mo_std') } } : {}), ...(p.avatar ? { avatar: Object.fromEntries(Object.keys(p.avatar).map((k) => [k, val('av_' + k)])), avatarDesign: { std: val('avd_std') } } : {}) };
     try { await api('api/admin/prices', { method: 'PUT', body }); CAT = null; toast('บันทึกราคาแล้ว'); adminPrices(); } catch (e) { toast(e.message); }
   };
   $('#preset').onclick = async () => { if (!confirm('คืนราคาทั้งหมดเป็นค่าเดิม?')) return; await api('api/admin/prices', { method: 'PUT', body: { reset: true } }); CAT = null; toast('คืนค่าแล้ว'); adminPrices(); };
@@ -676,7 +760,7 @@ const TEXT_PRESETS = {
 };
 let SAMPLES = null; // ภาพตัวอย่างของแต่ละแนวงาน
 const STEPS = ['เป้าหมาย', 'แนวงาน', 'รายละเอียด', 'แคปชั่น', 'คุณภาพ', 'ทบทวน'];
-const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', seriesFrom: 0, seriesInfo: null, preset: 'spin', info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
+const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', seriesFrom: 0, seriesInfo: null, preset: 'spin', avatarId: 0, lang: 'th', scriptMode: 'ai', script: '', subs: true, info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
 const saveDraft = () => { try { sessionStorage.setItem('mr_draft', JSON.stringify(D)); } catch {} };
 function loadDraft() { try { const d = JSON.parse(sessionStorage.getItem('mr_draft') || 'null'); if (d && typeof d === 'object') return { ...newDraft(), ...d }; } catch {} return null; }
 
@@ -807,6 +891,44 @@ function drawStep() {
       readInputs(fields); readInfo(); D.count = Number(D.count) || 3;
       if (!D.product.trim()) return toast(`ใส่${nameLabel}ก่อน`);
       if ((id === 'v_shop' || id === 'v_pr_recap') && !REFS.length && !D.fromWork) return toast('ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3 รูปขึ้นไป)');
+      D.step = 3; drawStep();
+    };
+  } else if (s === 2 && D.style === 'v_avatar') {
+    const A = CAT.video.avatar;
+    if (!AVS_LOADED) { loadAvatars().then(drawStep).catch((e) => toast(e.message)); app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main><p class="muted">กำลังโหลดอวตาร…</p></main>`; return; }
+    if (!A.ready) { stepShell('<div class="soon card"><span class="badge b-warn">กำลังตั้งค่า</span><h2>ระบบอวตารกำลังเปิด</h2><p class="muted">ออกแบบอวตารเก็บไว้ก่อนได้เลย พร้อมเมื่อไรใช้ได้ทันที</p><a class="btn" href="#avatars">ออกแบบอวตาร</a></div>', { disabled: true }); return; }
+    const av = AVS.find((a) => a.id === D.avatarId) || null;
+    const max = Math.round((A.langs.find((l) => l.id === D.lang)?.cps || 9) * D.length * 1.1);
+    const vs = CAT.video.voices.filter((v) => !av || v.gender === av.gender);
+    if (![15, 30, 60].includes(Number(D.length))) D.length = 30;
+    stepShell(`<h1 style="font-size:22px">วิดีโออวตารพูดได้</h1>
+      <p class="muted">อวตารหน้าเหมือนคนจริง ขยับปากตรงเสียง พูดได้ 4 ภาษา เก็บอวตารไว้ใช้ซ้ำได้ทุกงาน</p>
+      <div class="row between"><h2>เลือกอวตาร</h2><a class="btn ghost sm" href="#avatars?from=create">+ ออกแบบใหม่</a></div>
+      ${AVS.length ? `<div class="avgrid">${AVS.map((a) => `<button type="button" class="avcard" data-av="${a.id}" aria-pressed="${D.avatarId === a.id}"><img src="${a.img}" alt="" loading="lazy"><b>${esc(a.name)}</b></button>`).join('')}</div>`
+        : '<section class="card"><b>ยังไม่มีอวตาร</b><span class="muted">ออกแบบหน้าตาเอง หรือใช้รูปตัวเอง ใช้เวลาไม่ถึงนาที</span><a class="btn" href="#avatars?from=create">ออกแบบอวตารตัวแรก</a></section>'}
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>ภาษาที่พูด</h2>${chipRow(A.langs, D.lang, 'lang', false)}</section>
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>ความยาว</h2>${chipRow([15, 30, 60].map((n) => ({ id: String(n), label: `${n} วิ · ${A.prices[n]} ดาว` })), String(D.length), 'length', false)}</section>
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>บทพูด</h2>${chipRow([{ id: 'ai', label: 'ให้ AI เขียนบท' }, { id: 'own', label: 'ใช้บทของฉัน' }], D.scriptMode, 'scriptMode', false)}</section>
+      <section class="card">${D.scriptMode === 'own'
+        ? `<label class="f" for="script">บทพูด (${A.langs.find((l) => l.id === D.lang)?.label}) <span class="muted" id="cnt">${[...D.script].length}/${max}</span><textarea id="script" rows="6" maxlength="2000" placeholder="พิมพ์ทีละประโยค ขึ้นบรรทัดใหม่ได้">${esc(D.script)}</textarea></label>`
+        : `<label class="f" for="product">หัวข้อ / สินค้า<input id="product" type="text" maxlength="120" placeholder="เช่น รีวิวเซรั่มวิตซี, แนะนำคอร์สเรียนภาษา" value="${esc(D.product)}"></label>
+           <label class="f" for="details">ประเด็นที่อยากให้พูด (ไม่บังคับ)<textarea id="details" rows="3" maxlength="600" placeholder="เช่น ลดราคาถึงสิ้นเดือน ส่งฟรี">${esc(D.details)}</textarea></label>
+           <label class="f" for="price">ราคา / โปร (ไม่บังคับ)<input id="price" type="text" maxlength="60" value="${esc(D.price)}"></label>
+           <span class="muted">AI เขียนบทและแคปชั่นเป็นภาษาที่เลือก</span>`}</section>
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>เสียง</h2>${chipRow([{ id: '', label: 'ตามอวตาร' }, ...vs.map((v) => ({ id: v.id, label: (v.gender === 'female' ? '👩 ' : '👨 ') + v.label }))], D.voice, 'voice', false)}</section>
+      <section class="card"><label class="row between" for="subs"><b>ใส่ซับบนจอ</b><input id="subs" type="checkbox" class="sw-in" ${D.subs ? 'checked' : ''}></label>
+        ${D.subs ? chipRow(CAT.video.captionStyles, D.captionStyle, 'captionStyle', false) : ''}</section>
+      <span class="muted">ภาษาจีนและมลายูเสียงอาจสำเนียงไม่เป๊ะ 100% ลองสั้นๆ 15 วิ ก่อนได้</span>`);
+    const fields = ['product', 'details', 'price', 'script', 'subs'];
+    bindChips([], (k) => { readInputs(fields); if (k === 'length') D.length = Number(D.length); if (['lang', 'length', 'scriptMode'].includes(k)) drawStep(); });
+    app.querySelectorAll('[data-av]').forEach((b) => b.onclick = () => { readInputs(fields); D.avatarId = Number(b.dataset.av); const a = AVS.find((x) => x.id === D.avatarId); if (a && D.voice && !CAT.video.voices.some((v) => v.id === D.voice && v.gender === a.gender)) D.voice = ''; drawStep(); });
+    const sb = $('#subs'); if (sb) sb.onchange = () => { readInputs(fields); drawStep(); };
+    const sc = $('#script'); if (sc) sc.oninput = () => { const n = [...sc.value].length; const c = $('#cnt'); c.textContent = `${n}/${max}`; c.style.color = n > max ? '#ff6b6b' : ''; };
+    $('#next').onclick = () => {
+      readInputs(fields);
+      if (!D.avatarId || !av) return toast('เลือกอวตารก่อน');
+      if (D.scriptMode === 'own') { if (!D.script.trim()) return toast('พิมพ์บทพูดก่อน'); if ([...D.script.replace(/\s+/g, '')].length > max) return toast(`บทยาวเกิน ${D.length} วิ · เลือกความยาวมากขึ้นหรือตัดบท`); }
+      else if (!D.product.trim()) return toast('ใส่หัวข้อหรือสินค้าก่อน');
       D.step = 3; drawStep();
     };
   } else if (s === 2 && D.style === 'v_motion') {
@@ -1073,7 +1195,7 @@ function drawStep() {
   } else if (s === 3) {
     const saved = ME.hashtags || [];
     const vidAll = D.kind === 'video';
-    const vid = vidAll && !(D.style === 'v_self' && D.selfMode !== 'voice') && D.style !== 'v_drama' && D.style !== 'v_series' && D.style !== 'v_motion'; // มีบทพากย์ (ละคร AI เลือกเสียงเอง)
+    const vid = vidAll && !(D.style === 'v_self' && D.selfMode !== 'voice') && D.style !== 'v_drama' && D.style !== 'v_series' && D.style !== 'v_motion' && D.style !== 'v_avatar'; // มีบทพากย์ (ละคร AI เลือกเสียงเอง)
     const fm = vid && !INFO_IDS.includes(D.style) ? CAT.video.formulas.filter((f) => !(D.style === 'v_top' && (f.dialogue || f.id === 'pas' || f.id === 'story'))) : [];
     if (vid && fm.length && (!D.formula || !fm.some((f) => f.id === D.formula))) D.formula = (fm.find((f) => f.rec.includes(D.goal)) || fm[0]).id;
     const dlg = vid && fm.find((f) => f.id === D.formula)?.dialogue;
@@ -1124,6 +1246,16 @@ function drawStep() {
       <div class="list kv"><div><span class="muted">จำนวนทิป</span><span>${D.count} ทิป (~${D.length} วิ)</span></div></div>
       <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">รวม</span><b class="num" style="font-size:28px">${ICON.star}${total} ดาว</b></div>
         <span class="muted">การ์ดความรู้ขยับได้ทีละข้อ + เสียงบรรยาย + ซับ</span></section>
+      <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
+    $('#next').onclick = () => { D.step = 5; drawStep(); };
+  } else if (s === 4 && D.style === 'v_avatar') {
+    const A = CAT.video.avatar, total = A.prices[D.length] || A.prices[30];
+    stepShell(`<h1 style="font-size:22px">ราคา</h1>
+      <div class="list kv"><div><span class="muted">อวตาร</span><span>${esc(AVS.find((a) => a.id === D.avatarId)?.name || '')}</span></div>
+        <div><span class="muted">ภาษา</span><span>${esc(A.langs.find((l) => l.id === D.lang)?.label || '')}</span></div>
+        <div><span class="muted">ความยาว</span><span>~${D.length} วิ · 9:16 · 1080p</span></div></div>
+      <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">รวม</span><b class="num" style="font-size:28px">${ICON.star}${total} ดาว</b></div>
+        <span class="muted">อวตารขยับปาก หน้า และหัวตามเสียงจริง ใช้เวลา 3–10 นาที · ไม่สำเร็จคืนดาวอัตโนมัติ</span></section>
       <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
     $('#next').onclick = () => { D.step = 5; drawStep(); };
   } else if (s === 4 && D.style === 'v_motion') {
@@ -1220,7 +1352,7 @@ function uploadWithProgress(url, fd, onp) {
 }
 function styleNote(x) {
   const V2 = CAT.video;
-  return { v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`,
+  return { v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.prices?.[15] || 45} ดาว · พูด ไทย/EN/中文/Melayu`,
     v_show: `เริ่ม ${V2.prices[15]} ดาว · 2–8 รูป`, v_tips: `เริ่ม ${V2.prices[30]} ดาว · 3 หรือ 5 ทิป`, v_shop: `เริ่ม ${V2.prices[15]} ดาว · รูปร้าน+ข้อมูล`,
     v_pr_announce: `เริ่ม ${V2.prices[15]} ดาว · เสียงทางการ`, v_pr_recap: `เริ่ม ${V2.prices[15]} ดาว · จากรูปกิจกรรม` }[x.id] || `เริ่ม ${V2.prices[15]} ดาว · 9:16`;
 }
@@ -1252,12 +1384,13 @@ async function reviewStep() {
       ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
       ${INFO_IDS.includes(D.style) ? row('รูป', REFS.length ? `${REFS.length} รูป` : (D.style === 'v_pr_announce' ? 'AI วาดพื้นหลังให้ (+5 ดาว)' : '')) + (D.style === 'v_tips' ? row('จำนวนทิป', `${D.count} ทิป`) : '') + Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน/ร้าน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ', hours: 'เวลาเปิด' }[k] || k, v)).join('') + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + (D.style === 'v_tips' ? '' : row('ความยาว', `${D.length} วินาที`)) : ''}
       ${!vid && st.pr ? Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ' }[k] || k, v)).join('') : ''}
+      ${D.style === 'v_avatar' ? row('อวตาร', AVS.find((a) => a.id === D.avatarId)?.name) + row('ภาษา', CAT.video.avatar.langs.find((l) => l.id === D.lang)?.label) + row('บท', D.scriptMode === 'own' ? 'บทของฉัน' : `AI เขียนจาก: ${D.product}`) + row('ความยาว', `~${D.length} วิ`) + row('ซับ', D.subs ? CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label : 'ไม่ใส่') : ''}
       ${D.style === 'v_motion' ? row('สินค้า / เรื่อง', D.product) + row('แนวช็อต', CAT.video.motionPresets.find((m) => m.id === D.preset)?.label) + row('ไอเดีย', D.plot) + row('รูปสินค้า', REFS.length ? '1 รูป' : '') : ''}
       ${D.style === 'v_series' ? row('เรื่อง', D.seriesInfo ? `${D.seriesInfo.title} EP.${(D.seriesInfo.ep || 1) + 1}` : D.product) + row('แนวเรื่อง', CAT.video.seriesGenres.find((g) => g.id === D.genre)?.label) + row('เรื่องย่อ', D.plot) + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('ความยาว', `${D.scenes} ฉาก`) : ''}
       ${D.style === 'v_drama' ? row('แนวเรื่อง', CAT.video.genres.find((g) => g.id === D.genre)?.label) + row('พล็อต', D.genre === 'free' ? D.plot : '') + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('จำนวนฉาก', `${D.scenes} ฉาก`) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) : ''}
       ${D.style === 'v_top' ? D.items.map((it, i) => row(`#${i + 1}`, `${it.name}${it.price ? ` · ${it.price}` : ''}${it.link ? ' · มีลิงก์' : ''}`)).join('') + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_top').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `~${D.length} วินาที`) : ''}
       ${D.style === 'v_show' ? row('รูปสินค้า', `${REFS.length} รูป`) + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_show').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : ''}
-      ${D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || D.style === 'v_series' || D.style === 'v_motion' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
+      ${D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || D.style === 'v_series' || D.style === 'v_motion' || D.style === 'v_avatar' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
         : vid ? row('รูปสินค้า', REFS.length ? `${REFS.length} รูป` : '') + row('แคปรีวิว', REVS.length ? `${REVS.length} รูป` : '') + row('ลูกเล่นตอนเปิด', st.variants?.length ? (st.variants.find((x) => x.id === D.variant)?.label || 'สุ่มให้') : '') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname + (CAT.video.formulas.find((f) => f.id === D.formula)?.dialogue ? ' + คู่สนทนา' : '')) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : row('คุณภาพ', `${tier.label} ${tier.size} × ${qt.versions} แบบ`)}
     </div>
     <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">${qt.free ? 'ใช้ภาพฟรี' : 'ดาวที่ใช้'}</span>
@@ -1894,6 +2027,7 @@ async function route() {
     case 'plan': return planView().catch((e) => toast(e.message));
     case 'auto': return autoView(qs).catch((e) => toast(e.message));
     case 'brand': return brandView();
+    case 'avatars': return avatarsView(qs).catch((e) => toast(e.message));
     case 'tags': return tagsView();
     case 'stars': return starsView().catch((e) => toast(e.message));
     case 'topup': return topupView().catch((e) => toast(e.message));

@@ -760,6 +760,12 @@ let VFILE = null;    // คลิปที่ถ่ายเอง
 let ITEMF = [];      // รูปสินค้าแต่ละอันดับ (Top N)
 // แนวข้อความตามประเภทงาน: [ข้อความหลัก, ข้อความรอง]
 const TEXT_PRESETS = {
+  agent_plan: [['คุ้มครองครบ จบในแผนเดียว'], ['ป่วยเมื่อไร ไม่ต้องกังวลค่ารักษา'], ['วางแผนวันนี้ อุ่นใจวันหน้า'], ['ปรึกษาฟรี', 'ไม่มีค่าใช้จ่าย']],
+  agent_listing: [['ขายด่วน! บ้านพร้อมอยู่'], ['ให้เช่า พร้อมเข้าอยู่'], ['ทำเลดี ใกล้ทุกอย่าง'], ['ราคาดี ต่อรองได้']],
+  agent_tips: [['รู้ก่อนทำประกัน'], ['4 เรื่องต้องรู้'], ['เช็กลิสต์ก่อนซื้อบ้าน'], ['เข้าใจง่ายใน 1 นาที']],
+  agent_case: [['เคลมจริง จ่ายจริง'], ['เคสลูกค้าจริง'], ['ส่งมอบบ้านเรียบร้อย', 'ขอบคุณที่ไว้วางใจ'], ['ปิดดีลสำเร็จ']],
+  agent_profile: [['ปรึกษาฟรี ไม่มีค่าใช้จ่าย'], ['ดูแลตลอดสัญญา'], ['ยินดีให้คำปรึกษา'], ['ตัวแทนที่คุณไว้ใจได้']],
+  agent_compare: [['เช่า หรือ ซื้อ คุ้มกว่า?'], ['แผน A vs แผน B'], ['ซื้อสด หรือ ผ่อน?'], ['เลือกแบบไหนดี?']],
   poster_menu: [['เมนูใหม่! อร่อยต้องลอง'], ['เมนูแนะนำประจำร้าน'], ['จัดเต็ม คุ้มทุกจาน'], ['ร้อนๆ พร้อมเสิร์ฟ']],
   sale_banner: [['ลดแรง 50%', 'วันนี้วันเดียว'], ['ซื้อ 1 แถม 1'], ['ลดล้างสต๊อก', 'หมดแล้วหมดเลย'], ['ส่งฟรีทั่วไทย']],
   aff_cover: [['ของมันต้องมี!'], ['ใช้ดีบอกต่อ'], ['ราคานี้หายากแล้ว'], ['ป้ายยาด่วน!']],
@@ -841,10 +847,13 @@ function drawStep() {
   if (s === 0) {
     stepShell(`<h1 style="font-size:22px">สร้างไปเพื่ออะไร?</h1>
       <div class="grid2">${CAT.goals.map((g) => `<button type="button" class="card opt" data-goal="${g.id}" aria-pressed="${D.goal === g.id}"><b>${esc(g.label)}</b><span class="muted">${esc(g.hint)}</span></button>`).join('')}</div>
-      <label class="f" for="link">${D.goal === 'aff' ? 'ลิงก์ Affiliate (Shopee / Lazada / TikTok)' : 'ลิงก์สินค้าหรือร้าน (ไม่บังคับ)'}
+      ${D.goal === 'agent' ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>สายงานของคุณ</h2>${chipRow(CAT.agentTypes, D.agentType || 'insurance', 'agentType', false)}
+        <span class="muted">AI จะเขียนตามกติกาโฆษณาของสายนี้ และใส่ข้อความกำกับท้ายแคปชั่นให้ (เช่น ประกันภัย)</span></section>` : ''}
+      <label class="f" for="link">${D.goal === 'aff' ? 'ลิงก์ Affiliate (Shopee / Lazada / TikTok)' : D.goal === 'agent' ? 'ลิงก์ติดต่อ / LINE / เพจ (ไม่บังคับ)' : 'ลิงก์สินค้าหรือร้าน (ไม่บังคับ)'}
         <input id="link" type="url" inputmode="url" placeholder="https://" value="${esc(D.link || (D.goal !== 'aff' ? ME.brand?.shopLink || '' : ''))}"></label>
       <span class="muted">ลิงก์จะใส่ในแคปชั่นให้อัตโนมัติ</span>`);
-    app.querySelectorAll('[data-goal]').forEach((b) => b.onclick = () => { readInputs(['link']); D.goal = b.dataset.goal; drawStep(); });
+    app.querySelectorAll('[data-goal]').forEach((b) => b.onclick = () => { readInputs(['link']); D.goal = b.dataset.goal; if (D.goal === 'agent' && !D.agentType) D.agentType = 'insurance'; drawStep(); });
+    bindChips([], () => readInputs(['link']));
     $('#next').onclick = () => {
       readInputs(['link']);
       if (D.link && !/^https?:\/\/\S+$/i.test(D.link)) return toast('ลิงก์ต้องขึ้นต้นด้วย https://');
@@ -861,10 +870,11 @@ function drawStep() {
       ${(() => {
         const card = (x) => { const im = (vid ? SAMPLES?.video : SAMPLES?.image)?.[x.id]; return `<button type="button" class="stylecard has-img" data-style="${x.id}" aria-pressed="${D.style === x.id}">
           ${im ? `<span class="sx"><img src="${im}" alt="ตัวอย่าง ${esc(x.label)}" loading="lazy">${vid ? '<i>▶ ตัวอย่าง</i>' : ''}</span>` : `<span class="sx sxe" style="background:${esc(x.color)}">${x.emoji}</span>`}<b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`; };
-        const biz = list.filter((x) => !x.pr), pr = list.filter((x) => x.pr);
+        const biz = list.filter((x) => !x.pr && !x.agent), pr = list.filter((x) => x.pr), ag = list.filter((x) => x.agent);
         const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>`;
         const g2 = pr.length ? `<h2>ประชาสัมพันธ์องค์กร</h2><div class="grid2">${pr.map(card).join('')}</div>` : '';
-        return D.goal === 'pr' ? g2 + g1 : g1 + g2;
+        const g3 = ag.length ? `<h2>ตัวแทน / นายหน้า (ประกัน อสังหา รถ สินเชื่อ)</h2><div class="grid2">${ag.map(card).join('')}</div>` : '';
+        return D.goal === 'pr' ? g2 + g1 + g3 : D.goal === 'agent' ? g3 + g1 + g2 : g1 + g3 + g2;
       })()}`, { disabled: !D.style || !list.some((x) => x.id === D.style) });
     app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
     app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => {
@@ -877,19 +887,22 @@ function drawStep() {
   } else if (s === 2 && INFO_IDS.includes(D.style)) {
     const id = D.style;
     const cs = CAT.video.captionStyles;
-    const maxP = id === 'v_tips' ? 1 : id === 'v_pr_announce' ? 4 : 8;
-    const photoTitle = { v_tips: 'รูปประกอบ (ไม่บังคับ 1 รูป)', v_shop: 'รูปร้าน 3–8 รูป (หน้าร้าน เมนู บรรยากาศ)', v_pr_announce: 'รูปประกอบ (ไม่บังคับ ถ้าไม่มี AI วาดพื้นหลังให้ +5 ดาว)', v_pr_recap: 'รูปกิจกรรม 3–8 รูป (AI ดูรูปแล้วเล่าให้)' }[id];
-    const nameLabel = { v_tips: 'หัวข้อความรู้', v_shop: 'ชื่อร้าน', v_pr_announce: 'เรื่องที่ประกาศ', v_pr_recap: 'ชื่อกิจกรรม / ข่าว' }[id];
-    const ph = { v_tips: 'เช่น เก็บเต้าหู้ให้สดนานขึ้น', v_shop: 'เช่น บ้านพรุค้าส่ง', v_pr_announce: 'เช่น ขอเชิญร่วมงานวันเด็ก', v_pr_recap: 'เช่น กิจกรรมปลูกป่าชายเลน' }[id];
-    const keys = { v_tips: [], v_shop: ['place', 'hours', 'contact'], v_pr_announce: ['org', 'date', 'place', 'contact'], v_pr_recap: ['org', 'date', 'place'] }[id];
+    const maxP = id === 'v_tips' || id === 'v_agent_tips' || id === 'v_agent_plan' ? 1 : id === 'v_pr_announce' ? 4 : 8;
+    const isAg = id.startsWith('v_agent'), counted = ['v_tips', 'v_agent_tips', 'v_agent_plan'].includes(id);
+    const photoTitle = { v_tips: 'รูปประกอบ (ไม่บังคับ 1 รูป)', v_shop: 'รูปร้าน 3–8 รูป (หน้าร้าน เมนู บรรยากาศ)', v_pr_announce: 'รูปประกอบ (ไม่บังคับ ถ้าไม่มี AI วาดพื้นหลังให้ +5 ดาว)', v_pr_recap: 'รูปกิจกรรม 3–8 รูป (AI ดูรูปแล้วเล่าให้)', v_agent_plan: 'รูปตัวคุณ (ไม่บังคับ ขึ้นต้นและท้ายคลิป)', v_agent_tips: 'รูปตัวคุณ (ไม่บังคับ ขึ้นต้นและท้ายคลิป)', v_agent_listing: 'รูปทรัพย์ 3–8 รูป เรียงตามลำดับพาชม (หน้าบ้าน → ภายใน)' }[id];
+    const nameLabel = { v_tips: 'หัวข้อความรู้', v_shop: 'ชื่อร้าน', v_pr_announce: 'เรื่องที่ประกาศ', v_pr_recap: 'ชื่อกิจกรรม / ข่าว', v_agent_plan: 'ชื่อแผน / ข้อเสนอ', v_agent_tips: 'หัวข้อความรู้', v_agent_listing: 'ชื่อทรัพย์' }[id];
+    const ph = { v_tips: 'เช่น เก็บเต้าหู้ให้สดนานขึ้น', v_shop: 'เช่น บ้านพรุค้าส่ง', v_pr_announce: 'เช่น ขอเชิญร่วมงานวันเด็ก', v_pr_recap: 'เช่น กิจกรรมปลูกป่าชายเลน', v_agent_plan: 'เช่น ประกันสุขภาพเหมาจ่าย', v_agent_tips: 'เช่น ทำประกันสุขภาพตอนอายุเท่าไรดี', v_agent_listing: 'เช่น บ้านเดี่ยว 2 ชั้น 3 นอน ใกล้ ม.อ.' }[id];
+    const keys = { v_tips: [], v_shop: ['place', 'hours', 'contact'], v_pr_announce: ['org', 'date', 'place', 'contact'], v_pr_recap: ['org', 'date', 'place'], v_agent_plan: ['org', 'contact', 'license'], v_agent_tips: ['contact', 'license'], v_agent_listing: ['place', 'contact', 'license'] }[id];
     stepShell(`<p class="muted">แนว: <b style="color:var(--fg)">${esc(CAT.video.styles.find((x) => x.id === id).label)}</b></p>
       <section class="card">
+        ${isAg ? digestCard() : ''}
         <label class="f" for="product">${nameLabel}<input id="product" type="text" maxlength="120" placeholder="${ph}" value="${esc(D.product)}"></label>
+        ${id === 'v_agent_listing' || id === 'v_agent_plan' ? `<label class="f" for="price">${id === 'v_agent_listing' ? 'ราคา (ไม่บังคับ)' : 'ข้อเสนอเด่น / เบี้ยเริ่มต้น (ไม่บังคับ)'}<input id="price" type="text" maxlength="40" placeholder="${id === 'v_agent_listing' ? 'เช่น 2.59 ล้าน / เช่า 8,500/เดือน' : 'ตามเอกสารจริงเท่านั้น'}" value="${esc(D.price)}"></label>` : ''}
         ${id === 'v_shop' ? `<label class="f" for="price">โปรตอนนี้ (ไม่บังคับ)<input id="price" type="text" maxlength="40" placeholder="เช่น ซื้อครบ 500 ส่งฟรี" value="${esc(D.price)}"></label>` : ''}
-        <label class="f" for="details">${id === 'v_tips' ? 'อยากเล่ามุมไหน (ไม่บังคับ)' : 'รายละเอียด'}<textarea id="details" rows="3" maxlength="600">${esc(D.details)}</textarea></label>
+        <label class="f" for="details">${id === 'v_tips' || id === 'v_agent_tips' ? 'อยากเล่ามุมไหน (ไม่บังคับ)' : id === 'v_agent_listing' ? 'รายละเอียดทรัพย์ (ขนาด ห้อง จุดเด่น)' : 'รายละเอียด'}<textarea id="details" rows="${isAg ? 5 : 3}" maxlength="600">${esc(D.details)}</textarea></label>
         ${infoFields(keys)}
       </section>
-      ${id === 'v_tips' ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>จำนวนทิป</h2>${chipRow([{ id: '3', label: `3 ทิป ~30 วิ · ${CAT.video.prices[30]} ดาว` }, { id: '5', label: `5 ทิป ~45 วิ · ${CAT.video.prices[45]} ดาว` }], String(D.count || 3), 'count', false)}</section>` : ''}
+      ${counted ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>${id === 'v_agent_plan' ? 'จำนวนจุดเด่น' : 'จำนวนทิป'}</h2>${chipRow([{ id: '3', label: `3 ทิป ~30 วิ · ${CAT.video.prices[30]} ดาว` }, { id: '5', label: `5 ทิป ~45 วิ · ${CAT.video.prices[45]} ดาว` }], String(D.count || 3), 'count', false)}</section>` : ''}
       <section class="card"><b>${photoTitle}</b>
         <div class="refs">${REFS.map((f, i) => `<button type="button" class="ref" data-rm="${i}" aria-label="ลบรูป"><img src="${URL.createObjectURL(f)}" alt=""><span>✕</span></button>`).join('')}
         ${REFS.length < maxP ? '<label class="ref add" for="refin" style="cursor:pointer">+ เพิ่มรูป<input id="refin" type="file" accept="image/*" multiple hidden></label>' : ''}</div></section>
@@ -900,13 +913,14 @@ function drawStep() {
         <input id="useLogo" type="checkbox" class="sw-in" ${D.useLogo && ME.brand?.logo ? 'checked' : ''} ${ME.brand?.logo ? '' : 'disabled'}></label></section>`);
     const fields = ['product', 'price', 'details', 'useLogo'];
     bindChips([], (k) => { if (k === 'count') D.count = Number(D.count); });
+    bindDigest(fields);
     app.querySelectorAll('[data-cs]').forEach((b) => b.onclick = () => { readInputs(fields); readInfo(); D.captionStyle = b.dataset.cs; drawStep(); });
     const ri = $('#refin'); if (ri) ri.onchange = (e) => { readInputs(fields); readInfo(); REFS = [...REFS, ...[...e.target.files].filter((f) => f.type.startsWith('image/'))].slice(0, maxP); drawStep(); };
     app.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { readInputs(fields); readInfo(); REFS.splice(Number(b.dataset.rm), 1); drawStep(); });
     $('#next').onclick = () => {
       readInputs(fields); readInfo(); D.count = Number(D.count) || 3;
       if (!D.product.trim()) return toast(`ใส่${nameLabel}ก่อน`);
-      if ((id === 'v_shop' || id === 'v_pr_recap') && !REFS.length && !D.fromWork) return toast('ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3 รูปขึ้นไป)');
+      if ((id === 'v_shop' || id === 'v_pr_recap' || id === 'v_agent_listing') && !REFS.length && !D.fromWork) return toast('ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3 รูปขึ้นไป)');
       D.step = 3; drawStep();
     };
   } else if (s === 2 && D.style === 'v_avatar') {
@@ -1172,18 +1186,21 @@ function drawStep() {
     };
   } else if (s === 2) {
     const st = CAT.styles.find((x) => x.id === D.style);
+    const ag = st.agent;
     stepShell(`<p class="muted">แนว: <b style="color:var(--fg)">${esc(st.label)}</b></p>
       <section class="card">
-        <label class="f" for="product">ชื่อสินค้า / เรื่อง<input id="product" type="text" maxlength="120" placeholder="เช่น ข้าวมันไก่ต้ม, เซรั่มวิตซี" value="${esc(D.product)}"></label>
+        ${ag ? digestCard() : ''}
+        <label class="f" for="product">${ag ? 'แผน / ทรัพย์ / หัวข้อ' : 'ชื่อสินค้า / เรื่อง'}<input id="product" type="text" maxlength="120" placeholder="${ag ? 'เช่น ประกันสุขภาพเหมาจ่าย, คอนโดใกล้ ม.อ.' : 'เช่น ข้าวมันไก่ต้ม, เซรั่มวิตซี'}" value="${esc(D.product)}"></label>
         ${st.text ? `<label class="f" for="headline">ข้อความหลักบนภาพ (สั้นๆ)<input id="headline" type="text" maxlength="60" placeholder="เช่น เปิดใหม่! อร่อยต้องลอง" value="${esc(D.headline)}"></label>
         ${TEXT_PRESETS[st.id] ? `<div style="display:flex;flex-direction:column;gap:6px"><span class="muted" style="font-size:13px">แนวข้อความสำหรับ${esc(st.label)} · แตะเพื่อใช้</span>
           <div class="chips">${TEXT_PRESETS[st.id].map(([h, sub], i) => `<button type="button" class="chip" data-preset="${i}" style="min-height:34px;padding:5px 12px;font-size:13px">${esc(h)}${sub ? ` · <span class="muted">${esc(sub)}</span>` : ''}</button>`).join('')}</div></div>` : ''}
-        <label class="f" for="price">${st.pr ? 'ข้อความรอง (ไม่บังคับ)' : 'ราคา / โปร (ไม่บังคับ)'}<input id="price" type="text" maxlength="40" placeholder="${st.pr ? 'เช่น ขอเชิญร่วมงาน' : 'เช่น 59.- หรือ ซื้อ 1 แถม 1'}" value="${esc(D.price)}"></label>` : ''}
-        <label class="f" for="details">รายละเอียดเพิ่ม (ไม่บังคับ)<textarea id="details" rows="3" maxlength="600" placeholder="${st.pr ? 'เนื้อหาประกาศ ผู้เข้าร่วม เงื่อนไข บรรยากาศที่อยากได้' : 'จุดเด่น วัตถุดิบ กลุ่มลูกค้า บรรยากาศที่อยากได้'}">${esc(D.details)}</textarea></label>
+        <label class="f" for="price">${st.pr ? 'ข้อความรอง (ไม่บังคับ)' : st.id === 'agent_listing' ? 'ราคา (ไม่บังคับ)' : ag ? 'ข้อความรอง / ข้อเสนอเด่น (ไม่บังคับ)' : 'ราคา / โปร (ไม่บังคับ)'}<input id="price" type="text" maxlength="40" placeholder="${st.pr ? 'เช่น ขอเชิญร่วมงาน' : st.id === 'agent_listing' ? 'เช่น 2.59 ล้าน / เช่า 8,500/เดือน' : ag ? 'เช่น ปรึกษาฟรี ไม่มีค่าใช้จ่าย' : 'เช่น 59.- หรือ ซื้อ 1 แถม 1'}" value="${esc(D.price)}"></label>` : ''}
+        <label class="f" for="details">${ag ? 'ข้อมูล / จุดเด่น (AI ใช้เฉพาะที่ใส่ไว้)' : 'รายละเอียดเพิ่ม (ไม่บังคับ)'}<textarea id="details" rows="${ag ? 5 : 3}" maxlength="600" placeholder="${st.pr ? 'เนื้อหาประกาศ ผู้เข้าร่วม เงื่อนไข บรรยากาศที่อยากได้' : ag ? 'เช่น ค่าห้อง 5,000/คืน ผ่าตัดเหมาจ่าย · หรือ 3 นอน 2 น้ำ 52 ตร.ว.' : 'จุดเด่น วัตถุดิบ กลุ่มลูกค้า บรรยากาศที่อยากได้'}">${esc(D.details)}</textarea></label>
         <div id="warn"></div>
       </section>
       ${st.pr ? `<section class="card"><b>ข้อมูลบนภาพ</b>${infoFields(['org', 'date', 'place', 'contact'])}</section>` : ''}
-      <section class="card"><b>${st.pr ? 'รูปประกอบ (ไม่บังคับ)' : 'ภาพสินค้าจริง (ไม่บังคับ แต่แนะนำ)'}</b><span class="muted">${st.pr ? 'เช่น รูปสถานที่ บุคคล โลโก้งาน ใส่ได้ 3 รูป' : 'ใส่ได้ 3 รูป AI จะใช้สินค้าจริงของคุณ ไม่แต่งสินค้าใหม่'}</span>
+      ${ag ? `<section class="card"><b>ข้อมูลตัวแทนบนภาพ (ไม่บังคับ)</b>${infoFields(st.id === 'agent_listing' ? ['place', 'contact', 'license'] : ['org', 'contact', 'license'])}</section>` : ''}
+      <section class="card"><b>${st.pr ? 'รูปประกอบ (ไม่บังคับ)' : ag ? ({ agent_listing: 'รูปทรัพย์จริง (แนะนำ)', agent_profile: 'รูปตัวคุณ (แนะนำ)' }[st.id] || 'รูปประกอบ (ไม่บังคับ)') : 'ภาพสินค้าจริง (ไม่บังคับ แต่แนะนำ)'}</b><span class="muted">${st.pr ? 'เช่น รูปสถานที่ บุคคล โลโก้งาน ใส่ได้ 3 รูป' : ag ? 'รูปที่ใส่ตรงนี้ AI จะใช้เป็นของจริง (บ้าน รถ หน้าคุณ) ไม่แต่งใหม่ · โปสเตอร์ที่ให้ AI สรุป ใส่ในกล่องด้านบนแทน' : 'ใส่ได้ 3 รูป AI จะใช้สินค้าจริงของคุณ ไม่แต่งสินค้าใหม่'}</span>
         <div class="refs">${REFS.map((f, i) => `<button type="button" class="ref" data-rm="${i}" aria-label="ลบรูปที่ ${i + 1}"><img src="${URL.createObjectURL(f)}" alt=""><span>✕</span></button>`).join('')}
           ${REFS.length < 3 ? '<label class="ref add" for="refin" style="cursor:pointer">+ เพิ่มรูป<input id="refin" type="file" accept="image/*" multiple hidden></label>' : ''}</div>
         ${D.fromWork && !REFS.length ? '<span class="muted">ใช้รูปสินค้าจากงานเดิม</span>' : ''}</section>
@@ -1196,6 +1213,7 @@ function drawStep() {
       </section>`);
     bindChips(['concepts'], (k) => { if (k === 'concepts' && D.concepts.length > 5) { D.concepts.pop(); drawStep(); toast('เลือกได้สูงสุด 5'); } });
     const fields = ['product', 'headline', 'price', 'details', 'useLogo', 'showShop'];
+    bindDigest(fields);
     app.querySelectorAll('[data-preset]').forEach((b) => b.onclick = () => {
       const [h, sub] = TEXT_PRESETS[st.id][Number(b.dataset.preset)];
       $('#headline').value = h; if (sub && $('#price')) $('#price').value = sub;
@@ -1372,13 +1390,47 @@ function styleNote(x) {
     v_show: `เริ่ม ${V2.prices[15]} ดาว · 2–8 รูป`, v_tips: `เริ่ม ${V2.prices[30]} ดาว · 3 หรือ 5 ทิป`, v_shop: `เริ่ม ${V2.prices[15]} ดาว · รูปร้าน+ข้อมูล`,
     v_pr_announce: `เริ่ม ${V2.prices[15]} ดาว · เสียงทางการ`, v_pr_recap: `เริ่ม ${V2.prices[15]} ดาว · จากรูปกิจกรรม` }[x.id] || `เริ่ม ${V2.prices[15]} ดาว · 9:16`;
 }
-const INFO_IDS = ['v_tips', 'v_shop', 'v_pr_announce', 'v_pr_recap'];
+const INFO_IDS = ['v_tips', 'v_shop', 'v_pr_announce', 'v_pr_recap', 'v_agent_plan', 'v_agent_tips', 'v_agent_listing'];
 const infoFields = (keys) => {
-  const L = { org: ['ชื่อหน่วยงาน / ร้าน', ME.brand?.shopName || ''], date: ['วัน เวลา', 'เช่น 5 ธ.ค. 69 เวลา 09.00 น.'], place: ['สถานที่', 'เช่น หอประชุม อบต.บ้านพรุ'], contact: ['ติดต่อ', 'เช่น โทร 074-xxx-xxx / LINE @...'], hours: ['เวลาเปิด', 'เช่น ทุกวัน 07.00–19.00'] };
+  const L = { org: ['ชื่อหน่วยงาน / ร้าน', ME.brand?.shopName || ''], date: ['วัน เวลา', 'เช่น 5 ธ.ค. 69 เวลา 09.00 น.'], place: ['สถานที่', 'เช่น หอประชุม อบต.บ้านพรุ'], contact: ['ติดต่อ', 'เช่น โทร 074-xxx-xxx / LINE @...'], hours: ['เวลาเปิด', 'เช่น ทุกวัน 07.00–19.00'], license: ['เลขที่ใบอนุญาตตัวแทน/นายหน้า', 'ใส่แล้วจะขึ้นท้ายแคปชั่น'] };
+  if (D.goal === 'agent') { L.org = ['สังกัด / บริษัท / ทีม', 'ใส่เฉพาะที่ได้รับอนุญาตให้ใช้ชื่อ']; L.place = ['ทำเล / ที่ตั้ง', 'เช่น ใกล้ ม.อ. หาดใหญ่']; L.contact = ['ติดต่อ', 'เช่น โทร 08x-xxx-xxxx / LINE @...']; }
   D.info = D.info || {};
-  if (keys.includes('org') && !D.info.org && ME.brand?.shopName) D.info.org = ME.brand.shopName;
+  if (keys.includes('org') && !D.info.org && ME.brand?.shopName && D.goal !== 'agent') D.info.org = ME.brand.shopName;
   return keys.map((k) => `<label class="f" for="info_${k}">${L[k][0]}<input id="info_${k}" type="text" maxlength="100" placeholder="${esc(L[k][1])}" value="${esc(D.info[k] || '')}"></label>`).join('');
 };
+let SRCF = [];
+const digestCard = () => `<div class="card" style="background:var(--acc-card);border-color:var(--acc-line);gap:8px">
+  <b>✨ ให้ AI สรุปจากโปสเตอร์ / โบรชัวร์ / ข้อความ</b>
+  <span class="muted">แนบภาพโปสเตอร์ แผ่นพับ ตารางผลประโยชน์ หรือวางข้อความ AI จะสรุปจุดเด่นมาใส่ช่องด้านล่างให้แก้ต่อ (ใช้เฉพาะข้อมูลในเอกสาร ไม่แต่งตัวเลขเพิ่ม)</span>
+  <div class="refs">${SRCF.map((f, i) => `<button type="button" class="ref" data-srm="${i}" aria-label="ลบเอกสาร"><img src="${URL.createObjectURL(f)}" alt=""><span>✕</span></button>`).join('')}
+    ${SRCF.length < 4 ? '<label class="ref add" for="srcin" style="cursor:pointer">+ โปสเตอร์<input id="srcin" type="file" accept="image/*" multiple hidden></label>' : ''}</div>
+  <textarea id="srctext" rows="3" maxlength="6000" placeholder="หรือวางข้อความจากโบรชัวร์ / ประกาศขาย / ไลน์บริษัท ที่นี่">${esc(D.srcText || '')}</textarea>
+  <button type="button" class="btn dark" id="digest">สรุปให้เลย (ฟรี)</button><div id="dgout"></div></div>`;
+function bindDigest(fields) {
+  const keep = () => { readInputs(fields); readInfo(); const t = $('#srctext'); if (t) D.srcText = t.value; };
+  const si = $('#srcin'); if (si) si.onchange = (e) => { keep(); SRCF = [...SRCF, ...[...e.target.files].filter((f) => f.type.startsWith('image/'))].slice(0, 4); drawStep(); };
+  app.querySelectorAll('[data-srm]').forEach((b) => b.onclick = () => { keep(); SRCF.splice(Number(b.dataset.srm), 1); drawStep(); });
+  const bt = $('#digest'); if (!bt) return;
+  bt.onclick = async () => {
+    keep();
+    if (!SRCF.length && !String(D.srcText || '').trim()) return toast('แนบโปสเตอร์หรือวางข้อความก่อน');
+    const fd = new FormData(); SRCF.forEach((f) => fd.append('src', f)); fd.append('text', D.srcText || ''); fd.append('agentType', D.agentType || 'insurance'); fd.append('style', D.style || '');
+    bt.disabled = true; bt.textContent = 'AI กำลังอ่านเอกสาร… (10–30 วิ)';
+    try {
+      const r = await api('api/agent/digest', { method: 'POST', body: fd });
+      if (r.product) D.product = r.product;
+      if (r.headline) D.headline = r.headline;
+      if (r.sub) D.price = r.sub;
+      if (r.details) D.details = r.details;
+      D.info = D.info || {};
+      for (const [k, v] of Object.entries(r.info || {})) if (v && !D.info[k]) D.info[k] = v;
+      D.digestNote = r.unclear || '';
+      drawStep();
+      toast('สรุปแล้ว ตรวจและแก้ข้อมูลก่อนไปต่อ');
+      const o = $('#dgout'); if (o && D.digestNote) o.innerHTML = `<span class="muted">⚠️ ข้อมูลที่อ่านไม่ชัด/ขาด: ${esc(D.digestNote)}</span>`;
+    } catch (e) { toast(e.message); bt.disabled = false; bt.textContent = 'สรุปให้เลย (ฟรี)'; }
+  };
+}
 const readInfo = () => { D.info = D.info || {}; app.querySelectorAll('[id^="info_"]').forEach((el) => { D.info[el.id.slice(5)] = el.value; }); };
 const payload = () => ({ ...D, hasPhotos: REFS.length > 0, hashtags: [...D.hashtags, ...String(D.extraTags || '').split(/[\s,]+/).filter(Boolean)] });
 async function reviewStep() {
@@ -1395,11 +1447,11 @@ async function reviewStep() {
     ${qt.blocked ? `<p role="alert" class="card" style="background:var(--bad-bg);color:var(--bad)">${esc(qt.blocked)}</p>` : ''}
     ${qt.warnings.length ? `<p role="alert" class="card" style="background:var(--warn-bg);color:var(--warn)">ระวังผิดกฎ อย./โฆษณาเกินจริง: ${esc(qt.warnings.join(', '))} · AI จะเลี่ยงคำเหล่านี้ในแคปชั่น แนะนำแก้ข้อความบนภาพ</p>` : ''}
     <div class="list kv">
-      ${row('เป้าหมาย', goal.label)}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
+      ${row('เป้าหมาย', goal.label)}${D.goal === 'agent' || st.agent ? row('สายงาน', CAT.agentTypes.find((x) => x.id === (D.agentType || 'insurance'))?.label) : ''}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
       ${row('คอนเซปต์', D.concepts.join(', '))}${vid ? '' : row('ขนาด', D.ratio) + row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
       ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
       ${INFO_IDS.includes(D.style) ? row('รูป', REFS.length ? `${REFS.length} รูป` : (D.style === 'v_pr_announce' ? 'AI วาดพื้นหลังให้ (+5 ดาว)' : '')) + (D.style === 'v_tips' ? row('จำนวนทิป', `${D.count} ทิป`) : '') + Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน/ร้าน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ', hours: 'เวลาเปิด' }[k] || k, v)).join('') + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + (D.style === 'v_tips' ? '' : row('ความยาว', `${D.length} วินาที`)) : ''}
-      ${!vid && st.pr ? Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ' }[k] || k, v)).join('') : ''}
+      ${(!vid && (st.pr || st.agent)) || (vid && st.agent) ? Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: st.agent ? 'สังกัด' : 'หน่วยงาน', date: 'วันเวลา', place: st.agent ? 'ทำเล' : 'สถานที่', contact: 'ติดต่อ', license: 'ใบอนุญาต', hours: 'เวลาเปิด' }[k] || k, v)).join('') : ''}
       ${D.style === 'v_avatar' ? row('อวตาร', AVS.find((a) => a.id === D.avatarId)?.name) + row('ภาษา', CAT.video.avatar.langs.find((l) => l.id === D.lang)?.label) + row('บท', D.scriptMode === 'own' ? 'บทของฉัน' : `AI เขียนจาก: ${D.product}`) + row('ความยาว', `~${D.length} วิ`) + row('ซับ', D.subs ? CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label : 'ไม่ใส่') : ''}
       ${D.style === 'v_motion' ? row('สินค้า / เรื่อง', D.product) + row('แนวช็อต', CAT.video.motionPresets.find((m) => m.id === D.preset)?.label) + row('ไอเดีย', D.plot) + row('รูปสินค้า', REFS.length ? '1 รูป' : '') : ''}
       ${D.style === 'v_series' ? row('เรื่อง', D.seriesInfo ? `${D.seriesInfo.title} EP.${(D.seriesInfo.ep || 1) + 1}` : D.product) + row('แนวเรื่อง', CAT.video.seriesGenres.find((g) => g.id === D.genre)?.label) + row('เรื่องย่อ', D.plot) + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('ความยาว', `${D.scenes} ฉาก`) : ''}

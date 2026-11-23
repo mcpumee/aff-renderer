@@ -32,6 +32,12 @@ const STYLE_DEMO = {
   pr_congrats: { product: 'ความสำเร็จของทีม', headline: 'ขอแสดงความยินดี', info: ORG },
   pr_hiring: { product: 'รับสมัครพนักงานขาย', headline: 'รับสมัครงาน', price: 'หลายตำแหน่ง', info: ORG },
   pr_festival: { product: 'วันขึ้นปีใหม่', headline: 'สวัสดีปีใหม่', info: ORG },
+  agent_plan: { product: 'ประกันสุขภาพเหมาจ่าย', headline: 'คุ้มครองค่ารักษาเหมาจ่าย', price: 'ปรึกษาฟรี', agentType: 'insurance', details: 'ค่าห้อง ค่าผ่าตัด ผู้ป่วยใน' },
+  agent_listing: { product: 'บ้านเดี่ยว 2 ชั้น 3 ห้องนอน', headline: 'ขายบ้านพร้อมอยู่', price: '2.59 ล้าน', agentType: 'property', info: { place: 'ใกล้ถนนใหญ่ หาดใหญ่' } },
+  agent_tips: { product: 'เลือกประกันสุขภาพยังไงไม่พลาด', headline: '4 เรื่องต้องรู้ก่อนทำประกันสุขภาพ', agentType: 'insurance' },
+  agent_case: { product: 'ลูกค้าแอดมิทผ่าตัดไส้ติ่ง', headline: 'เคสเคลมจริงของลูกค้า', agentType: 'insurance' },
+  agent_profile: { product: 'ตัวแทนประกันชีวิต', headline: 'ปรึกษาประกันฟรี ดูแลตลอดสัญญา', agentType: 'insurance' },
+  agent_compare: { product: 'เช่าคอนโด vs ซื้อคอนโด', headline: 'เช่าหรือซื้อ คุ้มกว่า?', agentType: 'property' },
   pr_condolence: { product: 'ไว้อาลัย', headline: 'ขอแสดงความเสียใจอย่างสุดซึ้ง', price: 'ด้วยความอาลัยยิ่ง', info: ORG },
 };
 
@@ -122,7 +128,7 @@ export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
       ON CONFLICT (style) DO UPDATE SET file=EXCLUDED.file, status=EXCLUDED.status, work_id=EXCLUDED.work_id, error=EXCLUDED.error, at=now()`, [cur.style, o.file ?? cur.file ?? '', o.status, o.work_id ?? null, o.error || '']);
     if (cur.status !== 'render') {
       const d = STYLE_DEMO[cur.style];
-      const r = await create.createInternal(await sysUser(), { kind: 'image', style: cur.style, goal: cur.style.startsWith('pr_') ? 'pr' : 'sell', tier: 'std', versions: 1, tone: 'เป็นกันเอง', ...d }, [], 'ตัวอย่างแนวงาน', { system: true });
+      const r = await create.createInternal(await sysUser(), { kind: 'image', style: cur.style, goal: cur.style.startsWith('pr_') ? 'pr' : cur.style.startsWith('agent_') ? 'agent' : 'sell', tier: 'std', versions: 1, tone: 'เป็นกันเอง', ...d }, [], 'ตัวอย่างแนวงาน', { system: true });
       await set(r.error ? { status: 'failed', error: r.error } : { status: 'render', work_id: r.id });
       return true;
     }

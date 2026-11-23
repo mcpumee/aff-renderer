@@ -103,7 +103,7 @@ nav.tab a { text-decoration: none; color: var(--muted); display: flex; flex-dire
 nav.tab a[aria-current="page"] { color: var(--lime-text); font-weight: 600; }
 nav.tab .plus { width: 52px; height: 52px; border-radius: 16px; background: var(--lime); color: var(--ink); display: flex; align-items: center; justify-content: center; margin-top: -22px; box-shadow: 0 6px 18px rgba(200,249,74,.28); }
 
-#toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--fg); color: var(--ink); padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px; z-index: 20; max-width: 90vw; }
+#toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-weight: 600; font-size: 14px; z-index: 20; max-width: 90vw; }
 .login { min-height: 100dvh; padding: calc(env(safe-area-inset-top) + 32px) 24px calc(env(safe-area-inset-bottom) + 28px); display: flex; flex-direction: column; gap: 22px; }
 .stat { background: var(--s1); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
 .stat b { font-size: 22px; color: var(--lime-text); }

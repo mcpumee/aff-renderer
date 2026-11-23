@@ -38,6 +38,9 @@ export const VIDEO_STYLES = [
   { id: 'v_top', label: 'จัดอันดับ Top 3 / Top 5', emoji: '🏆', color: '#B8860B', reveal: 'top', open: '', hook: '', variants: TEMPLATES },
   { id: 'v_tips', label: 'คลิปความรู้ / ทิปน่ารู้', emoji: '💡', color: '#2B5C6B', reveal: 'info', open: '', hook: '', variants: [] },
   { id: 'v_shop', label: 'โปรโมตร้าน / แนะนำร้าน', emoji: '🏪', color: '#8C4A1F', reveal: 'info', open: '', hook: '', variants: [] },
+  { id: 'v_agent_plan', label: 'อธิบายแผน / ข้อเสนอ (ตัวแทน)', emoji: '🛡️', color: '#1F5F8B', reveal: 'info', open: '', hook: '', variants: [], agent: true },
+  { id: 'v_agent_tips', label: 'คลิปความรู้สายตัวแทน', emoji: '📚', color: '#2B5C6B', reveal: 'info', open: '', hook: '', variants: [], agent: true },
+  { id: 'v_agent_listing', label: 'พาชมทรัพย์ ขาย / เช่า', emoji: '🏠', color: '#2F6B4A', reveal: 'info', open: '', hook: '', variants: [], agent: true },
   { id: 'v_pr_announce', label: 'ประกาศ / แจ้งข่าวองค์กร', emoji: '📢', color: '#1F4E79', reveal: 'info', open: '', hook: '', variants: [], pr: true },
   { id: 'v_pr_recap', label: 'สรุปกิจกรรม / ข่าวองค์กร', emoji: '📰', color: '#24476B', reveal: 'info', open: '', hook: '', variants: [], pr: true },
   { id: 'v_avatar', label: 'อวตารพูดได้ (คนเหมือนจริง)', emoji: '🧑‍💼', color: '#5B3A8C', reveal: 'avatar', open: '', hook: '', variants: [] },
@@ -632,18 +635,22 @@ export async function videoThumb(file, out) {
 }
 
 // ---------- คลิปข้อมูล: ความรู้ · ร้าน · ประชาสัมพันธ์ ----------
-export const INFO_STYLES = ['v_tips', 'v_shop', 'v_pr_announce', 'v_pr_recap'];
+export const INFO_STYLES = ['v_tips', 'v_shop', 'v_pr_announce', 'v_pr_recap', 'v_agent_plan', 'v_agent_tips', 'v_agent_listing'];
 /** เขียนบทเป็นสไลด์ (AI ดูรูปจริงได้ ถ้าส่งมา) → {slides:[{title,body,emoji,lines[]}], captions...} */
-export async function writeInfo(styleId, p, brand, photos = []) {
+export async function writeInfo(styleId, p, brand, photos = [], agent = null) {
   const info = p.info || {};
-  const n = styleId === 'v_tips' ? (Number(p.count) === 5 ? 5 : 3) : 0;
+  const n = ['v_tips', 'v_agent_tips', 'v_agent_plan'].includes(styleId) ? (Number(p.count) === 5 ? 5 : 3) : 0;
   const formal = styleId.startsWith('v_pr');
-  const facts = [info.org && `หน่วยงาน/ร้าน: ${info.org}`, info.date && `วันเวลา: ${info.date}`, info.place && `สถานที่: ${info.place}`, info.contact && `ติดต่อ: ${info.contact}`, info.hours && `เวลาเปิด: ${info.hours}`].filter(Boolean).join('\n');
+  const facts = [info.org && `หน่วยงาน/ร้าน: ${info.org}`, info.date && `วันเวลา: ${info.date}`, info.place && `สถานที่: ${info.place}`, info.contact && `ติดต่อ: ${info.contact}`, info.hours && `เวลาเปิด: ${info.hours}`, info.license && `ใบอนุญาต: ${info.license}`].filter(Boolean).join('\n');
+  const ag = agent ? `\nสาย: ตัวแทน/นายหน้า ${agent.label} · กติกา: ${agent.rule}` : '';
   const job = {
     v_tips: `คลิปความรู้ "${n} ทิปน่ารู้" หัวข้อ: ${p.product}\nรายละเอียด/มุมที่อยากเล่า: ${p.details || '-'}\nโครง: สไลด์เปิด 1 สไลด์ (ฮุคทำไมต้องรู้) → ทิปทีละข้อ ${n} สไลด์ (title = ชื่อทิปสั้น, body = วิธีทำ 1 ประโยคสั้น) → สไลด์ปิดชวนกดติดตาม/เซฟ${p.price || brand.shopName ? ` และพูดถึง${brand.shopName || 'ร้าน'}อย่างเป็นธรรมชาติ` : ''} · ข้อมูลต้องถูกต้อง ไม่อ้างการรักษาโรค`,
     v_shop: `คลิปแนะนำร้าน: ${p.product || info.org || brand.shopName}\nจุดเด่น/เมนู/บริการ: ${p.details || '-'}\nโปร: ${p.price || '-'}\n${facts}\nโครง: แต่ละรูปที่แนบมาคือ 1 สไลด์ตามลำดับ (title = ชื่อสั้นของสิ่งที่เห็นในรูป, body เว้นได้) บรรยายสิ่งที่เห็นจริงในรูปให้น่ามา → สไลด์ปิดชวนมาที่ร้าน`,
     v_pr_announce: `วิดีโอประกาศประชาสัมพันธ์ของ ${info.org || brand.shopName || 'หน่วยงาน'}\nเรื่อง: ${p.product}\nรายละเอียด: ${p.details || '-'}\n${facts}\nโครง: สไลด์หัวเรื่อง → สไลด์ข้อมูลสำคัญทีละเรื่อง (อะไร เมื่อไร ที่ไหน ใครเข้าร่วมได้ ติดต่ออย่างไร) title สั้น body คือข้อมูลจริงที่ให้มาเท่านั้น ห้ามแต่งวันที่ สถานที่ หรือตัวเลขเอง → สไลด์ปิดเชิญชวน`,
     v_pr_recap: `วิดีโอสรุปกิจกรรม/ข่าวประชาสัมพันธ์ของ ${info.org || brand.shopName || 'หน่วยงาน'}\nกิจกรรม: ${p.product}\nรายละเอียด: ${p.details || '-'}\n${facts}\nโครง: แต่ละรูปที่แนบมาคือ 1 สไลด์ตามลำดับ (title = คำบรรยายภาพสั้นแบบข่าว) เล่าสิ่งที่เห็นในรูปจริงแบบข่าวประชาสัมพันธ์ สุภาพ เป็นทางการ ห้ามระบุชื่อบุคคลที่ไม่ได้ให้มา → สไลด์ปิดขอบคุณผู้เกี่ยวข้อง`,
+    v_agent_plan: `คลิปอธิบายแผน/ข้อเสนอของตัวแทน: ${p.product}\nข้อมูล/จุดเด่นที่ให้มา: ${p.details || '-'}\nข้อเสนอ/ราคา: ${p.price || '-'}\n${facts}${ag}\nโครง: สไลด์เปิด (ฮุคปัญหาที่ลูกค้ากังวล) → จุดเด่นทีละข้อ ${n} สไลด์ (title สั้น, body อธิบายง่าย 1 ประโยค ใช้เฉพาะข้อมูลที่ให้มา ห้ามแต่งตัวเลข เงื่อนไข หรือความคุ้มครองเพิ่ม) → สไลด์ปิดชวนทักปรึกษาฟรี`,
+    v_agent_tips: `คลิปความรู้ "${n} เรื่องต้องรู้" สำหรับตัวแทน/นายหน้า หัวข้อ: ${p.product}\nมุมที่อยากเล่า: ${p.details || '-'}${ag}\nโครง: สไลด์เปิดฮุค → ความรู้ทีละข้อ ${n} สไลด์ (title สั้น, body 1 ประโยค) ข้อมูลต้องถูกต้องตามหลักทั่วไป ไม่ขายของตรงๆ → สไลด์ปิดชวนกดติดตาม/ทักปรึกษา`,
+    v_agent_listing: `คลิปพาชมทรัพย์ของนายหน้า: ${p.product}\nราคา: ${p.price || '-'}\nรายละเอียดทรัพย์: ${p.details || '-'}\n${facts}${ag}\nโครง: สไลด์เปิดฮุค (ราคา/ทำเลเด่น) → แต่ละรูปที่แนบมาคือ 1 สไลด์ตามลำดับ (title = ส่วนของทรัพย์ที่เห็นในรูป เช่น ห้องนั่งเล่น) บรรยายเฉพาะสิ่งที่เห็นจริงในรูป → สไลด์ปิดชวนนัดชมทรัพย์`,
   }[styleId];
   const nPhotos = photos.length;
   const prompt = `คุณคือ${formal ? 'นักประชาสัมพันธ์มืออาชีพของหน่วยงานไทย ใช้ภาษาสุภาพ เป็นทางการแต่อ่านง่าย' : 'ครีเอเตอร์ไทยที่ทำคลิปสั้นยอดวิวสูง'} เขียนบทพากย์และสไลด์สำหรับ${job}
@@ -651,7 +658,7 @@ ${nPhotos ? `แนบรูปมา ${nPhotos} รูป ต้องมีส
 โทน: ${formal ? 'ทางการ สุภาพ น่าเชื่อถือ' : p.tone || 'เป็นกันเอง'} · ความยาวรวมประมาณ ${Number(p.length) || 30} วินาที (${Math.round((Number(p.length) || 30) * 11)} ตัวอักษร)
 กฎ: แต่ละสไลด์มีบทพากย์ 1-2 ประโยคสั้น · title ไม่เกิน 22 ตัวอักษร · body ไม่เกิน 50 ตัวอักษร · emoji 1 ตัวที่เข้ากับสไลด์ · ห้ามใส่อีโมจิในบทพากย์ · ห้ามคำเกินจริง
 ตอบเป็น JSON เท่านั้น:
-{"slides":[{"title":"","body":"","emoji":"","photo":0,"lines":["บทพากย์"]}],"badge":"ป้ายมุมจอ 1-3 คำ เช่น ${formal ? 'ประชาสัมพันธ์' : styleId === 'v_tips' ? 'ทิปน่ารู้' : 'ร้านแนะนำ'}",
+{"slides":[{"title":"","body":"","emoji":"","photo":0,"lines":["บทพากย์"]}],"badge":"ป้ายมุมจอ 1-3 คำ เช่น ${formal ? 'ประชาสัมพันธ์' : styleId === 'v_tips' || styleId === 'v_agent_tips' ? 'ทิปน่ารู้' : styleId === 'v_agent_listing' ? 'ทรัพย์แนะนำ' : agent ? 'ปรึกษาฟรี' : 'ร้านแนะนำ'}",
 "facebook":"แคปชั่น FB 3-6 บรรทัด${formal ? ' ภาษาทางการ' : ''} ใส่ {LINK} ถ้ามีลิงก์","instagram":"","tiktok":"","shopee":"${formal ? 'เว้นว่าง' : 'แคปชั่นสั้น'}","hashtags":["5-8 แท็ก"]}
 ${p.link ? 'มีลิงก์: ใส่ {LINK} ในแคปชั่น ห้ามเขียน URL เอง' : 'ไม่มีลิงก์'}`;
   const parts = [...photos.map((b) => ({ inlineData: { mimeType: 'image/jpeg', data: b.toString('base64') } })), { text: prompt }];

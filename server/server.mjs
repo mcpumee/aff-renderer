@@ -294,8 +294,8 @@ async function buildProps(id, req, stage = () => {}) {
       if (at >= 0 && at < 5) burstSec = alN.character_end_times_seconds[at + phrase.length - 1] + 0.1;
     }
     // แบบที่มีเรื่องเล่าก่อนเปิด (ค้อน ไก่ ไดโนเสาร์ ตู้กาชา กุญแจ) ต้องมีเวลามากขึ้น
-    const longIntro = req.reveal === 'wheel' || ['smash', 'hen', 'dino', 'machine', 'key', 'drop'].includes(req.revealVariant);
-    burstSec = Math.min(longIntro ? 3.6 : 3, Math.max(longIntro ? 2.4 : 1.1, burstSec));
+    const longIntro = ['wheel', 'claw', 'rocket'].includes(req.reveal) || ['smash', 'hen', 'dino', 'machine', 'key', 'drop'].includes(req.revealVariant);
+    burstSec = Math.min(longIntro ? 3.6 : 3, Math.max(req.reveal === 'claw' && req.revealVariant === 'retry' ? 3.4 : req.reveal === 'claw' || req.reveal === 'rocket' ? 3 : longIntro ? 2.4 : 1.1, burstSec));
     const nRev = Math.min(3, reviewUrls.length);
     const introSec = burstSec + 1.4 + nRev * 0.75 + 1.2;
     const durationSec = Math.max(introSec + END_SEC + 2, speechEnd + 0.8);

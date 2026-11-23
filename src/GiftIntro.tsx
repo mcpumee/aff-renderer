@@ -138,7 +138,7 @@ export const GiftIntro: React.FC<Props> = ({ theme, products, reviewUrls, hookTe
         const fy = Math.sin(sec * 2.2 + i * 1.3) * 16;
         const frot = Math.sin(sec * 1.6 + i) * 3;
         const ry = Math.sin(sec * 1.3 + i * 0.7) * 16;
-        const startY = BOX_TOP + 120;
+        const startY = kind === 'rocket' ? 760 : BOX_TOP + 120; // จรวดแตกกลางฟ้า
         const x = interpolate(s, [0, 1], [540, slot.x]);
         const y = interpolate(s, [0, 1], [startY, slot.y]) + fy * s;
         // ช่วงรีวิว: ย่อและยกขึ้นด้านบน

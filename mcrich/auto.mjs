@@ -15,6 +15,8 @@ export const AUTO_STYLES = [
   { id: 'v_egg', kind: 'video', label: 'คลิปไข่ปริศนา', est: 0 },
   { id: 'v_gift', kind: 'video', label: 'คลิประเบิดกล่อง', est: 0 },
   { id: 'v_gacha', kind: 'video', label: 'คลิปกาชาปอง', est: 0 },
+  { id: 'v_claw', kind: 'video', label: 'คลิปตู้คีบตุ๊กตา', est: 0 },
+  { id: 'v_rocket', kind: 'video', label: 'คลิปจรวดพลุ', est: 0 },
   { id: 'v_show', kind: 'video', label: 'คลิปโชว์สินค้า', est: 0 },
   { id: 'v_sell', kind: 'video', label: 'คลิปป้ายยา', est: 0 },
   { id: 'v_tips', kind: 'video', label: 'คลิปทิปน่ารู้', est: 0 },

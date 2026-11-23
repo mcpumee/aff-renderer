@@ -37,6 +37,7 @@ export const VIDEO_STYLES = [
   { id: 'v_shop', label: 'โปรโมตร้าน / แนะนำร้าน', emoji: '🏪', color: '#8C4A1F', reveal: 'info', open: '', hook: '', variants: [] },
   { id: 'v_pr_announce', label: 'ประกาศ / แจ้งข่าวองค์กร', emoji: '📢', color: '#1F4E79', reveal: 'info', open: '', hook: '', variants: [], pr: true },
   { id: 'v_pr_recap', label: 'สรุปกิจกรรม / ข่าวองค์กร', emoji: '📰', color: '#24476B', reveal: 'info', open: '', hook: '', variants: [], pr: true },
+  { id: 'v_motion', label: 'คลิป AI ภาพเคลื่อนไหวจริง', emoji: '🎥', color: '#0F5257', reveal: 'motion', open: '', hook: '', variants: [] },
   { id: 'v_series', label: 'ซีรีส์แนวตั้ง (เล่าเรื่อง ไม่ขายของ)', emoji: '🔮', color: '#3B2A7A', reveal: 'drama', open: '', hook: '', variants: [] },
   { id: 'v_drama', label: 'ละครสั้นขายของ', emoji: '🎭', color: '#7A1E48', reveal: 'drama', open: '', hook: '', variants: [] },
   { id: 'v_self', label: 'ใส่ซับคลิปที่ถ่ายเอง', emoji: '🎬', color: '#1F4E79', reveal: 'self', open: '', hook: '', variants: [] },
@@ -488,6 +489,73 @@ Characters (keep exactly this appearance):
 ${cast}
 ${refKind === 'prev' ? 'The reference image is a frame from earlier in this same series: keep the same characters, faces, outfits and art style.' : refKind === 'first' ? 'The reference image is an earlier frame of this same episode: keep the same characters, faces, outfits and art style.' : ''}
 Dramatic composition, expressive faces. No text, no letters, no subtitles, no watermark. Leave the top 15% and bottom 25% of the frame visually simple for captions.`;
+}
+
+// ---------- คลิป AI ภาพเคลื่อนไหวจริง (Gemini Omni Flash · 9:16 · มีเสียงดนตรี/เอฟเฟกต์จากโมเดล) ----------
+export const MOTION_MODEL = () => process.env.MCRICH_VIDEO_MODEL || 'gemini-omni-1.1-flash';
+export const MOTION_PRICE = { std: 65 }; // ~10 วิ 720p ต้นทุนราว $1 + บท
+export const MOTION_PRESETS = [
+  { id: 'spin', label: 'โชว์สินค้ารอบตัว', desc: 'สินค้าหมุนช้าๆ แสงสตูดิโอหรู', en: 'slow turntable rotation of the product on an elegant pedestal, premium studio lighting, soft reflections' },
+  { id: 'push', label: 'กล้องพุ่งเข้าหา', desc: 'กล้องเคลื่อนเข้าใกล้ ดูพรีเมียม', en: 'smooth cinematic dolly-in toward the product, shallow depth of field, a light sweep across the surface' },
+  { id: 'splash', label: 'สาดน้ำ / ผลไม้', desc: 'น้ำกระเซ็น วัตถุดิบลอย สดชื่น', en: 'slow-motion splash of water and fresh ingredients bursting around the product, high-speed commercial shot' },
+  { id: 'food', label: 'อาหารน่ากิน', desc: 'ควันลอย ซอสราด เห็นเนื้อสัมผัส', en: 'appetizing food commercial: steam rising, sauce pouring, macro close-up of texture, warm light' },
+  { id: 'life', label: 'มีคนใช้จริง', desc: 'คนไทยใช้สินค้าในชีวิตประจำวัน', en: 'a friendly Thai adult naturally using the product in a bright everyday lifestyle setting, authentic candid moment' },
+  { id: 'unbox', label: 'แกะกล่องเปิดตัว', desc: 'มือแกะกล่อง เจอสินค้าด้านใน', en: 'hands opening a gift box and revealing the product inside, satisfying reveal moment' },
+  { id: 'magic', label: 'เอฟเฟกต์ว้าว', desc: 'ประกายแสง อนุภาค เปิดตัวสินค้า', en: 'magical product reveal with glowing particles, sparkles and light trails swirling around the product' },
+  { id: 'scene', label: 'ฉากหนังสั้นตามไอเดีย', desc: 'บรรยายฉากที่อยากได้เอง', en: 'cinematic short film shot following the idea' },
+];
+export async function writeMotion(p, hasPhoto) {
+  const pre = MOTION_PRESETS.find((x) => x.id === p.preset) || MOTION_PRESETS[0];
+  const prompt = `You are a commercial video director. Write ONE prompt for an AI video model that makes a single continuous vertical 9:16 shot (about 8-10 seconds).
+Style preset: ${pre.en}
+Product / subject: ${p.product || '-'}
+Key points (Thai): ${p.details || '-'}
+User idea (Thai): ${p.plot || '-'}
+${hasPhoto ? 'A reference photo of the real product is provided: the video must show this exact product (same shape, packaging, colors and logo), do not redesign it.' : ''}
+Rules for the video prompt: English, 60-120 words, describe subject, action, camera movement, lighting, setting (Thai context if people appear), and audio as music and sound effects only (no speech, no dialogue, no narration). No on-screen text, captions, logos added or watermarks. No celebrities, no children, no unsafe or exaggerated health claims.
+Also write Thai social captions for this clip.
+Return JSON only: {"prompt":"...","hookText":"Thai hook 2 short lines separated by \\n","facebook":"Thai caption 3-5 lines, use {LINK} if a link fits","instagram":"Thai caption","tiktok":"short Thai caption with hook","shopee":"Thai selling caption","hashtags":["5-8 Thai/English hashtags"]}`;
+  const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.9 },
+  }, 90000);
+  const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
+  if (!o.prompt) throw new Error('motion_no_prompt');
+  return { prompt: String(o.prompt).slice(0, 1500), captions: o };
+}
+function findVideo(o) {
+  if (!o || typeof o !== 'object') return null;
+  if (Array.isArray(o)) { for (const x of o) { const v = findVideo(x); if (v) return v; } return null; }
+  if (o.type === 'video' && (o.uri || o.data)) return o;
+  for (const v of Object.values(o)) if (v && typeof v === 'object') { const r = findVideo(v); if (r) return r; }
+  return null;
+}
+/** สร้างคลิปด้วย Omni Flash → ไฟล์ mp4 */
+export async function genMotion({ prompt, image, outFile }) {
+  const input = image ? [{ type: 'text', text: prompt }, { type: 'image', mime_type: 'image/jpeg', data: image.toString('base64') }] : prompt;
+  const body = { model: MOTION_MODEL(), input, response_format: { type: 'video', aspect_ratio: '9:16', resolution: '720p', delivery: 'uri' }, background: false, store: false, stream: false };
+  const r = await fetch(`${API()}/v1beta/interactions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() }, body: JSON.stringify(body), signal: AbortSignal.timeout(12 * 60e3) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(`omni ${r.status} ${j.error?.message || ''}`.trim()); e.status = r.status; throw e; }
+  const v = findVideo(j.steps || j);
+  if (!v) throw new Error(`omni_no_video ${JSON.stringify(j).slice(0, 200)}`);
+  if (v.data) { fs.writeFileSync(outFile, Buffer.from(v.data, 'base64')); return outFile; }
+  // URI: รอไฟล์พร้อม (ACTIVE) แล้วดาวน์โหลด
+  const id = String(v.uri).split('/files/').pop().split(/[?:]/)[0];
+  for (let i = 0; i < 60; i++) {
+    const f = await fetch(`${API()}/v1beta/files/${id}`, { headers: { 'x-goog-api-key': KEY() } }).then((x) => x.json()).catch(() => ({}));
+    if (f.state === 'ACTIVE' || !f.state) break;
+    if (f.state === 'FAILED') throw new Error('omni_file_failed');
+    await sleep(5000);
+  }
+  const d = await fetch(`${API()}/v1beta/files/${id}:download?alt=media`, { headers: { 'x-goog-api-key': KEY() }, redirect: 'follow', signal: AbortSignal.timeout(5 * 60e3) });
+  if (!d.ok) throw new Error(`omni_download ${d.status}`);
+  fs.writeFileSync(outFile, Buffer.from(await d.arrayBuffer()));
+  return outFile;
+}
+export async function videoThumb(file, out) {
+  await run('ffmpeg', ['-y', '-v', 'error', '-ss', '1', '-i', file, '-frames:v', '1', '-vf', 'scale=480:-2', out], { timeout: 60000 });
+  return out;
 }
 
 // ---------- คลิปข้อมูล: ความรู้ · ร้าน · ประชาสัมพันธ์ ----------

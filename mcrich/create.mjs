@@ -287,6 +287,15 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       const cost = V.VIDEO_PRICE[p.length] + (premium ? V.PREMIUM_VOICE_EXTRA : 0) + (p.genBg ? 5 : 0);
       return { video: true, style, tier: { id: 'info', free: false, stars: cost }, versions: 1, p, cost, ...cI };
     }
+    if (style.id === 'v_motion') {
+      Object.assign(p, { preset: V.MOTION_PRESETS.some((x) => x.id === b.preset) ? b.preset : 'spin', plot: clean(b.plot, 500), dialogue: false, premium: false });
+      if (!p.product && !p.plot) return { error: 'ใส่ชื่อสินค้าหรือไอเดียฉากก่อน' };
+      if (p.preset === 'scene' && !p.plot) return { error: 'บรรยายฉากที่อยากได้ก่อน' };
+      p.length = 10;
+      const cM = checkContent([p.product, p.details, p.plot].join(' '));
+      const cost = V.MOTION_PRICE.std;
+      return { video: true, style, tier: { id: 'motion', free: false, stars: cost }, versions: 1, p, cost, ...cM };
+    }
     if (style.id === 'v_series') {
       Object.assign(p, {
         genre: V.SERIES_GENRES.some((g) => g.id === b.genre) ? b.genre : 'magic', art: V.ART.some((a) => a.id === b.art) ? b.art : 'cartoon3d',
@@ -349,6 +358,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         music: V.MUSIC,
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
         genres: V.GENRES, art: V.ART.map(({ id, label }) => ({ id, label })), dramaPrices: V.DRAMA_PRICE, seriesGenres: V.SERIES_GENRES, seriesPrices: V.SERIES_PRICE, seriesLen: V.SERIES_LEN,
+        motionPresets: V.MOTION_PRESETS.map(({ id, label, desc }) => ({ id, label, desc })), motionPrice: V.MOTION_PRICE.std,
         captionStyles: V.CAPTION_STYLES, selfMaxSec: V.SELF_MAX_SEC, selfPrices: { subs: [V.selfPrice(60, 'subs'), V.selfPrice(120, 'subs'), V.selfPrice(180, 'subs')], voiceExtra: 5 },
         voices: V.VOICES.map(({ id, label, gender }) => ({ id, label, gender })),
         premiumVoices: V.premiumReady() ? V.EL_VOICES.map(({ id, label, gender }) => ({ id, label, gender })) : [],
@@ -422,7 +432,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (n.style.id === 'v_drama' && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ละครต้องมีรูปสินค้า 1 รูป' }); }
     if (['v_shop', 'v_pr_recap'].includes(n.style.id) && n.p.nProducts < 1) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3–8 รูป)' }); }
     if (n.style.id !== 'v_show' && n.style.id !== 'v_top' && !V.INFO_STYLES.includes(n.style.id) && (req.files?.refs || []).length > 3) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'รูปสินค้าได้สูงสุด 3 รูป' }); }
-    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && n.style.id !== 'v_series' && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
+    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion'].includes(n.style.id) && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -464,7 +474,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       fs.copyFileSync(f, path.join(REF_DIR, name)); refs.push(name);
     }
     n.p.nProducts = refs.length;
-    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id) && n.style.id !== 'v_series') return { error: 'ต้องมีรูปสินค้า' };
+    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion'].includes(n.style.id)) return { error: 'ต้องมีรูปสินค้า' };
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -843,6 +853,41 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     log('drama done', w.id, d.scenes.length, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
 
+  // ---------- คลิป AI ภาพเคลื่อนไหวจริง (Gemini Omni Flash) ----------
+  async function processMotion(w) {
+    const p = w.params;
+    const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    const fail = (msg) => { PROG.delete(w.id); return refund(w, msg); };
+    const t0 = Date.now();
+    const photo = w.refs.map((r) => path.join(REF_DIR, r)).find((f) => fs.existsSync(f));
+    let img = null;
+    if (photo) img = await sharp(photo).rotate().resize({ width: 1080, height: 1920, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+    let m;
+    try { stage('AI กำลังวางช็อตกล้อง', 5); m = await V.writeMotion(p, !!img); }
+    catch (e) { log('motion script fail', w.id, e.message); return fail('AI วางช็อตไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว'); }
+    const base = `${w.user_id}-${w.id}-m-${rand(6).toLowerCase()}`;
+    const mp4 = path.join(WORK_DIR, `${base}.mp4`);
+    // ความคืบหน้าโดยประมาณระหว่างรอโมเดล (ปกติ 1–4 นาที)
+    let pct = 12; const tk = setInterval(() => { pct = Math.min(90, pct + 2); stage('AI กำลังสร้างวิดีโอ', pct); }, 5000);
+    try { stage('AI กำลังสร้างวิดีโอ', 12); await V.genMotion({ prompt: m.prompt, image: img, outFile: mp4 }); }
+    catch (e) {
+      log('motion gen fail', w.id, e.message.slice(0, 300));
+      fs.rm(mp4, { force: true }, () => {});
+      return fail(/safety|policy|blocked|400/i.test(e.message) ? 'AI สร้างวิดีโอนี้ไม่ได้ (อาจขัดนโยบายเนื้อหา) ลองเปลี่ยนไอเดีย · คืนดาวแล้ว' : 'สร้างวิดีโอไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว');
+    } finally { clearInterval(tk); }
+    stage('เกือบเสร็จ', 95);
+    let thumb = '';
+    try { await V.videoThumb(mp4, path.join(WORK_DIR, `${base}.jpg`)); await sharp(path.join(WORK_DIR, `${base}.jpg`)).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); fs.rm(path.join(WORK_DIR, `${base}.jpg`), () => {}); thumb = `${base}.webp`; }
+    catch (e) { log('motion thumb', w.id, e.message); }
+    const { captions, tags } = await finalizeCaptions(w, p, m.captions);
+    const vf = [{ name: `${base}.mp4`, thumb, w: 720, h: 1280, type: 'video' }];
+    await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ motionPrompt: m.prompt, hookText: m.captions.hookText || '' })]);
+    PROG.delete(w.id);
+    if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
+    log('motion done', w.id, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+
   // ---------- ซีรีส์แนวตั้ง (ไม่มีสินค้า · ต่อเป็นตอนได้ ตัวละคร/เสียง/ลายเส้นเดิม) ----------
   const SERIES_DIR = path.join(DATA_DIR, 'series');
   fs.mkdirSync(SERIES_DIR, { recursive: true });
@@ -997,6 +1042,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (w.style === 'v_self') return processSelf(w);
     if (w.style === 'v_drama') return processDrama(w);
     if (w.style === 'v_series') return processSeries(w);
+    if (w.style === 'v_motion') return processMotion(w);
     if (V.INFO_STYLES.includes(w.style)) return processInfo(w);
     if (w.kind === 'video') return processVideo(w);
     const style = STYLES.find((s) => s.id === w.style);

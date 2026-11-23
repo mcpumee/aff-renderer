@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STYLES, GOALS } from './create.mjs';
-import { VIDEO_STYLES, VIDEO_PRICE, DRAMA_PRICE } from './video.mjs';
+import { VIDEO_STYLES, VIDEO_PRICE, DRAMA_PRICE, MOTION_PRICE } from './video.mjs';
 
 const API = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
 const KEY = () => process.env.GEMINI_API_KEY || '';
@@ -43,7 +43,7 @@ function systemPrompt(m, works) {
 กฎ: ห้ามแนะนำคำโฆษณาเกินจริงหรือผิดกฎ อย. · ห้ามสัญญายอดขาย · ไม่รู้ให้บอกตรงๆ · เรื่องเงิน/คืนเงิน/ปัญหาระบบให้แนะนำติดต่อแอดมิน · ไม่ตอบเรื่องที่ไม่เกี่ยวกับธุรกิจ/คอนเทนต์ยาวเกินไป ให้ตอบสั้นแล้วชวนกลับมาเรื่องงาน
 ข้อมูลผู้ใช้: ชื่อ ${m.name || '-'} · ดาวคงเหลือ ${m.stars} · ภาพฟรีเหลือ ${m.freeImages.today + m.freeImages.welcome} · ร้าน/แบรนด์ ${b.shopName || '-'} · ความสนใจ ${JSON.stringify(m.interests || {})}
 ผลงานล่าสุด: ${works.map((w) => `${w.title} (${w.kind === 'video' ? 'คลิป' : 'ภาพ'}, ${w.status})`).join(' / ') || '-'}
-ราคาโดยประมาณ: ภาพ 5–16 ดาว (ภาพฟรีวันละ 1) · คลิปเปิดลุ้น/ขายของ 12–20 · Top N 15–20 · ละคร 25–35 · ซีรีส์แนวตั้ง (เล่าเรื่อง ไม่ขายของ ต่อเป็นตอนได้) 25–45 ต่อตอน · ใส่ซับคลิปถ่ายเอง 6–12 · ความรู้/ร้าน/ประชาสัมพันธ์ 12–20
+ราคาโดยประมาณ: ภาพ 5–16 ดาว (ภาพฟรีวันละ 1) · คลิปเปิดลุ้น/ขายของ 12–20 · Top N 15–20 · ละคร 25–35 · ซีรีส์แนวตั้ง (เล่าเรื่อง ไม่ขายของ ต่อเป็นตอนได้) 25–45 ต่อตอน · คลิป AI ภาพเคลื่อนไหวจริง ~10 วิ 65 · ใส่ซับคลิปถ่ายเอง 6–12 · ความรู้/ร้าน/ประชาสัมพันธ์ 12–20
 แนวงานในแอป (id = ชื่อ):
 ${styleList()}
 เป้าหมาย (goal): ${GOALS.map((g) => `${g.id}=${g.label}`).join(', ')}
@@ -157,6 +157,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
     if (d.kind === 'image') return 'เริ่ม 5 ดาว (มีภาพฟรีวันละ 1)';
     if (d.style === 'v_drama') return `${DRAMA_PRICE[4]}–${DRAMA_PRICE[6]} ดาว`;
     if (d.style === 'v_series') return '25–45 ดาว ต่อตอน';
+    if (d.style === 'v_motion') return `${MOTION_PRICE.std} ดาว`;
     if (d.style === 'v_self') return '6–12 ดาว';
     return `${VIDEO_PRICE[15]}–${VIDEO_PRICE[45]} ดาว`;
   };

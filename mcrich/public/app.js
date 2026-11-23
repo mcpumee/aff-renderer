@@ -1867,5 +1867,12 @@ async function route() {
   }
 }
 window.addEventListener('hashchange', route);
+// ลิงก์ที่ชี้ไปหน้าเดิม (เช่น ลูกศรย้อนกลับจากหน้า QR ซึ่งยังอยู่ใต้ #topup) → hash ไม่เปลี่ยน จึงต้องสั่งวาดหน้าใหม่เอง
+document.addEventListener('click', (e) => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  const a = e.target.closest?.('a[href^="#"]');
+  if (!a || a.target) return;
+  if (a.getAttribute('href') === location.hash || (a.getAttribute('href') === '#home' && !location.hash)) { e.preventDefault(); route(); }
+});
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 fetch('api/config').then((r) => r.json()).then((c) => { CFG = c; }).catch(() => {}).finally(route);

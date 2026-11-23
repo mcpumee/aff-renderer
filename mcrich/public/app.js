@@ -673,7 +673,7 @@ const TEXT_PRESETS = {
 };
 let SAMPLES = null; // ภาพตัวอย่างของแต่ละแนวงาน
 const STEPS = ['เป้าหมาย', 'แนวงาน', 'รายละเอียด', 'แคปชั่น', 'คุณภาพ', 'ทบทวน'];
-const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
+const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', seriesFrom: 0, seriesInfo: null, info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
 const saveDraft = () => { try { sessionStorage.setItem('mr_draft', JSON.stringify(D)); } catch {} };
 function loadDraft() { try { const d = JSON.parse(sessionStorage.getItem('mr_draft') || 'null'); if (d && typeof d === 'object') return { ...newDraft(), ...d }; } catch {} return null; }
 
@@ -764,7 +764,12 @@ function drawStep() {
         return D.goal === 'pr' ? g2 + g1 : g1 + g2;
       })()}`, { disabled: !D.style || !list.some((x) => x.id === D.style) });
     app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
-    app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => { D.style = b.dataset.style; if (!vid) D.ratio = CAT.styles.find((x) => x.id === D.style).ratio; drawStep(); });
+    app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => {
+      D.style = b.dataset.style; if (!vid) D.ratio = CAT.styles.find((x) => x.id === D.style).ratio;
+      if (D.style === 'v_series') { D.goal = 'content'; if (!CAT.video.seriesGenres.some((g) => g.id === D.genre)) D.genre = 'magic'; if (!CAT.video.seriesPrices[D.scenes]) D.scenes = 4; }
+      else if (D.style === 'v_drama' && !CAT.video.genres.some((g) => g.id === D.genre)) { D.genre = 'inlaw'; if (D.scenes === 8) D.scenes = 6; }
+      drawStep();
+    });
     $('#next').onclick = () => { D.step = 2; drawStep(); };
   } else if (s === 2 && INFO_IDS.includes(D.style)) {
     const id = D.style;
@@ -799,6 +804,43 @@ function drawStep() {
       readInputs(fields); readInfo(); D.count = Number(D.count) || 3;
       if (!D.product.trim()) return toast(`ใส่${nameLabel}ก่อน`);
       if ((id === 'v_shop' || id === 'v_pr_recap') && !REFS.length && !D.fromWork) return toast('ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3 รูปขึ้นไป)');
+      D.step = 3; drawStep();
+    };
+  } else if (s === 2 && D.style === 'v_series') {
+    const V2 = CAT.video;
+    const cont = D.seriesInfo;
+    stepShell(`<h1 style="font-size:22px">${cont ? `ตอนต่อไป · ${esc(cont.title)} EP.${(cont.ep || 1) + 1}` : 'ซีรีส์แนวตั้ง'}</h1>
+      ${cont ? `<section class="card"><b>เรื่องย่อที่ผ่านมา</b><span class="muted">${esc(cont.summary || '')}</span>${cont.cliff ? `<span class="muted">ตอนที่แล้วค้างไว้ที่: ${esc(cont.cliff)}</span>` : ''}
+          <span class="muted">ตัวละครเดิม: ${(cont.chars || []).map((c) => esc(c.name)).join(', ')} · หน้าตา เสียง และลายเส้นเดิมทุกตอน</span>
+          <button type="button" class="btn ghost sm" id="newSeries">เริ่มเรื่องใหม่แทน</button></section>
+        <label class="f" for="plot">อยากให้ตอนนี้เกิดอะไร (ไม่บังคับ)<textarea id="plot" rows="3" maxlength="600" placeholder="เช่น พระเอกค้นพบว่าคาถาใช้ได้แค่ตอนเที่ยงคืน">${esc(D.plot)}</textarea></label>`
+      : `<div id="mySeries"></div>
+        <h2>แนวเรื่อง</h2>
+        <div class="grid2">${V2.seriesGenres.map((g) => `<button type="button" class="card opt" data-sgenre="${g.id}" aria-pressed="${D.genre === g.id}"><b>${esc(g.label)}</b><span class="muted">${esc(g.desc)}</span></button>`).join('')}</div>
+        <section class="card"><label class="f" for="product">ชื่อเรื่อง / แนวคิด${D.genre === 'free' ? '' : ' (ไม่บังคับ)'}<input id="product" type="text" maxlength="120" placeholder="เช่น เด็กส่งของที่ได้พลังเวทมนตร์" value="${esc(D.product)}"></label>
+          <label class="f" for="plot">เรื่องย่อ${D.genre === 'free' ? '' : ' (ไม่บังคับ ให้ AI คิดเองได้)'}<textarea id="plot" rows="3" maxlength="600" placeholder="เช่น พนักงานออฟฟิศหลับไปตื่นมาอยู่ในวังสมัยอยุธยา ต้องเอาตัวรอดด้วยความรู้ยุคใหม่">${esc(D.plot)}</textarea></label></section>
+        <section style="display:flex;flex-direction:column;gap:10px"><h2>สไตล์ภาพ</h2>${chipRow(V2.art, D.art, 'art', false)}</section>`}
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>ความยาวตอนนี้</h2>${chipRow(Object.keys(V2.seriesPrices).map((n) => ({ id: n, label: `${n} ฉาก ~${V2.seriesLen[n]} วิ · ${V2.seriesPrices[n]} ดาว` })), String(D.scenes), 'scenes', false)}</section>
+      <span class="muted">AI เขียนบท วาดทุกฉาก พากย์หลายเสียงตามตัวละคร จบแบบค้างคาให้ทำตอนต่อไปได้ · ไม่ต้องใช้รูปสินค้า</span>`);
+    const fields = ['product', 'plot'];
+    bindChips([], (k) => { if (k === 'scenes') D.scenes = Number(D.scenes); });
+    app.querySelectorAll('[data-sgenre]').forEach((b) => b.onclick = () => { readInputs(fields); D.genre = b.dataset.sgenre; drawStep(); });
+    const ns = $('#newSeries'); if (ns) ns.onclick = () => { D.seriesFrom = 0; D.seriesInfo = null; D.plot = ''; drawStep(); };
+    if (!cont) {
+      api('api/works').then((r) => {
+        const el = $('#mySeries'); if (!el) return;
+        const latest = {}; // ตอนล่าสุดของแต่ละเรื่อง
+        for (const w of r.items.filter((x) => x.style === 'v_series' && x.status === 'done' && x.params?.series)) { const k = w.params.series.root || w.id; if (!latest[k] || w.params.series.ep > latest[k].params.series.ep) latest[k] = w; }
+        const list = Object.values(latest);
+        if (!list.length) return;
+        el.innerHTML = `<section class="card"><b>ทำตอนต่อจากเรื่องเดิม</b>${list.map((w) => `<div class="row between" style="gap:8px"><span style="min-width:0"><b style="font-size:14px">${esc(w.params.series.title)}</b><br><span class="muted" style="font-size:12px">จบที่ EP.${w.params.series.ep}</span></span>
+          <button type="button" class="btn sm" data-cont="${w.id}">ทำ EP.${w.params.series.ep + 1}</button></div>`).join('')}</section>`;
+        el.querySelectorAll('[data-cont]').forEach((b) => b.onclick = () => { const w = list.find((x) => String(x.id) === b.dataset.cont); Object.assign(D, { seriesFrom: w.id, seriesInfo: w.params.series, genre: w.params.series.genre, art: w.params.series.art, product: w.params.series.title, plot: '' }); drawStep(); });
+      }).catch(() => {});
+    }
+    $('#next').onclick = () => {
+      readInputs(fields); D.scenes = Number(D.scenes) || 4;
+      if (!D.seriesFrom && D.genre === 'free' && !D.plot.trim()) return toast('พิมพ์เรื่องย่อก่อน');
       D.step = 3; drawStep();
     };
   } else if (s === 2 && D.style === 'v_drama') {
@@ -1003,7 +1045,7 @@ function drawStep() {
   } else if (s === 3) {
     const saved = ME.hashtags || [];
     const vidAll = D.kind === 'video';
-    const vid = vidAll && !(D.style === 'v_self' && D.selfMode !== 'voice') && D.style !== 'v_drama'; // มีบทพากย์ (ละคร AI เลือกเสียงเอง)
+    const vid = vidAll && !(D.style === 'v_self' && D.selfMode !== 'voice') && D.style !== 'v_drama' && D.style !== 'v_series'; // มีบทพากย์ (ละคร AI เลือกเสียงเอง)
     const fm = vid && !INFO_IDS.includes(D.style) ? CAT.video.formulas.filter((f) => !(D.style === 'v_top' && (f.dialogue || f.id === 'pas' || f.id === 'story'))) : [];
     if (vid && fm.length && (!D.formula || !fm.some((f) => f.id === D.formula))) D.formula = (fm.find((f) => f.rec.includes(D.goal)) || fm[0]).id;
     const dlg = vid && fm.find((f) => f.id === D.formula)?.dialogue;
@@ -1054,6 +1096,17 @@ function drawStep() {
       <div class="list kv"><div><span class="muted">จำนวนทิป</span><span>${D.count} ทิป (~${D.length} วิ)</span></div></div>
       <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">รวม</span><b class="num" style="font-size:28px">${ICON.star}${total} ดาว</b></div>
         <span class="muted">การ์ดความรู้ขยับได้ทีละข้อ + เสียงบรรยาย + ซับ</span></section>
+      <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
+    $('#next').onclick = () => { D.step = 5; drawStep(); };
+  } else if (s === 4 && D.style === 'v_series') {
+    const total = CAT.video.seriesPrices[D.scenes] || CAT.video.seriesPrices[4];
+    stepShell(`<h1 style="font-size:22px">ราคา</h1>
+      <div class="list kv"><div><span class="muted">เรื่อง</span><span>${esc(D.seriesInfo ? `${D.seriesInfo.title} EP.${(D.seriesInfo.ep || 1) + 1}` : (D.product || 'ให้ AI ตั้งชื่อ'))}</span></div>
+        <div><span class="muted">แนว</span><span>${esc(CAT.video.seriesGenres.find((g) => g.id === D.genre)?.label || '')}</span></div>
+        <div><span class="muted">สไตล์ภาพ</span><span>${esc(CAT.video.art.find((a) => a.id === D.art)?.label || '')}</span></div>
+        <div><span class="muted">ความยาว</span><span>${D.scenes} ฉาก (~${CAT.video.seriesLen[D.scenes]} วิ)</span></div></div>
+      <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">รวม</span><b class="num" style="font-size:28px">${ICON.star}${total} ดาว</b></div>
+        <span class="muted">AI เขียนบท วาดทุกฉาก พากย์หลายเสียง ใส่ซับชื่อตัวละคร ใช้เวลา 4–10 นาที</span></section>
       <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
     $('#next').onclick = () => { D.step = 5; drawStep(); };
   } else if (s === 4 && D.style === 'v_drama') {
@@ -1129,7 +1182,7 @@ function uploadWithProgress(url, fd, onp) {
 }
 function styleNote(x) {
   const V2 = CAT.video;
-  return { v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`,
+  return { v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`,
     v_show: `เริ่ม ${V2.prices[15]} ดาว · 2–8 รูป`, v_tips: `เริ่ม ${V2.prices[30]} ดาว · 3 หรือ 5 ทิป`, v_shop: `เริ่ม ${V2.prices[15]} ดาว · รูปร้าน+ข้อมูล`,
     v_pr_announce: `เริ่ม ${V2.prices[15]} ดาว · เสียงทางการ`, v_pr_recap: `เริ่ม ${V2.prices[15]} ดาว · จากรูปกิจกรรม` }[x.id] || `เริ่ม ${V2.prices[15]} ดาว · 9:16`;
 }
@@ -1161,15 +1214,16 @@ async function reviewStep() {
       ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
       ${INFO_IDS.includes(D.style) ? row('รูป', REFS.length ? `${REFS.length} รูป` : (D.style === 'v_pr_announce' ? 'AI วาดพื้นหลังให้ (+5 ดาว)' : '')) + (D.style === 'v_tips' ? row('จำนวนทิป', `${D.count} ทิป`) : '') + Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน/ร้าน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ', hours: 'เวลาเปิด' }[k] || k, v)).join('') + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + (D.style === 'v_tips' ? '' : row('ความยาว', `${D.length} วินาที`)) : ''}
       ${!vid && st.pr ? Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ' }[k] || k, v)).join('') : ''}
+      ${D.style === 'v_series' ? row('เรื่อง', D.seriesInfo ? `${D.seriesInfo.title} EP.${(D.seriesInfo.ep || 1) + 1}` : D.product) + row('แนวเรื่อง', CAT.video.seriesGenres.find((g) => g.id === D.genre)?.label) + row('เรื่องย่อ', D.plot) + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('ความยาว', `${D.scenes} ฉาก`) : ''}
       ${D.style === 'v_drama' ? row('แนวเรื่อง', CAT.video.genres.find((g) => g.id === D.genre)?.label) + row('พล็อต', D.genre === 'free' ? D.plot : '') + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('จำนวนฉาก', `${D.scenes} ฉาก`) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) : ''}
       ${D.style === 'v_top' ? D.items.map((it, i) => row(`#${i + 1}`, `${it.name}${it.price ? ` · ${it.price}` : ''}${it.link ? ' · มีลิงก์' : ''}`)).join('') + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_top').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `~${D.length} วินาที`) : ''}
       ${D.style === 'v_show' ? row('รูปสินค้า', `${REFS.length} รูป`) + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_show').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : ''}
-      ${D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
+      ${D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || D.style === 'v_series' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
         : vid ? row('รูปสินค้า', REFS.length ? `${REFS.length} รูป` : '') + row('แคปรีวิว', REVS.length ? `${REVS.length} รูป` : '') + row('ลูกเล่นตอนเปิด', st.variants?.length ? (st.variants.find((x) => x.id === D.variant)?.label || 'สุ่มให้') : '') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname + (CAT.video.formulas.find((f) => f.id === D.formula)?.dialogue ? ' + คู่สนทนา' : '')) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : row('คุณภาพ', `${tier.label} ${tier.size} × ${qt.versions} แบบ`)}
     </div>
     <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">${qt.free ? 'ใช้ภาพฟรี' : 'ดาวที่ใช้'}</span>
       <b class="num" style="font-size:28px">${qt.free ? 'ฟรี' : `${ICON.star.replace('17', '24').replace('17', '24')} ${qt.cost}`}</b></div>
-      <span class="muted">${qt.free ? `ภาพฟรีเหลือ ${qt.freeLeft.today + qt.freeLeft.welcome} ภาพ · มีลายน้ำเล็กๆ` : `ยอดคงเหลือหลังสร้าง ${num(qt.stars - qt.cost)} ดาว`} · สร้างไม่สำเร็จคืนให้อัตโนมัติ</span></section>
+      <span class="muted">${qt.free ? `ภาพฟรีเหลือ ${qt.freeLeft.today + qt.freeLeft.welcome} ภาพ · ไม่มีลายน้ำ` : `ยอดคงเหลือหลังสร้าง ${num(qt.stars - qt.cost)} ดาว`} · สร้างไม่สำเร็จคืนให้อัตโนมัติ</span></section>
     ${D.style === 'v_self' && VFILE ? '<p class="muted">อัปโหลดคลิปขณะใช้เน็ตมือถืออาจใช้เวลาสักครู่ ห้ามปิดหน้านี้จนขึ้นว่าส่งงานแล้ว</p>' : ''}
     <p class="muted">ใช้เวลาประมาณ ${vid ? '2–5 นาที' : '20–60 วินาที'} · ไฟล์เก็บบนเซิร์ฟเวอร์ ${CAT.keepDays} วัน ดาวน์โหลดเก็บไว้ด้วย</p>`, { next: label, nextId: 'go', disabled: !!qt.blocked });
   $('#go').onclick = async () => {
@@ -1239,7 +1293,7 @@ async function workView(qs) {
       ${w.purged ? `<section class="card"><b>ไฟล์ถูกลบจากเซิร์ฟเวอร์แล้ว</b><span class="muted">ครบ ${CAT?.keepDays || 7} วัน · แคปชั่นยังคัดลอกได้ · กด "สร้างแบบนี้อีก" เพื่อทำใหม่</span></section>`
         : `<div class="gallery">${w.files.map((f, i) => `<figure>${f.type === 'video' ? `<video src="${f.url}" ${f.thumb ? `poster="${f.thumb}"` : ''} controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;aspect-ratio:9/16"></video>` : `<img src="${f.url}" alt="ภาพที่ ${i + 1}" width="${f.w}" height="${f.h}">`}
           <figcaption class="grid2"><button type="button" class="btn sm" data-save="${i}">บันทึกลงเครื่อง</button><a class="btn dark sm" href="${f.url}?dl=1" download>ดาวน์โหลด</a></figcaption></figure>`).join('')}</div>
-        <p class="muted">ไฟล์อยู่บนเซิร์ฟเวอร์อีก ${daysLeft(w.expiresAt)} วัน · ${w.free ? 'ภาพฟรี (มีลายน้ำ)' : `ใช้ ${w.cost} ดาว`}</p>
+        <p class="muted">ไฟล์อยู่บนเซิร์ฟเวอร์อีก ${daysLeft(w.expiresAt)} วัน · ${w.free ? 'ภาพฟรี' : `ใช้ ${w.cost} ดาว`}</p>
         ${w.params?.script?.length ? `<details class="card"><summary style="font-weight:600;cursor:pointer">บทพากย์</summary><p class="muted" style="margin:0">${esc(w.params.script.join(' '))}</p></details>` : ''}`}
       ${caps.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>แคปชั่น</h2>
         <div class="chips" role="tablist">${caps.map(([k, l], i) => `<button type="button" class="chip" role="tab" data-cap="${k}" aria-pressed="${i === 0}">${l}</button>`).join('')}</div>
@@ -1252,7 +1306,8 @@ async function workView(qs) {
       ${w.purged ? '' : '<section class="card" id="sched"><b>ตั้งเวลาโพสต์</b><span class="muted">กำลังโหลด…</span></section>'}
       <div class="list">${historyRows(w)}</div>
       ${w.style === 'v_self' && w.params?.selfMode === 'subs' && !w.purged && (w.params?.rerenders || 0) < 1 ? '<button type="button" class="btn dark" id="fixsubs">แก้ซับแล้วตัดใหม่ (ฟรี 1 ครั้ง)</button>' : ''}
-      <button type="button" class="btn" id="again">สร้างแบบนี้อีก</button>
+      ${w.style === 'v_series' && w.params?.series ? `<button type="button" class="btn cta" id="nextEp">${ICON.plus}ทำตอนต่อไป (EP.${w.params.series.ep + 1})</button>` : ''}
+      <button type="button" class="btn${w.style === 'v_series' ? ' dark' : ''}" id="again">สร้างแบบนี้อีก</button>
       <button type="button" class="btn ghost" id="del">ลบผลงานนี้</button>`;
     const fx = $('#fixsubs'); if (fx) fx.onclick = () => subsEditor(w, qs);
     schedCard(w, new URLSearchParams(qs || '').get('post')).catch(() => {});
@@ -1286,6 +1341,12 @@ async function workView(qs) {
     VFILE = null; ITEMF = [];
     D = { ...newDraft(), kind: w.kind, info: p.info || {}, count: p.count || 3, items: p.items || newDraft().items, genre: p.genre || 'inlaw', art: p.art || 'cartoon3d', scenes: p.scenes || 4, plot: p.plot || '', selfMode: p.selfMode || 'subs', videoSec: p.videoSec || 0, captionStyle: p.captionStyle || 'pop', hookText: p.hookText || '', keepAudio: p.keepAudio !== false, length: p.length || 30, voice: p.voice || '', premiumVoice: !!p.premium, formula: p.formula || '', variant: p.variant || 'random', music: p.music || 'auto', goal: p.goal, link: p.link, style: w.style, product: p.product, price: p.price, headline: p.headline, details: p.details, concepts: p.concepts || [], ratio: p.ratio, useLogo: p.useLogo, showShop: p.showShop, tone: p.tone, hashtags: p.hashtags || [], tier: w.tier, versions: w.versions, fromWork: w.id, step: 2 };
     REFS = []; REVS = []; saveDraft(); go('create');
+  };
+  const ne = $('#nextEp');
+  if (ne) ne.onclick = async () => {
+    if (!CAT) CAT = await api('api/create/catalog').catch(() => null);
+    const sr = w.params.series;
+    openDraft({ kind: 'video', style: 'v_series', goal: 'content', product: sr.title, genre: sr.genre, art: sr.art, seriesFrom: w.id, seriesInfo: sr });
   };
   $('#del').onclick = async () => {
     if (!confirm('ลบผลงานนี้? ไฟล์บนเซิร์ฟเวอร์จะหายทันที (ดาวไม่คืน)')) return;
@@ -1534,6 +1595,7 @@ async function notifCard() {
 let CHAT = null;
 function openDraft(d) {
   D = { ...newDraft(), kind: d.kind, style: d.style, goal: d.goal || 'sell', product: d.product || '', headline: d.headline || '', price: d.price || '', details: d.details || '', hookText: d.hookText || '', step: d.style ? 2 : 1 };
+  if (d.style === 'v_series') Object.assign(D, { goal: 'content', genre: d.genre || 'magic', art: d.art || 'cartoon3d', seriesFrom: d.seriesFrom || 0, seriesInfo: d.seriesInfo || null, plot: d.plot || '' });
   if (d.kind === 'image') { const st = CAT?.styles?.find((x) => x.id === d.style); if (st) D.ratio = st.ratio; }
   REFS = []; REVS = []; VFILE = null; ITEMF = []; saveDraft(); go('create');
 }

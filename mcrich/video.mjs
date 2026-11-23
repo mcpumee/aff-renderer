@@ -37,6 +37,7 @@ export const VIDEO_STYLES = [
   { id: 'v_shop', label: 'โปรโมตร้าน / แนะนำร้าน', emoji: '🏪', color: '#8C4A1F', reveal: 'info', open: '', hook: '', variants: [] },
   { id: 'v_pr_announce', label: 'ประกาศ / แจ้งข่าวองค์กร', emoji: '📢', color: '#1F4E79', reveal: 'info', open: '', hook: '', variants: [], pr: true },
   { id: 'v_pr_recap', label: 'สรุปกิจกรรม / ข่าวองค์กร', emoji: '📰', color: '#24476B', reveal: 'info', open: '', hook: '', variants: [], pr: true },
+  { id: 'v_series', label: 'ซีรีส์แนวตั้ง (เล่าเรื่อง ไม่ขายของ)', emoji: '🔮', color: '#3B2A7A', reveal: 'drama', open: '', hook: '', variants: [] },
   { id: 'v_drama', label: 'ละครสั้นขายของ', emoji: '🎭', color: '#7A1E48', reveal: 'drama', open: '', hook: '', variants: [] },
   { id: 'v_self', label: 'ใส่ซับคลิปที่ถ่ายเอง', emoji: '🎬', color: '#1F4E79', reveal: 'self', open: '', hook: '', variants: [] },
   { id: 'v_sell', label: 'ขายของ / รีวิวสินค้า', emoji: '🛍️', color: '#17694A', reveal: 'none', open: '', hook: 'ของมันต้องมี\nบอกต่อ!', variants: [] },
@@ -415,6 +416,79 @@ Thai setting. No text, no letters, no subtitles, no watermark. Leave the top 15%
 }
 /** พากย์บทเดียว (Gemini) → {audio_base64 wav, alignment, format} */
 export async function voiceOne(text, voice) { return voiceGemini([text], voice, ''); }
+
+// ---------- ซีรีส์แนวตั้ง (เล่าเรื่องล้วน ไม่ขายของ · ต่อเป็นตอนๆ ได้) ----------
+export const SERIES_GENRES = [
+  { id: 'magic', label: 'เวทมนตร์', desc: 'พลังวิเศษ คาถา โลกเวทมนตร์ซ่อนอยู่ในเมือง' },
+  { id: 'wizard', label: 'พ่อมด แม่มด', desc: 'โรงเรียนเวทมนตร์ ศึกพ่อมด คำสาป' },
+  { id: 'past', label: 'ย้อนอดีต', desc: 'ทะลุมิติกลับไปยุคโบราณ อยุธยา ชาววัง' },
+  { id: 'future', label: 'โลกอนาคต', desc: 'ไซไฟ หุ่นยนต์ เมืองล้ำ ยานอวกาศ' },
+  { id: 'palace', label: 'วังหลัง ราชวงศ์', desc: 'ชิงอำนาจในวัง เจ้าหญิง องค์ชาย' },
+  { id: 'romance', label: 'รักโรแมนติก', desc: 'รักแรกพบ รักต่างฐานะ หวานซึ้ง' },
+  { id: 'mystery', label: 'สืบสวนลึกลับ', desc: 'ปริศนา คดีแปลก หักมุมตอนจบ' },
+  { id: 'horror', label: 'สยองขวัญ', desc: 'ผี ตำนาน เรื่องหลอนสไตล์ไทย' },
+  { id: 'creature', label: 'มังกร สัตว์วิเศษ', desc: 'ผจญภัยกับสัตว์ในตำนาน นาค มังกร' },
+  { id: 'action', label: 'แอ็กชันผจญภัย', desc: 'ภารกิจ ต่อสู้ หนีตาย ฮีโร่' },
+  { id: 'comedy', label: 'คอมเมดี้', desc: 'ฮาทั้งเรื่อง ตัวละครป่วนๆ' },
+  { id: 'free', label: 'เรื่องของฉันเอง', desc: 'พิมพ์เรื่องย่อที่อยากได้' },
+];
+export const SERIES_PRICE = { 4: 25, 6: 35, 8: 45 };
+export const SERIES_LEN = { 4: 30, 6: 45, 8: 60 };
+export async function writeSeries(p, prev) {
+  const genre = SERIES_GENRES.find((g) => g.id === p.genre) || SERIES_GENRES[0];
+  const n = SERIES_LEN[p.scenes] ? p.scenes : 4;
+  const ep = prev ? (prev.ep || 1) + 1 : 1;
+  const prevCtx = prev ? `
+นี่คือตอนที่ ${ep} ของเรื่อง "${prev.title}" (ต่อจากตอนก่อน)
+เรื่องย่อที่ผ่านมา: ${prev.summary}
+ตอนที่แล้วจบที่: ${prev.cliff || '-'}
+ตัวละครเดิม (ใช้ชื่อและ look เดิมทุกตัว เพิ่มตัวใหม่ได้ไม่เกิน 1 ตัว):
+${prev.chars.map((c) => `- ${c.name} (${c.gender}, ${c.age}): ${c.look}`).join('\n')}` : '';
+  const prompt = `คุณคือนักเขียนบทซีรีส์แนวตั้งไทย (สไตล์ซีรีส์สั้นในแอปดูซีรีส์และ TikTok) เขียนตอนที่ ${ep} แนว "${genre.label}" (${genre.desc})
+${p.product ? `ชื่อเรื่อง/แนวคิด: ${p.product}` : ''}${p.plot ? `\nเรื่องย่อที่ผู้ใช้อยากได้: ${p.plot}` : ''}${prevCtx}
+ยาวประมาณ ${SERIES_LEN[n]} วินาที แบ่งเป็น ${n} ฉาก · เปิดเรื่องด้วยฉากที่ดึงดูดภายใน 3 วินาทีแรก · มีความขัดแย้ง จุดพลิก และจบตอนแบบค้างคา (cliffhanger) ให้อยากดูตอนต่อไป
+โทน: ${p.tone || 'ตื่นเต้น'} · ไม่มีการขายสินค้าหรือโฆษณาใดๆ
+กฎ: ตัวละคร 2-4 ตัว ชื่อไทยหรือชื่อในโลกของเรื่อง สั้นๆ · แต่ละฉาก 1-3 บทพูด ประโยคสั้น ภาษาพูดธรรมชาติ ใช้ผู้บรรยาย (name: "ผู้บรรยาย") ได้ · ห้ามเนื้อหาทางเพศ ความรุนแรงโจ่งแจ้ง หรือเลียนแบบตัวละคร/เรื่องที่มีลิขสิทธิ์ · ห้ามอีโมจิหรือวงเล็บในบทพูด
+look ของตัวละครเขียนเป็นภาษาอังกฤษ ละเอียดพอให้วาดหน้าตาเหมือนเดิมทุกฉากและทุกตอน (อายุ เพศ ทรงผม เสื้อผ้า เครื่องประดับ สีเด่น) · scene เขียนเป็นภาษาอังกฤษ บรรยายสถานที่ แสง เอฟเฟกต์ ท่าทาง อารมณ์ ใครอยู่ในฉาก
+ตอบเป็น JSON เท่านั้น:
+{"title":"ชื่อเรื่อง${prev ? ' (ใช้ชื่อเดิม)' : ''}","epTitle":"ชื่อตอนสั้นๆ","characters":[{"name":"ชื่อ","gender":"female|male","age":"child|young|middle|old","look":"English visual description"}],
+"scenes":[{"scene":"English scene description","onscreen":"ข้อความบนจอสั้นๆ ไม่บังคับ","lines":[{"name":"ชื่อตัวละคร หรือ ผู้บรรยาย","text":"บทพูด"}]}],
+"hookText":"ฮุคบนจอ 2 บรรทัด คั่นด้วย \\n","summary":"สรุปเรื่องทั้งหมดถึงตอนนี้ 2-3 ประโยค","cliff":"ตอนนี้จบค้างไว้ที่อะไร 1 ประโยค",
+"facebook":"แคปชั่น FB 2-4 บรรทัด ชวนติดตามตอนต่อไป","instagram":"แคปชั่น IG","tiktok":"แคปชั่น TikTok สั้นมีฮุค","hashtags":["5-8 แท็ก เช่น #ซีรีส์แนวตั้ง"]}`;
+  const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 1 },
+  }, 120000);
+  const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
+  const clean = (x) => String(x || '').replace(/[\u{1F000}-\u{1FFFF}☀-➿()[\]{}*#"]/gu, '').replace(/\s+/g, ' ').trim();
+  let raw = (Array.isArray(o.characters) ? o.characters : []).slice(0, 5).map((c) => ({ name: clean(c.name).slice(0, 16) || 'ตัวละคร', gender: String(c.gender || ''), age: String(c.age || ''), look: String(c.look || '').slice(0, 300) }))
+    .filter((c) => c.name !== 'ผู้บรรยาย');
+  let chars;
+  if (prev) {
+    // ตัวละครเดิม: หน้าตาและเสียงเดิมทุกตอน · ตัวใหม่: เลือกเสียงที่ยังไม่ซ้ำ
+    const old = prev.chars;
+    const fresh = castDrama(raw.filter((c) => !old.some((x) => x.name === c.name)).slice(0, 1)).map((c, i) => ({ ...c, color: COLORS[(old.length + i) % COLORS.length] }));
+    chars = [...old, ...fresh];
+  } else chars = castDrama(raw.slice(0, 4));
+  if (!chars.length) throw new Error('series_no_chars');
+  const scenes = (Array.isArray(o.scenes) ? o.scenes : []).slice(0, n).map((sc) => ({
+    scene: String(sc.scene || '').slice(0, 600), onscreen: clean(sc.onscreen).slice(0, 30),
+    lines: (Array.isArray(sc.lines) ? sc.lines : []).slice(0, 4).map((l) => ({ name: clean(l.name), text: clean(l.text).slice(0, 160) })).filter((l) => l.text),
+  })).filter((sc) => sc.scene && sc.lines.length);
+  if (scenes.length < 2) throw new Error('series_no_scenes');
+  return { title: (prev?.title || clean(o.title)).slice(0, 40), epTitle: clean(o.epTitle).slice(0, 40), ep, chars, scenes, hookText: String(o.hookText || '').slice(0, 40),
+    summary: String(o.summary || '').slice(0, 600), cliff: String(o.cliff || '').slice(0, 200), captions: { ...o, shopee: '' } };
+}
+export function seriesScenePrompt(sc, chars, art, refKind) {
+  const who = chars.filter((c) => sc.scene.includes(c.name) || sc.lines.some((l) => l.name === c.name));
+  const cast = (who.length ? who : chars).map((c) => `- ${c.name}: ${c.look}`).join('\n');
+  return `${art.prompt}. Vertical 9:16 cinematic frame for a short vertical drama series.
+Scene: ${sc.scene}
+Characters (keep exactly this appearance):
+${cast}
+${refKind === 'prev' ? 'The reference image is a frame from earlier in this same series: keep the same characters, faces, outfits and art style.' : refKind === 'first' ? 'The reference image is an earlier frame of this same episode: keep the same characters, faces, outfits and art style.' : ''}
+Dramatic composition, expressive faces. No text, no letters, no subtitles, no watermark. Leave the top 15% and bottom 25% of the frame visually simple for captions.`;
+}
 
 // ---------- คลิปข้อมูล: ความรู้ · ร้าน · ประชาสัมพันธ์ ----------
 export const INFO_STYLES = ['v_tips', 'v_shop', 'v_pr_announce', 'v_pr_recap'];

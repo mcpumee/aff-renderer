@@ -609,7 +609,7 @@ function findVideo(o) {
 /** สร้างคลิปด้วย Omni Flash → ไฟล์ mp4 */
 export async function genMotion({ prompt, image, outFile }) {
   const input = image ? [{ type: 'text', text: prompt }, { type: 'image', mime_type: 'image/jpeg', data: image.toString('base64') }] : prompt;
-  const body = { model: MOTION_MODEL(), input, response_format: { type: 'video', aspect_ratio: '9:16', resolution: '720p', delivery: 'uri' }, background: false, store: false, stream: false };
+  const body = { model: MOTION_MODEL(), input, response_format: { type: 'video', aspect_ratio: '9:16', resolution: '720p', delivery: 'uri' }, background: false, store: true, stream: false }; // delivery=uri บังคับ store=true
   const r = await fetch(`${API()}/v1beta/interactions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() }, body: JSON.stringify(body), signal: AbortSignal.timeout(12 * 60e3) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(`omni ${r.status} ${j.error?.message || ''}`.trim()); e.status = r.status; throw e; }
@@ -627,6 +627,8 @@ export async function genMotion({ prompt, image, outFile }) {
   const d = await fetch(`${API()}/v1beta/files/${id}:download?alt=media`, { headers: { 'x-goog-api-key': KEY() }, redirect: 'follow', signal: AbortSignal.timeout(5 * 60e3) });
   if (!d.ok) throw new Error(`omni_download ${d.status}`);
   fs.writeFileSync(outFile, Buffer.from(await d.arrayBuffer()));
+  // ดาวน์โหลดแล้ว ลบไฟล์ฝั่ง Google ทิ้ง (ไม่เก็บงานลูกค้าไว้นอกระบบ)
+  fetch(`${API()}/v1beta/files/${id}`, { method: 'DELETE', headers: { 'x-goog-api-key': KEY() } }).catch(() => {});
   return outFile;
 }
 export async function videoThumb(file, out) {

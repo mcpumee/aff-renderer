@@ -76,6 +76,7 @@ services:
       - HEYGEN_API_KEY=${HEYGEN_API_KEY:-}
       - META_APP_ID=${META_APP_ID:-}
       - META_APP_SECRET=${META_APP_SECRET:-}
+      - META_CONFIG_ID=${META_CONFIG_ID:-}
       - RENDER_TOKEN=${RENDER_TOKEN}
       - RENDERER_URL=http://aff-renderer:3000
     volumes:

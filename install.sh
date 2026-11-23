@@ -127,11 +127,12 @@ if [ "${SET_MCRICH_AVATAR:-}" = "1" ] && [ -r /dev/tty ]; then
   askkey "   HeyGen API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && HGKEY=$REPLY
 fi
 # ---- Meta (โพสต์ตรง Facebook Page / Instagram · กด Enter ข้าม) ----
-MAID=$(envget META_APP_ID); MASEC=$(envget META_APP_SECRET)
+MAID=$(envget META_APP_ID); MASEC=$(envget META_APP_SECRET); MACFG=$(envget META_CONFIG_ID)
 if [ "${SET_MCRICH_META:-}" = "1" ] && [ -r /dev/tty ]; then
   echo ">> Meta App (developers.facebook.com > แอปของฉัน > การตั้งค่าแอป > ข้อมูลพื้นฐาน)"
   askkey "   App ID: " 0; [ -n "$REPLY" ] && MAID=$REPLY
   if [ -n "$MAID" ]; then askkey "   App secret (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && MASEC=$REPLY; fi
+  if [ -n "$MAID" ]; then askkey "   Configuration ID ของ Facebook Login for Business (ไม่มี กด Enter): " 0; [ -n "$REPLY" ] && MACFG=$REPLY; fi
 fi
 
 cat > .env <<EOF
@@ -166,6 +167,7 @@ SCRAPECREATORS_API_KEY=${SCKEY}
 HEYGEN_API_KEY=${HGKEY}
 META_APP_ID=${MAID}
 META_APP_SECRET=${MASEC}
+META_CONFIG_ID=${MACFG}
 EOF
 chmod 600 .env
 echo ">> ลิงก์ไฟล์คลิป: $PB"

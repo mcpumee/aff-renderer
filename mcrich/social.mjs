@@ -96,7 +96,9 @@ export function registerSocial(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC
     setCookie(res, 'mr_meta', makeToken({ uid: req.uid, state }, 600), 600);
     res.redirect(`https://www.facebook.com/${GV()}/dialog/oauth?` + new URLSearchParams({
       client_id: META_ID(), redirect_uri: META_CB, state, response_type: 'code',
-      scope: 'pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish',
+      // แอปแบบ Facebook Login for Business ใช้ config_id (ตั้งสิทธิ์ไว้ในหน้า Configurations) · แอปทั่วไปใช้ scope
+      ...(process.env.META_CONFIG_ID ? { config_id: process.env.META_CONFIG_ID, override_default_response_type: 'true' }
+        : { scope: 'pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish' }),
     }));
   });
   app.get('/social/meta/callback', wrap(async (req, res) => {

@@ -808,6 +808,59 @@ async function createView(qs) {
   drawStep();
 }
 
+let LINKBUSY = false;
+let LINKIMG = null; // รูปจากลิงก์ (data URL) — ไม่เก็บลง draft เพราะใหญ่
+const linkCard = () => {
+  const L = D.linkInfo;
+  if (LINKBUSY) return '<section class="card"><span class="muted">⏳ กำลังอ่านข้อมูลสินค้าจากลิงก์…</span></section>';
+  if (!L || L.for !== D.link) return D.link && /^https?:\/\/\S+$/i.test(D.link) && ['aff', 'sell'].includes(D.goal) ? '<button type="button" class="btn dark sm" id="lkread">อ่านข้อมูลสินค้าจากลิงก์</button>' : '';
+  if (L.error) return `<section class="card"><span class="muted">⚠️ ${esc(L.error)}</span><button type="button" class="btn dark sm" id="lkread">ลองอ่านอีกครั้ง</button></section>`;
+  return `<section class="card" style="background:var(--acc-card);border-color:var(--acc-line)">
+    <b>✅ อ่านข้อมูลจากลิงก์แล้ว${L.platform && L.platform !== 'web' ? ` (${esc(L.platform)})` : ''} · แก้ไขได้</b>
+    <div class="row" style="gap:12px;align-items:flex-start">
+      ${LINKIMG ? `<img src="${LINKIMG}" alt="รูปสินค้าจากลิงก์" style="width:84px;height:84px;object-fit:cover;border-radius:12px;flex:none;background:#fff">` : ''}
+      <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0">
+        <label class="f" for="lkname">ชื่อสินค้า<input id="lkname" type="text" maxlength="120" value="${esc(D.product)}"></label>
+        ${L.price ? `<label class="f" for="lkprice">ราคา / โปร<input id="lkprice" type="text" maxlength="40" value="${esc(D.price)}"></label>` : ''}
+      </div></div>
+    ${L.details ? `<label class="f" for="lkdet">จุดเด่น (AI ใช้ต่อ)<textarea id="lkdet" rows="2" maxlength="600">${esc(D.details)}</textarea></label>` : ''}
+    ${LINKIMG ? `<label class="row between" for="lkimg"><span>ใช้รูปนี้เป็นรูปสินค้า</span><input id="lkimg" type="checkbox" class="sw-in" ${D.useLinkImg !== false ? 'checked' : ''}></label>` : ''}
+  </section>`;
+};
+function keepLinkCard() {
+  const n = $('#lkname'); if (n) D.product = n.value.trim();
+  const pr = $('#lkprice'); if (pr) D.price = pr.value.trim();
+  const dt = $('#lkdet'); if (dt) D.details = dt.value.trim();
+  const im = $('#lkimg'); if (im) D.useLinkImg = im.checked;
+  // ใส่รูปจากลิงก์เป็นรูปสินค้า (ครั้งเดียว)
+  if (LINKIMG && D.useLinkImg !== false && !REFS.some((f) => f.name === 'link-product.jpg')) {
+    try { const b = atob(LINKIMG.split(',')[1]); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); REFS = [new File([u], 'link-product.jpg', { type: 'image/jpeg' }), ...REFS].slice(0, 8); } catch { /* */ }
+  } else if (D.useLinkImg === false) REFS = REFS.filter((f) => f.name !== 'link-product.jpg');
+}
+async function readLink(force) {
+  const link = D.link;
+  if (!/^https?:\/\/\S+$/i.test(link || '') || LINKBUSY) return;
+  if (!force && D.linkInfo?.for === link) return;
+  LINKBUSY = true; const box = $('#lkbox'); if (box) box.innerHTML = linkCard();
+  try {
+    const r = await api('api/link/read', { method: 'POST', body: { url: link } });
+    if (D.link !== link) return;
+    LINKIMG = r.image || null;
+    REFS = REFS.filter((f) => f.name !== 'link-product.jpg');
+    if (r.product) D.product = r.product;
+    if (r.price && !D.price) D.price = r.price;
+    if (r.details && !D.details) D.details = r.details;
+    D.linkInfo = { for: link, platform: r.platform, price: !!r.price, details: !!r.details };
+  } catch (e) { D.linkInfo = { for: link, error: e.message }; LINKIMG = null; }
+  finally { LINKBUSY = false; }
+  if (D.step === 0 && location.hash.startsWith('#create')) { const b2 = $('#lkbox'); if (b2) { b2.innerHTML = linkCard(); bindLink(true); } }
+}
+function bindLink(onlyCard) {
+  const go = () => { const v = $('#link')?.value.trim() || ''; D.link = v; if (['aff', 'sell'].includes(D.goal) && /^https?:\/\/\S+$/i.test(v)) readLink(); };
+  const li = $('#link');
+  if (li && !onlyCard) { li.addEventListener('change', go); li.addEventListener('paste', () => setTimeout(go, 50)); }
+  const b = $('#lkread'); if (b) b.onclick = () => { D.link = $('#link').value.trim(); readLink(true); };
+}
 function stepShell(inner, { next = 'ถัดไป', nextId = 'next', disabled = false } = {}) {
   const s = D.step;
   app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main>
@@ -815,7 +868,7 @@ function stepShell(inner, { next = 'ถัดไป', nextId = 'next', disabled 
       <button type="button" class="chip" id="reset" style="min-height:34px;padding:4px 12px">เริ่มใหม่</button></div>
     <div class="steps" aria-hidden="true">${STEPS.map((_, i) => `<i class="${i <= s ? 'on' : ''}"></i>`).join('')}</div>
     ${inner}
-    <div class="grid2" style="margin-top:4px">${s ? '<button type="button" class="btn dark" id="prev">ย้อนกลับ</button>' : '<span></span>'}
+    <div class="grid2 stepnav">${s ? '<button type="button" class="btn dark" id="prev">ย้อนกลับ</button>' : '<span></span>'}
       <button type="button" class="btn" id="${nextId}" ${disabled ? 'disabled' : ''}>${next}</button></div>
   </main>${nav('create')}`;
   if (s) { const b = app.querySelector('header .back'); if (b) b.onclick = (e) => { e.preventDefault(); D.step--; drawStep(); }; }
@@ -851,11 +904,13 @@ function drawStep() {
         <span class="muted">AI จะเขียนตามกติกาโฆษณาของสายนี้ และใส่ข้อความกำกับท้ายแคปชั่นให้ (เช่น ประกันภัย)</span></section>` : ''}
       <label class="f" for="link">${D.goal === 'aff' ? 'ลิงก์ Affiliate (Shopee / Lazada / TikTok)' : D.goal === 'agent' ? 'ลิงก์ติดต่อ / LINE / เพจ (ไม่บังคับ)' : 'ลิงก์สินค้าหรือร้าน (ไม่บังคับ)'}
         <input id="link" type="url" inputmode="url" placeholder="https://" value="${esc(D.link || (D.goal !== 'aff' ? ME.brand?.shopLink || '' : ''))}"></label>
-      <span class="muted">ลิงก์จะใส่ในแคปชั่นให้อัตโนมัติ</span>`);
-    app.querySelectorAll('[data-goal]').forEach((b) => b.onclick = () => { readInputs(['link']); D.goal = b.dataset.goal; if (D.goal === 'agent' && !D.agentType) D.agentType = 'insurance'; drawStep(); });
+      <div id="lkbox">${linkCard()}</div>
+      <span class="muted">ลิงก์จะใส่ในแคปชั่นให้อัตโนมัติ${D.goal === 'aff' || D.goal === 'sell' ? ' · วางลิงก์สินค้าแล้ว ระบบอ่านชื่อสินค้าให้' : ''}</span>`);
+    app.querySelectorAll('[data-goal]').forEach((b) => b.onclick = () => { readInputs(['link']); D.goal = b.dataset.goal; if (D.goal === 'agent' && !D.agentType) D.agentType = 'insurance'; D.showAllStyles = false; drawStep(); });
     bindChips([], () => readInputs(['link']));
+    bindLink();
     $('#next').onclick = () => {
-      readInputs(['link']);
+      readInputs(['link']); keepLinkCard();
       if (D.link && !/^https?:\/\/\S+$/i.test(D.link)) return toast('ลิงก์ต้องขึ้นต้นด้วย https://');
       if (D.goal === 'aff' && !D.link) return toast('ใส่ลิงก์ Affiliate ก่อน');
       D.step = 1; drawStep();
@@ -874,9 +929,14 @@ function drawStep() {
         const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>`;
         const g2 = pr.length ? `<h2>ประชาสัมพันธ์องค์กร</h2><div class="grid2">${pr.map(card).join('')}</div>` : '';
         const g3 = ag.length ? `<h2>ตัวแทน / นายหน้า (ประกัน อสังหา รถ สินเชื่อ)</h2><div class="grid2">${ag.map(card).join('')}</div>` : '';
+        if (D.goal === 'agent' && !D.showAllStyles) {
+          const extra = list.filter((x) => x.id === 'v_avatar'); // อวตารพูดได้ เหมาะกับตัวแทนด้วย
+          return `<h2>ตัวแทน / นายหน้า</h2><div class="grid2">${[...ag, ...extra].map(card).join('')}</div><button type="button" class="btn ghost sm" id="showAll">ดูแนวอื่นทั้งหมด</button>`;
+        }
         return D.goal === 'pr' ? g2 + g1 + g3 : D.goal === 'agent' ? g3 + g1 + g2 : g1 + g3 + g2;
       })()}`, { disabled: !D.style || !list.some((x) => x.id === D.style) });
     app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
+    const sa = $('#showAll'); if (sa) sa.onclick = () => { D.showAllStyles = true; drawStep(); };
     app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => {
       D.style = b.dataset.style; if (!vid) D.ratio = CAT.styles.find((x) => x.id === D.style).ratio;
       if (D.style === 'v_series') { D.goal = 'content'; if (!CAT.video.seriesGenres.some((g) => g.id === D.genre)) D.genre = 'magic'; if (!CAT.video.seriesPrices[D.scenes]) D.scenes = 4; }
@@ -1529,6 +1589,12 @@ async function workView(qs) {
   } else {
     const caps = PLAT.slice(0, 4).filter(([k]) => w.captions?.[k]);
     const tags = (w.hashtags || []).join(' ');
+    // แยกลิงก์ออกจากแคปชั่น (ลิงก์สั้นแยกตามแพลตฟอร์ม)
+    const URL_RE = /https?:\/\/[^\s)]+/g;
+    const linkOf = (k) => (String(w.captions?.[k] || '').match(URL_RE) || [])[0] || w.params?.link || '';
+    const hasLink = caps.some(([k]) => linkOf(k));
+    const stripLink = (t) => String(t || '').replace(URL_RE, '').split('\n').filter((ln) => !/^[\s👉🛒🔗:：\-–>|]*(ลิงก์|link|สั่งซื้อ|กดเลย|คลิก)?[\s👉🛒🔗:：\-–>|]*$/i.test(ln) || !ln.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    const capText = (k) => (hasLink ? stripLink(w.captions[k]) : w.captions[k]) + (tags ? '\n\n' + tags : '');
     $('main').innerHTML = `
       ${w.purged ? `<section class="card"><b>ไฟล์ถูกลบจากเซิร์ฟเวอร์แล้ว</b><span class="muted">ครบ ${CAT?.keepDays || 7} วัน · แคปชั่นยังคัดลอกได้ · กด "สร้างแบบนี้อีก" เพื่อทำใหม่</span></section>`
         : `<div class="gallery">${w.files.map((f, i) => `<figure>${f.type === 'video' ? `<video src="${f.url}" ${f.thumb ? `poster="${f.thumb}"` : ''} controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;aspect-ratio:9/16"></video>` : `<img src="${f.url}" alt="ภาพที่ ${i + 1}" width="${f.w}" height="${f.h}">`}
@@ -1537,8 +1603,12 @@ async function workView(qs) {
         ${w.params?.script?.length ? `<details class="card"><summary style="font-weight:600;cursor:pointer">บทพากย์</summary><p class="muted" style="margin:0">${esc(w.params.script.join(' '))}</p></details>` : ''}`}
       ${caps.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>แคปชั่น</h2>
         <div class="chips" role="tablist">${caps.map(([k, l], i) => `<button type="button" class="chip" role="tab" data-cap="${k}" aria-pressed="${i === 0}">${l}</button>`).join('')}</div>
-        <textarea id="cap" rows="7" aria-label="แคปชั่น">${esc(w.captions[caps[0][0]] + (tags ? '\n\n' + tags : ''))}</textarea>
-        <button type="button" class="btn dark" id="copyCap">คัดลอกแคปชั่น + แฮชแท็ก</button></section>` : ''}
+        <textarea id="cap" rows="7" aria-label="แคปชั่น">${esc(capText(caps[0][0]))}</textarea>
+        ${hasLink ? `<div class="grid2"><button type="button" class="btn dark" id="copyCap">คัดลอกแคปชั่น</button><button type="button" class="btn" id="copyLink">คัดลอกลิงก์</button></div>
+          <div class="row" style="gap:8px"><input id="capLink" type="text" readonly value="${esc(linkOf(caps[0][0]))}" aria-label="ลิงก์ Affiliate" style="flex:1;min-width:0"></div>
+          <button type="button" class="btn ghost sm" id="copyAll">คัดลอกรวม (แคปชั่น + ลิงก์ + แฮชแท็ก)</button>
+          <span class="muted">TikTok / IG ไม่ให้กดลิงก์ในแคปชั่น · คัดลอกลิงก์แยกไปวางในตะกร้า/ไบโอ/คอมเมนต์</span>`
+          : '<button type="button" class="btn dark" id="copyCap">คัดลอกแคปชั่น + แฮชแท็ก</button>'}</section>` : ''}
       <section class="card"><b>โพสต์ไปที่ไหนแล้ว</b><span class="muted">ติ๊กไว้ จะได้รู้ว่างานไหนโพสต์แล้ว (โพสต์ตรงจากแอปจะเปิดเร็วๆ นี้)</span>
         <div class="chips">${PLAT.map(([k, l]) => `<button type="button" class="chip" data-post="${k}" aria-pressed="${!!w.posted?.[k]}">${l}${w.posted?.[k] ? ' · ' + new Date(w.posted[k]).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : ''}</button>`).join('')}</div></section>
       <div id="wstats"></div>
@@ -1553,8 +1623,13 @@ async function workView(qs) {
     schedCard(w, new URLSearchParams(qs || '').get('post')).catch(() => {});
     app.querySelectorAll('[data-cap]').forEach((b) => b.onclick = () => {
       app.querySelectorAll('[data-cap]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      $('#cap').value = w.captions[b.dataset.cap] + (tags ? '\n\n' + tags : '');
+      $('#cap').value = capText(b.dataset.cap);
+      const cl = $('#capLink'); if (cl) cl.value = linkOf(b.dataset.cap);
     });
+    const curCap = () => app.querySelector('[data-cap][aria-pressed="true"]')?.dataset.cap;
+    const cpy = async (t, msg) => { try { await navigator.clipboard.writeText(t); toast(msg); } catch { prompt('คัดลอก', t); } api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'copy', p: curCap() } }).catch(() => {}); };
+    const cL = $('#copyLink'); if (cL) cL.onclick = () => cpy($('#capLink').value, 'คัดลอกลิงก์แล้ว');
+    const cA = $('#copyAll'); if (cA) cA.onclick = () => { const c = $('#cap').value; const [body, ...rest] = c.split(/\n\n(?=#)/); cpy(`${body.trim()}\n👉 ${$('#capLink').value}${rest.length ? '\n\n' + rest.join('\n\n') : ''}`, 'คัดลอกรวมแล้ว'); };
     const cc = $('#copyCap'); if (cc) cc.onclick = async () => {
       try { await navigator.clipboard.writeText($('#cap').value); toast('คัดลอกแล้ว'); } catch { $('#cap').select(); toast('กดค้างเพื่อคัดลอก'); }
       api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'copy', p: app.querySelector('[data-cap][aria-pressed="true"]')?.dataset.cap } }).catch(() => {});

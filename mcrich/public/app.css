@@ -320,3 +320,7 @@ body.kb nav.tab { display: none; }
 .theme-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 :root[data-theme="light"] .btn:not(.dark):not(.ghost):not(.line):not(.google), :root[data-theme="light"] .chip[aria-pressed="true"] { box-shadow: inset 0 0 0 1px rgba(60,100,0,.35); }
 @media (prefers-color-scheme: light) { :root[data-theme="auto"] .btn:not(.dark):not(.ghost):not(.line):not(.google), :root[data-theme="auto"] .chip[aria-pressed="true"] { box-shadow: inset 0 0 0 1px rgba(60,100,0,.35); } }
+
+/* ปุ่มย้อนกลับ/ถัดไป ลอยเหนือเมนูล่าง */
+.stepnav { position: sticky; bottom: calc(var(--nav-h) + 6px); z-index: 5; margin: 4px -16px 0; padding: 14px 16px 8px;
+  background: linear-gradient(180deg, var(--fade0), var(--fade1) 38%); }

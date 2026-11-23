@@ -162,10 +162,6 @@ async function homeView() {
       <a class="btn cta" href="#create?new=1">${ICON.plus}สร้างผลงานใหม่</a>
       <div class="quota"><span>ภาพฟรีวันนี้ <b>${ME.freeImages.today}</b></span><span>ภาพฟรีต้อนรับ <b>${ME.freeImages.welcome}/10</b></span></div>
     </section>
-    <nav class="quick" aria-label="ทางลัด">
-      <a href="#viral"><span class="qi">${ICON.play}</span><span><b>วิดีโอไวรัล</b><small>ไอเดียตามกระแส</small></span></a>
-      <a href="#chat"><span class="qi" style="overflow:hidden">${RICH('head', 30)}</span><span><b>คุยกับริช</b><small>ถามไอเดีย แคปชั่น</small></span></a>
-    </nav>
     <section id="vBox" style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2>ไวรัลสไตล์คุณ</h2></div><p class="muted">กำลังโหลด…</p></section>
     <section style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2 id="th">แนวงานฮิต</h2><a href="#interests">ปรับความสนใจ</a></div>
       <div class="grid3" id="trends"><p class="muted">กำลังโหลด…</p></div></section>
@@ -413,7 +409,7 @@ function tagsView() {
     $('#add').onclick = add;
     $('#nt').onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) add(); };
     app.querySelectorAll('.chip[data-i]').forEach((b) => b.onclick = () => { tags.splice(Number(b.dataset.i), 1); draw(); });
-    $('#save').onclick = async () => { $('#nt').value.split(/[\s,]+/).map((x) => x.trim().replace(/^#*/, '#')).filter((x) => x.length > 1 && !tags.includes(x)).forEach((x) => tags.push(x)); try { ME = await api('api/profile/hashtags', { method: 'PUT', body: { hashtags: tags } }); toast('บันทึกแล้ว'); go('profile'); } catch (e) { toast(e.message); } };
+    $('#save').onclick = async () => { $('#nt').value.split(/[\s,]+/).map((x) => x.trim().replace(/^#*/, '#')).filter((x) => x.length > 1 && !tags.includes(x)).forEach((x) => tags.push(x)); try { ME = await api('api/profile/hashtags', { method: 'PUT', body: { hashtags: tags } }); tags = [...(ME.hashtags || [])]; draw(); toast(`บันทึกแล้ว ${tags.length} แท็ก`); } catch (e) { toast(e.message); } };
   };
   draw();
 }
@@ -609,7 +605,14 @@ async function adminTrends() {
     ${t ? `<div class="row" style="gap:10px;align-items:center">${t.sample?.poster ? `<img src="${t.sample.poster}" alt="" style="width:48px;height:64px;object-fit:cover;border-radius:8px">` : ''}
       <span class="muted" style="flex:1;font-size:13px">ตัวอย่าง: ${({ done: '✓ พร้อมแล้ว', queued: 'รอคิวสร้าง', photo: 'กำลังสร้างรูปสินค้า…', render: 'กำลังสร้างตัวอย่าง…', failed: `✗ ไม่สำเร็จ ${esc(t.sample?.error || '')}` })[t.sample?.status] || 'ยังไม่มี (ระบบจะสร้างให้อัตโนมัติ)'}</span>
       <button type="button" class="btn dark sm" data-smp>${t.sample?.has ? 'สร้างใหม่' : 'สร้างตัวอย่าง'}</button></div>` : ''}</section>`;
-  $('main').innerHTML = `<p class="muted">การ์ดเทรนด์หน้าแรก เรียงตามลำดับ แสดงตามความสนใจของลูกค้า</p>${row(null)}${d.items.map(row).join('')}`;
+  const ss = await api('api/admin/style-samples').catch(() => ({ items: [] }));
+  const ST = { done: '✓', render: 'กำลังสร้าง…', queued: 'รอคิว', failed: '✗ ไม่สำเร็จ', none: 'รอสร้างอัตโนมัติ' };
+  $('main').innerHTML = `<p class="muted">การ์ดเทรนด์หน้าแรก เรียงตามลำดับ แสดงตามความสนใจของลูกค้า</p>${row(null)}${d.items.map(row).join('')}
+    <h2>ภาพตัวอย่างแนวงานภาพ (ขั้นเลือกแนวงาน)</h2><span class="muted" style="font-size:13px">ระบบสร้างให้อัตโนมัติทีละแบบ ไม่ตัดดาว</span>
+    <div class="grid3">${ss.items.map((x) => `<div class="card" style="padding:8px;gap:6px">${x.src ? `<img src="${x.src}" alt="" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:10px">` : '<div style="aspect-ratio:4/5;border-radius:10px;background:var(--s2)"></div>'}
+      <span style="font-size:12px">${esc(x.style)}</span><span class="muted" style="font-size:11px">${ST[x.status] || x.status}${x.error ? ` ${esc(x.error)}` : ''}</span>
+      <button type="button" class="btn dark sm" data-ssr="${esc(x.style)}" style="min-height:32px">สร้างใหม่</button></div>`).join('')}</div>`;
+  app.querySelectorAll('[data-ssr]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/style-samples/${b.dataset.ssr}`, { method: 'POST', body: {} }); toast('เข้าคิวแล้ว'); adminTrends(); } catch (e) { toast(e.message); } });
   app.querySelectorAll('[data-id]').forEach((card) => {
     const get = () => { const o = {}; card.querySelectorAll('[name]').forEach((i) => { o[i.name] = i.type === 'checkbox' ? i.checked : i.value; }); return o; };
     const id = card.dataset.id;
@@ -652,6 +655,23 @@ let REFS = [];       // ไฟล์ภาพอ้างอิง (อยู่
 let REVS = [];       // แคปรีวิว (คลิป)
 let VFILE = null;    // คลิปที่ถ่ายเอง
 let ITEMF = [];      // รูปสินค้าแต่ละอันดับ (Top N)
+// แนวข้อความตามประเภทงาน: [ข้อความหลัก, ข้อความรอง]
+const TEXT_PRESETS = {
+  poster_menu: [['เมนูใหม่! อร่อยต้องลอง'], ['เมนูแนะนำประจำร้าน'], ['จัดเต็ม คุ้มทุกจาน'], ['ร้อนๆ พร้อมเสิร์ฟ']],
+  sale_banner: [['ลดแรง 50%', 'วันนี้วันเดียว'], ['ซื้อ 1 แถม 1'], ['ลดล้างสต๊อก', 'หมดแล้วหมดเลย'], ['ส่งฟรีทั่วไทย']],
+  aff_cover: [['ของมันต้องมี!'], ['ใช้ดีบอกต่อ'], ['ราคานี้หายากแล้ว'], ['ป้ายยาด่วน!']],
+  before_after: [['เห็นผลจริง'], ['ก่อน-หลังใช้'], ['เปลี่ยนไปเยอะมาก']],
+  shop_news: [['เปิดใหม่!', 'ลดพิเศษสัปดาห์แรก'], ['เปิดสาขาใหม่'], ['ร้านหยุด 1 วัน', 'ขออภัยในความไม่สะดวก'], ['ย้ายร้านใหม่']],
+  knowledge: [['รู้หรือไม่?'], ['5 เคล็ดลับ'], ['วิธีเลือกให้ดี'], ['ข้อควรรู้ก่อนซื้อ']],
+  pr_announce: [['ประกาศ', 'แจ้งเพื่อทราบโดยทั่วกัน'], ['ประกาศหยุดทำการ', 'ขออภัยในความไม่สะดวก'], ['ขอเชิญประชุม', 'ขอเชิญผู้เกี่ยวข้องเข้าร่วมโดยพร้อมเพรียงกัน'], ['แจ้งเปลี่ยนแปลงเวลาทำการ']],
+  pr_event: [['ขอเชิญร่วมงาน', 'เข้าร่วมฟรี ไม่มีค่าใช้จ่าย'], ['ขอเชิญร่วมกิจกรรม'], ['ขอเชิญเข้าร่วมโครงการ', 'ลงทะเบียนได้ตั้งแต่วันนี้'], ['ขอเชิญร่วมทำบุญ', 'ร่วมเป็นเจ้าภาพได้ที่']],
+  pr_news: [['ข่าวประชาสัมพันธ์'], ['ภาพกิจกรรม'], ['ข่าวสารองค์กร'], ['บรรยากาศกิจกรรม']],
+  pr_congrats: [['ขอแสดงความยินดี', 'ด้วยความยินดียิ่ง'], ['ขอแสดงความยินดีกับความสำเร็จ'], ['ขอบคุณที่ไว้วางใจ', 'ด้วยความขอบคุณอย่างสูง'], ['ยินดีต้อนรับ']],
+  pr_hiring: [['รับสมัครงาน', 'หลายอัตรา'], ['เปิดรับสมัครด่วน'], ['ร่วมเป็นส่วนหนึ่งกับเรา'], ['รับสมัครพนักงาน', 'สวัสดิการดี']],
+  pr_festival: [['สวัสดีปีใหม่', 'ขอให้มีความสุขตลอดปี'], ['สุขสันต์วันสงกรานต์'], ['สุขสันต์วันลอยกระทง'], ['สุขสันต์วันแม่'], ['เมอร์รี่คริสต์มาส']],
+  pr_condolence: [['ขอแสดงความเสียใจอย่างสุดซึ้ง', 'ด้วยความอาลัยยิ่ง'], ['ขอน้อมไว้อาลัย', 'ขอให้ดวงวิญญาณสู่สุคติในสัมปรายภพ'], ['ขอร่วมแสดงความเสียใจกับครอบครัว', 'ด้วยความเคารพอย่างสูง'], ['ด้วยความอาลัยและระลึกถึง']],
+};
+let SAMPLES = null; // ภาพตัวอย่างของแต่ละแนวงาน
 const STEPS = ['เป้าหมาย', 'แนวงาน', 'รายละเอียด', 'แคปชั่น', 'คุณภาพ', 'ทบทวน'];
 const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
 const saveDraft = () => { try { sessionStorage.setItem('mr_draft', JSON.stringify(D)); } catch {} };
@@ -729,14 +749,15 @@ function drawStep() {
       D.step = 1; drawStep();
     };
   } else if (s === 1) {
+    if (!SAMPLES) { SAMPLES = {}; api('api/style-samples').then((r) => { SAMPLES = r; if (D.step === 1 && location.hash.startsWith('#create')) drawStep(); }).catch(() => {}); }
     const vid = D.kind === 'video';
     const list = vid ? CAT.video.styles : CAT.styles;
     stepShell(`<div class="grid2" role="group" aria-label="ประเภทผลงาน">
         <button type="button" class="card opt" data-kind="image" aria-pressed="${!vid}"><b>ภาพ</b><span class="muted">โปสเตอร์ ภาพสินค้า ป้ายโปร</span></button>
         <button type="button" class="card opt" data-kind="video" aria-pressed="${vid}"><b>คลิปวิดีโอ</b><span class="muted">เปิดกล่อง ลุ้นของ พากย์เสียง</span></button></div>
       ${(() => {
-        const card = (x) => `<button type="button" class="stylecard" data-style="${x.id}" aria-pressed="${D.style === x.id}">
-          <span class="sw" style="background:${esc(x.color)}">${x.emoji}</span><b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`;
+        const card = (x) => { const im = (vid ? SAMPLES?.video : SAMPLES?.image)?.[x.id]; return `<button type="button" class="stylecard has-img" data-style="${x.id}" aria-pressed="${D.style === x.id}">
+          ${im ? `<span class="sx"><img src="${im}" alt="ตัวอย่าง ${esc(x.label)}" loading="lazy">${vid ? '<i>▶ ตัวอย่าง</i>' : ''}</span>` : `<span class="sx sxe" style="background:${esc(x.color)}">${x.emoji}</span>`}<b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`; };
         const biz = list.filter((x) => !x.pr), pr = list.filter((x) => x.pr);
         const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>`;
         const g2 = pr.length ? `<h2>ประชาสัมพันธ์องค์กร</h2><div class="grid2">${pr.map(card).join('')}</div>` : '';
@@ -947,6 +968,8 @@ function drawStep() {
       <section class="card">
         <label class="f" for="product">ชื่อสินค้า / เรื่อง<input id="product" type="text" maxlength="120" placeholder="เช่น ข้าวมันไก่ต้ม, เซรั่มวิตซี" value="${esc(D.product)}"></label>
         ${st.text ? `<label class="f" for="headline">ข้อความหลักบนภาพ (สั้นๆ)<input id="headline" type="text" maxlength="60" placeholder="เช่น เปิดใหม่! อร่อยต้องลอง" value="${esc(D.headline)}"></label>
+        ${TEXT_PRESETS[st.id] ? `<div style="display:flex;flex-direction:column;gap:6px"><span class="muted" style="font-size:13px">แนวข้อความสำหรับ${esc(st.label)} · แตะเพื่อใช้</span>
+          <div class="chips">${TEXT_PRESETS[st.id].map(([h, sub], i) => `<button type="button" class="chip" data-preset="${i}" style="min-height:34px;padding:5px 12px;font-size:13px">${esc(h)}${sub ? ` · <span class="muted">${esc(sub)}</span>` : ''}</button>`).join('')}</div></div>` : ''}
         <label class="f" for="price">${st.pr ? 'ข้อความรอง (ไม่บังคับ)' : 'ราคา / โปร (ไม่บังคับ)'}<input id="price" type="text" maxlength="40" placeholder="${st.pr ? 'เช่น ขอเชิญร่วมงาน' : 'เช่น 59.- หรือ ซื้อ 1 แถม 1'}" value="${esc(D.price)}"></label>` : ''}
         <label class="f" for="details">รายละเอียดเพิ่ม (ไม่บังคับ)<textarea id="details" rows="3" maxlength="600" placeholder="${st.pr ? 'เนื้อหาประกาศ ผู้เข้าร่วม เงื่อนไข บรรยากาศที่อยากได้' : 'จุดเด่น วัตถุดิบ กลุ่มลูกค้า บรรยากาศที่อยากได้'}">${esc(D.details)}</textarea></label>
         <div id="warn"></div>
@@ -965,6 +988,11 @@ function drawStep() {
       </section>`);
     bindChips(['concepts'], (k) => { if (k === 'concepts' && D.concepts.length > 5) { D.concepts.pop(); drawStep(); toast('เลือกได้สูงสุด 5'); } });
     const fields = ['product', 'headline', 'price', 'details', 'useLogo', 'showShop'];
+    app.querySelectorAll('[data-preset]').forEach((b) => b.onclick = () => {
+      const [h, sub] = TEXT_PRESETS[st.id][Number(b.dataset.preset)];
+      $('#headline').value = h; if (sub && $('#price')) $('#price').value = sub;
+      app.querySelectorAll('[data-preset]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    });
     const ri = $('#refin'); if (ri) ri.onchange = (e) => { readInputs(fields); readInfo(); REFS = [...REFS, ...[...e.target.files].filter((f) => f.type.startsWith('image/'))].slice(0, 3); drawStep(); };
     app.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { readInputs(fields); readInfo(); REFS.splice(Number(b.dataset.rm), 1); drawStep(); });
     $('#next').onclick = () => {
@@ -986,8 +1014,9 @@ function drawStep() {
       <h2>โทน</h2>` : `<h1 style="font-size:22px">${D.style?.startsWith('v_pr') || D.goal === 'pr' ? 'โทนแคปชั่น (งานประชาสัมพันธ์ใช้ภาษาทางการให้อัตโนมัติ)' : 'แคปชั่นโทนไหน?'}</h1>`}
       <p class="muted">AI เขียนให้ 4 แบบ: Facebook, Instagram, TikTok, Shopee${D.link ? ' พร้อมใส่ลิงก์' : ''}</p>
       ${chipRow(CAT.tones, D.tone || CAT.tones[0], 'tone', false)}
-      <section style="display:flex;flex-direction:column;gap:10px"><div class="row between"><h2>แฮชแท็กประจำ</h2><a href="#tags" style="font-size:14px">จัดการ</a></div>
-        ${saved.length ? chipRow(saved, D.hashtags, 'hashtags', true) : '<p class="muted">ยังไม่มีแฮชแท็กประจำ</p>'}</section>
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>แฮชแท็กประจำ</h2>
+        ${saved.length ? chipRow(saved, D.hashtags, 'hashtags', true) : '<p class="muted">ยังไม่มีแฮชแท็กประจำ</p>'}
+        <div class="row" style="gap:8px"><input type="text" id="newTag" placeholder="#แท็กใหม่" aria-label="เพิ่มแฮชแท็กประจำ"><button type="button" class="btn sm dark" id="saveTag">บันทึกแท็ก</button></div></section>
       <label class="f" for="extraTags">แท็กเพิ่มเฉพาะงานนี้<input id="extraTags" type="text" placeholder="#โปรเดือนนี้ #ของมันต้องมี" value="${esc(D.extraTags)}"></label>
       <span class="muted">AI จะเติมแท็กที่เกี่ยวข้องให้อีก 5–8 แท็ก</span>
       ${vidAll ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>เพลงประกอบ</h2>
@@ -1005,6 +1034,18 @@ function drawStep() {
       app.querySelectorAll('[data-formula]').forEach((b) => b.onclick = () => { readInputs(['extraTags']); D.formula = b.dataset.formula; drawStep(); });
     }
     bindChips(['hashtags']);
+    const saveTag = async () => {
+      const add = $('#newTag').value.split(/[\s,]+/).map((x) => x.trim().replace(/^#*/, '#')).filter((x) => x.length > 1);
+      if (!add.length) return toast('พิมพ์แท็กก่อน');
+      readInputs(['extraTags']);
+      try {
+        ME = await api('api/profile/hashtags', { method: 'PUT', body: { hashtags: [...new Set([...(ME.hashtags || []), ...add])] } });
+        D.hashtags = [...new Set([...D.hashtags, ...add.filter((t) => (ME.hashtags || []).includes(t))])];
+        toast('บันทึกเป็นแท็กประจำแล้ว'); drawStep();
+      } catch (e) { toast(e.message); }
+    };
+    $('#saveTag').onclick = saveTag;
+    $('#newTag').onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); saveTag(); } };
     $('#next').onclick = () => { readInputs(['extraTags']); D.step = 4; drawStep(); };
   } else if (s === 4 && D.style === 'v_tips') {
     D.length = D.count === 5 ? 45 : 30;
@@ -1497,9 +1538,16 @@ function openDraft(d) {
   REFS = []; REVS = []; VFILE = null; ITEMF = []; saveDraft(); go('create');
 }
 const botAv = () => `<span class="av" aria-hidden="true">${RICH('head', 30)}</span>`;
+// การ์ดงานที่ริชแนะนำ (หน้าตาและปุ่มเดียวกับการ์ดใน LINE)
+const draftBox = (m) => { const d = m.draft; return `<div class="dcard"><div class="dh"><small>${d.kind === 'video' ? 'คลิปแนะนำ' : 'ภาพแนะนำ'}</small><b>${esc(styleName(d.style) || d.label || '')}</b></div>
+  <div class="db">${d.product ? `<b>${esc(d.product)}</b>` : ''}${d.headline ? `<span class="muted">“${esc(d.headline)}”</span>` : ''}${d.details ? `<span class="muted dd">${esc(d.details)}</span>` : ''}
+  ${d.est ? `<span class="est">${ICON.star}${esc(d.est)}</span>` : ''}<small class="muted">ยังไม่ตัดดาว จนกว่าจะกดยืนยัน</small></div>
+  <div class="df"><button type="button" class="btn sm" data-draft="${m.id ?? ''}">${ICON.plus}${esc(d.label || 'สร้างงานนี้')}</button><button type="button" class="btn ghost sm" data-chip="ขอแนวอื่นอีก">ขอแนวอื่น</button></div></div>`; };
+const styleName = (id) => [...(CAT?.styles || []), ...(CAT?.video?.styles || [])].find((x) => x.id === id)?.label || '';
 const bubble = (m) => `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}">${m.role === 'user' ? '' : botAv()}
-  <div><div class="bb">${esc(m.content).replace(/\n/g, '<br>')}</div>
-  ${m.draft ? `<button type="button" class="btn sm" data-draft="${m.id ?? ''}" style="margin-top:8px">${ICON.plus}${esc(m.draft.label || 'สร้างงานนี้')}</button>` : ''}
+  <div style="min-width:0"><div class="bb">${esc(m.content).replace(/\n/g, '<br>')}</div>
+  ${m.draft ? draftBox(m) : ''}
+  ${(m.links || []).map((l) => `<a class="btn sm" href="${esc(l.href)}" style="margin-top:8px">${esc(l.label)}</a>`).join('')}
   ${m.channel === 'line' ? '<div class="meta">ผ่าน LINE</div>' : ''}</div></div>`;
 const CHAT_SUGG = [
   ['ขายของออนไลน์', 'ช่วยคิดภาพหรือคลิปขายสินค้า'],
@@ -1532,6 +1580,7 @@ async function chatView(qs) {
   ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer:fine)').matches) { e.preventDefault(); form.requestSubmit(); } });
 
   CHAT = await api('api/chat');
+  if (!CAT) CAT = await api('api/create/catalog').catch(() => null); // ชื่อแนวงานบนการ์ด
   if (params.get('draft') === 'last') {
     const d = [...CHAT.items].reverse().find((m) => m.draft);
     if (d) { if (!CAT) CAT = await api('api/create/catalog').catch(() => null); return openDraft(d.draft); }
@@ -1543,7 +1592,9 @@ async function chatView(qs) {
       : `<div class="chat-hello">${RICH('wave', 112)}<h1>ริชพร้อมช่วยแล้ว</h1><p class="muted" style="font-size:14px">บอกว่าขายอะไรอยู่ ริชช่วยคิดภาพ คลิป และแคปชั่นให้</p>
         <div class="sugg">${CHAT_SUGG.map(([t, d]) => `<button type="button" data-chip="${esc(t)}"><b>${esc(t)}</b><small>${esc(d)}</small></button>`).join('')}</div>
         ${CHAT.oa ? `<a class="promo" href="${esc(CHAT.oa.url)}" target="_blank" rel="noopener" style="width:100%;margin-top:6px"><span class="qi" style="width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#06C755;color:#fff">${ICON.line}</span><span style="text-align:left"><b>คุยกับริชใน LINE ก็ได้</b><small class="muted">เพิ่มเพื่อน ${esc(CHAT.oa.id)} รับแจ้งเตือนผลงานเสร็จ</small></span>${ICON.chev}</a>` : ''}</div>`;
-    $('#chips').innerHTML = items.length && !busy ? (chips || []).map((c) => `<button type="button" class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('') : '';
+    const last = items[items.length - 1];
+    const cs = chips || (last?.role === 'model' ? last.chips || [] : []);
+    $('#chips').innerHTML = items.length && !busy ? cs.map((c) => `<button type="button" class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('') : '';
     $('#cq').textContent = CHAT.ready ? `วันนี้คุยได้อีก ${CHAT.quota.left}/${CHAT.quota.max} ข้อความ` : 'ผู้ช่วย AI กำลังตั้งค่า';
     $('#cnote').textContent = matchMedia('(pointer:fine)').matches ? 'Shift+Enter ขึ้นบรรทัดใหม่' : '';
     app.querySelectorAll('[data-chip]').forEach((b) => b.onclick = () => send(b.dataset.chip));
@@ -1561,7 +1612,7 @@ async function chatView(qs) {
     busy = true; draw([]);
     try {
       const r = await api('api/chat', { method: 'POST', body: { text } });
-      CHAT.items.push({ id: `n${Date.now()}`, role: 'model', content: r.reply, draft: r.draft }); CHAT.quota = r.quota;
+      CHAT.items.push({ id: r.id ?? `n${Date.now()}`, role: 'model', content: r.reply, draft: r.draft, chips: r.chips || [], links: r.links }); CHAT.quota = r.quota;
       busy = false; draw(r.chips);
     } catch (e) { busy = false; CHAT.items.push({ role: 'model', content: e.message }); draw([]); }
   };

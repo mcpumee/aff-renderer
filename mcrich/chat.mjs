@@ -51,6 +51,7 @@ ${styleList()}
 ผู้ใช้: ช่วยคิดไอเดีย → ริช: "ได้เลยค่า ✨ ขายอะไรอยู่น้า?" chips: ["ของกิน","เสื้อผ้า","ของเล่น"]
 ผู้ใช้: ขอไอเดียคลิปขายของเล่น → ริช: "ของเล่นต้องคลิปเปิดกล่องสุ่มเลยค่า ลุ้นฉ่ำ เด็กๆ ชอบมาก 🎁 เอาแบบนี้ไหมน้า?" + draft คลิป v_mystery
 ผู้ใช้: ราคาเท่าไหร่ → ริช: "คลิปนี้ประมาณ 12-20 ดาวค่า ยังไม่ตัดจนกว่าจะกดยืนยันน้า"
+ปุ่มที่ผู้ใช้เห็นมีแค่: ปุ่มใน "chips" และปุ่มสร้างงานจาก "draft" เท่านั้น · ถ้าพูดให้กดปุ่ม ต้องมี chips หรือ draft จริงเสมอ · ทุกครั้งที่ถามคำถาม ให้ใส่ chips เป็นคำตอบที่กดได้ 2-3 ข้อ
 ถ้าผู้ใช้อยากสร้างงาน หรือคุณแนะนำงานชิ้นที่ชัดเจน ให้ใส่ "draft" เพื่อให้ผู้ใช้กดสร้างต่อได้ทันที (ไม่ตัดดาวจนกว่าเขาจะยืนยันเอง) ถ้าไม่ใช่ให้ draft เป็น null
 ตอบเป็น JSON เท่านั้น: {"reply":"ข้อความตอบ","draft":null หรือ {"kind":"image|video","style":"id จากรายการ","goal":"sell|aff|promo|content|pr","product":"ชื่อสินค้า/เรื่อง","headline":"ข้อความบนภาพ (ถ้าเป็นภาพ)","price":"","details":"รายละเอียด","label":"ปุ่ม เช่น สร้างโปสเตอร์นี้"},"chips":["ตัวเลือกคำตอบสั้นๆ ให้ผู้ใช้กดตอบคำถามของคุณ 2-3 ข้อ ข้อละไม่เกิน 12 ตัวอักษร"]}`;
 }
@@ -98,20 +99,31 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
           details: String(draft.details || '').slice(0, 600), label: String(draft.label || 'สร้างงานนี้').slice(0, 30),
         } : null;
       }
-      out = { reply: String(o.reply || '').slice(0, 3000) || out.reply, draft, chips: (Array.isArray(o.chips) ? o.chips : []).map((c) => String(c).trim().slice(0, 40)).filter(Boolean).slice(0, 3) };
+      if (draft) draft.est = estStars(draft);
+      let chips = (Array.isArray(o.chips) ? o.chips : []).map((c) => String(c).trim().slice(0, 40)).filter(Boolean).slice(0, 3);
+      // ริชบอกให้กดปุ่ม/เลือก แต่ไม่ได้ให้ปุ่มมา → เติมปุ่มพื้นฐานให้ (ทั้งเว็บและ LINE)
+      if (!draft && !chips.length && /กด|เลือก|ปุ่ม|\?|ไหม|มั้ย/.test(String(o.reply || ''))) chips = ['ทำภาพขายของ', 'ทำคลิปขายของ', 'ขอไอเดียหน่อย'];
+      out = { reply: String(o.reply || '').slice(0, 3000) || out.reply, draft, chips };
     } catch (e) { log('chat fail', uid, e.message.slice(0, 300)); }
-    await q('INSERT INTO chat_messages(user_id,role,content,draft,channel) VALUES($1,$2,$3,$4,$5)', [uid, 'model', out.reply, out.draft, channel]);
+    const ins = await q('INSERT INTO chat_messages(user_id,role,content,draft,channel,chips) VALUES($1,$2,$3,$4,$5,$6) RETURNING id', [uid, 'model', out.reply, out.draft, channel, out.chips || []]);
+    out.id = ins.rows[0]?.id;
     return out;
   }
 
   // ---------- เว็บ ----------
   app.get('/api/chat', auth, wrap(async (req, res) => {
-    const rows = (await q('SELECT id, role, content, draft, channel, created_at FROM chat_messages WHERE user_id=$1 ORDER BY id DESC LIMIT 60', [req.uid])).rows.reverse();
+    const rows = (await q('SELECT id, role, content, draft, channel, chips, created_at FROM chat_messages WHERE user_id=$1 ORDER BY id DESC LIMIT 60', [req.uid])).rows.reverse()
+      .map((r) => (r.draft && !r.draft.est ? { ...r, draft: { ...r.draft, est: estStars(r.draft) } } : r));
     res.json({ items: rows, quota: await quota(req.uid), oa: oaReady() && OA_ID() ? { id: OA_ID(), url: `https://line.me/R/ti/p/${encodeURIComponent(OA_ID())}` } : null, ready: !!KEY() });
   }));
   app.post('/api/chat', auth, wrap(async (req, res) => {
     const text = String(req.body?.text || '').trim().slice(0, 1000);
     if (!text) return res.status(400).json({ error: 'พิมพ์ข้อความก่อน' });
+    // คำสั่งเดียวกับใน LINE
+    if (/^(ดาว|เช็คดาว|ยอดดาว)$/.test(text)) {
+      const m = await me(req.uid);
+      return res.json({ reply: `⭐ ดาวคงเหลือ ${m.stars} ดาว\nภาพฟรีเหลือ ${m.freeImages.today + m.freeImages.welcome} ภาพ`, draft: null, chips: [], links: [{ label: 'เติมดาว', href: '#topup' }], local: true, quota: await quota(req.uid) });
+    }
     if (!KEY()) return res.status(503).json({ error: 'ผู้ช่วย AI กำลังตั้งค่า' });
     const qu = await quota(req.uid);
     if (qu.left <= 0) return res.status(429).json({ error: `วันนี้คุยครบ ${qu.max} ข้อความแล้ว พรุ่งนี้มาคุยกันใหม่นะ` });

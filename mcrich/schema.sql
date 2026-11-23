@@ -268,3 +268,14 @@ CREATE INDEX IF NOT EXISTS viral_items_src ON viral_items(source, fetched_at DES
 UPDATE viral_items SET source='ytpopular' WHERE source='youtube' AND NOT (meta ? 'groups');
 -- ตัวอย่างผลงานของการ์ดแนวงานฮิต {status, kind, file, poster, photoWork, workId, error, at}
 ALTER TABLE trends ADD COLUMN IF NOT EXISTS sample JSONB;
+-- ปุ่มตอบด่วนของน้องริช (ให้เว็บแสดงเหมือน LINE แม้รีเฟรช)
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS chips TEXT[] NOT NULL DEFAULT '{}';
+-- ภาพตัวอย่างของแต่ละแนวงานภาพ (แสดงตอนเลือกแนวงาน ขั้น 2)
+CREATE TABLE IF NOT EXISTS style_samples (
+  style      TEXT PRIMARY KEY,
+  file       TEXT NOT NULL DEFAULT '',
+  status     TEXT NOT NULL DEFAULT 'queued',
+  work_id    BIGINT,
+  error      TEXT NOT NULL DEFAULT '',
+  at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);

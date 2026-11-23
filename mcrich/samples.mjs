@@ -15,6 +15,26 @@ const DEMO = [
 ];
 const demoFor = (t) => DEMO.find((d) => d.tags.some((x) => (t.tags || []).includes(x))) || DEMO[1];
 
+// ข้อมูลตัวอย่างของแต่ละแนวงานภาพ (ให้ภาพตัวอย่างตรงประเภทงาน)
+const ORG = { org: 'องค์กรตัวอย่าง' };
+const STYLE_DEMO = {
+  poster_menu: { product: 'ข้าวมันไก่ต้ม', headline: 'เมนูแนะนำ อร่อยต้องลอง', price: '฿50' },
+  product_luxury: { product: 'เซรั่มวิตามินซี', details: 'ขวดแก้วหยด 30 ml' },
+  product_life: { product: 'แก้วเก็บความเย็นสแตนเลส', details: 'วางบนโต๊ะทำงาน แสงเช้า' },
+  sale_banner: { product: 'รองเท้าผ้าใบ', headline: 'ลดแรง 50%', price: 'เหลือ ฿390' },
+  aff_cover: { product: 'หม้อทอดไร้น้ำมัน', headline: 'ของมันต้องมี!' },
+  before_after: { product: 'น้ำยาขัดรองเท้า', headline: 'สะอาดเหมือนใหม่' },
+  shop_news: { product: 'ร้านกาแฟบ้านสวน', headline: 'เปิดใหม่!', price: 'ลด 20% สัปดาห์แรก' },
+  knowledge: { product: 'วิธีเก็บผักให้สดนาน', headline: '5 เคล็ดลับเก็บผักให้สด' },
+  pr_announce: { product: 'ประกาศวันหยุด', headline: 'ประกาศหยุดทำการ', price: 'วันที่ 5 ธันวาคม', info: ORG },
+  pr_event: { product: 'งานวันเด็ก', headline: 'ขอเชิญร่วมงานวันเด็ก', info: { ...ORG, date: '10 มกราคม', place: 'ลานกิจกรรม' } },
+  pr_news: { product: 'กิจกรรมปลูกป่าชายเลน', headline: 'ข่าวประชาสัมพันธ์', info: ORG },
+  pr_congrats: { product: 'ความสำเร็จของทีม', headline: 'ขอแสดงความยินดี', info: ORG },
+  pr_hiring: { product: 'รับสมัครพนักงานขาย', headline: 'รับสมัครงาน', price: 'หลายตำแหน่ง', info: ORG },
+  pr_festival: { product: 'วันขึ้นปีใหม่', headline: 'สวัสดีปีใหม่', info: ORG },
+  pr_condolence: { product: 'ไว้อาลัย', headline: 'ขอแสดงความเสียใจอย่างสุดซึ้ง', price: 'ด้วยความอาลัยยิ่ง', info: ORG },
+};
+
 export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
   const DIR = path.join(DATA_DIR, 'samples');
   fs.mkdirSync(DIR, { recursive: true });
@@ -92,6 +112,57 @@ export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
     }
     return null;
   }
+  // ---------- ภาพตัวอย่างของแต่ละแนวงานภาพ ----------
+  async function styleStep() {
+    const ids = Object.keys(STYLE_DEMO);
+    const rows = Object.fromEntries((await q('SELECT * FROM style_samples')).rows.map((r) => [r.style, r]));
+    const cur = ids.map((id) => rows[id]).find((r) => r?.status === 'render') || ids.map((id) => rows[id]).find((r) => r?.status === 'queued') || (ids.find((id) => !rows[id]) && { style: ids.find((id) => !rows[id]), status: 'new' });
+    if (!cur) return false;
+    const set = (o) => q(`INSERT INTO style_samples(style,file,status,work_id,error,at) VALUES($1,$2,$3,$4,$5,now())
+      ON CONFLICT (style) DO UPDATE SET file=EXCLUDED.file, status=EXCLUDED.status, work_id=EXCLUDED.work_id, error=EXCLUDED.error, at=now()`, [cur.style, o.file ?? cur.file ?? '', o.status, o.work_id ?? null, o.error || '']);
+    if (cur.status !== 'render') {
+      const d = STYLE_DEMO[cur.style];
+      const r = await create.createInternal(await sysUser(), { kind: 'image', style: cur.style, goal: cur.style.startsWith('pr_') ? 'pr' : 'sell', tier: 'std', versions: 1, tone: 'เป็นกันเอง', ...d }, [], 'ตัวอย่างแนวงาน', { system: true });
+      await set(r.error ? { status: 'failed', error: r.error } : { status: 'render', work_id: r.id });
+      return true;
+    }
+    const w = await work(cur.work_id);
+    if (!w || w.status === 'failed') { await set({ status: 'failed', error: w?.error || 'สร้างไม่สำเร็จ' }); return true; }
+    if (w.status !== 'done') { if (Date.now() - new Date(cur.at) > 30 * 60e3) await set({ status: 'failed', error: 'ใช้เวลานานเกินไป' }); return true; }
+    const f = w.files?.[0];
+    const src = f && path.join(create.WORK_DIR, path.basename(f.thumb || f.name));
+    if (!src || !fs.existsSync(src)) { await set({ status: 'failed', error: 'ไม่มีไฟล์' }); return true; }
+    const file = `s-${cur.style}-${Date.now().toString(36)}${path.extname(src)}`;
+    fs.copyFileSync(src, path.join(DIR, file));
+    if (cur.file) fs.rm(path.join(DIR, path.basename(cur.file)), () => {});
+    await set({ status: 'done', file, work_id: w.id });
+    log('style sample done', cur.style);
+    return true;
+  }
+  app.get('/api/style-samples', auth, wrap(async (_req, res) => {
+    const img = Object.fromEntries((await q("SELECT style, file, at FROM style_samples WHERE file<>''")).rows.map((r) => [r.style, `api/style-samples/${r.style}?v=${new Date(r.at).getTime()}`]));
+    const vid = {};
+    for (const t of (await q("SELECT id, style, sample FROM trends WHERE active AND sample->>'poster' IS NOT NULL ORDER BY sort, id")).rows) if (!vid[t.style]) vid[t.style] = `api/trends/${t.id}/sample?poster=1&v=${t.sample.at}`;
+    res.setHeader('cache-control', 'private, max-age=300');
+    res.json({ image: img, video: vid });
+  }));
+  app.get('/api/style-samples/:style', auth, wrap(async (req, res) => {
+    const r = (await q('SELECT file FROM style_samples WHERE style=$1', [String(req.params.style)])).rows[0];
+    const f = r?.file && path.join(DIR, path.basename(r.file));
+    if (!f || !fs.existsSync(f)) return res.status(404).end();
+    res.setHeader('cache-control', 'private, max-age=86400'); res.sendFile(f);
+  }));
+  app.get('/api/admin/style-samples', auth, admin, wrap(async (_req, res) => {
+    const rows = Object.fromEntries((await q('SELECT * FROM style_samples')).rows.map((r) => [r.style, r]));
+    res.json({ items: Object.keys(STYLE_DEMO).map((id) => ({ style: id, status: rows[id]?.status || 'none', error: rows[id]?.error || '', src: rows[id]?.file ? `api/style-samples/${id}?v=${new Date(rows[id].at).getTime()}` : '' })) });
+  }));
+  app.post('/api/admin/style-samples/:style', auth, admin, wrap(async (req, res) => {
+    if (!STYLE_DEMO[req.params.style]) return res.status(404).json({ error: 'ไม่พบแนวงาน' });
+    await q(`INSERT INTO style_samples(style,status) VALUES($1,'queued') ON CONFLICT (style) DO UPDATE SET status='queued', error='', at=now() WHERE style_samples.status<>'render'`, [req.params.style]);
+    setTimeout(() => tick(), 500);
+    res.json({ ok: true });
+  }));
+
   let busy = false;
   async function tick() {
     if (busy) return; busy = true;
@@ -100,6 +171,7 @@ export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
       const rows = (await q("SELECT * FROM trends WHERE active ORDER BY sort, id")).rows;
       const cur = rows.find((t) => ['photo', 'render'].includes(t.sample?.status)) || rows.find((t) => t.sample?.status === 'queued') || rows.find((t) => !t.sample);
       if (cur) await step(cur);
+      await styleStep(); // ภาพตัวอย่างแนวงานภาพ ทำคู่ขนานทีละแบบ
     } catch (e) { log('sample tick', e.message); } finally { busy = false; }
   }
 

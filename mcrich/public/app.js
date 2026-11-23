@@ -25,7 +25,10 @@ function toast(msg) {
 const go = (r) => { if (location.hash !== '#' + r) location.hash = r; else route(); };
 
 const ICON = {
-  star: '<svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" fill="#C8F94A"/></svg>',
+  chev: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true" style="flex:none;color:var(--muted)"><path d="M9 5l7 7-7 7"/></svg>',
+  play: '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/></svg>',
+  send: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
+  star: '<svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" fill="#C6FF36"/></svg>',
   back: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>',
   home: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 11l9-7 9 7v9H3z"/></svg>',
   works: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M10 9l5 3-5 3z"/></svg>',
@@ -38,16 +41,60 @@ const ICON = {
 
 const topbar = (title, back) => `<header class="top">
   ${back ? `<div class="row" style="gap:4px"><a class="back" href="#${back}" aria-label="ย้อนกลับ">${ICON.back}</a><h1 style="font-size:18px">${esc(title)}</h1></div>`
-    : `<div class="brand"><span class="mark">Mc</span>Rich</div>`}
+    : `<a class="brand" href="#home" style="text-decoration:none;color:var(--fg)" aria-label="Mc Rich หน้าหลัก">${RICH('head', 34)}<span>Mc <em>Rich</em></span></a>`}
   ${ME ? `<a class="pill num" href="#stars">${ICON.star}${num(ME.stars)} ดาว</a>` : ''}
 </header>`;
 const nav = (cur) => `<nav class="tab" aria-label="เมนูหลัก"><div class="in">
   <a href="#home" ${cur === 'home' ? 'aria-current="page"' : ''}>${ICON.home}หน้าหลัก</a>
   <a href="#works" ${cur === 'works' ? 'aria-current="page"' : ''}>${ICON.works}ผลงาน</a>
   <a href="#create" aria-label="สร้างผลงาน" ${cur === 'create' ? 'aria-current="page"' : ''}><span class="plus">${ICON.plus}</span>สร้าง</a>
-  <a href="#chat" ${cur === 'chat' ? 'aria-current="page"' : ''}>${ICON.chat}แชท</a>
+  <a href="#chat" ${cur === 'chat' ? 'aria-current="page"' : ''}>${RICH('head', 24, 'navbot')}แชท</a>
   <a href="#profile" ${cur === 'profile' ? 'aria-current="page"' : ''}>${ICON.user}โปรไฟล์</a>
 </div></nav>`;
+
+// ---------- Rich Robot (มาสคอต) · ตัวละครเดียวกันทุกหน้า ต่างกันแค่ท่าทาง ----------
+// head: หัว (โลโก้/อวตาร) · wave: ทักทาย · think: กำลังคิด · cheer: สำเร็จ · create: ชู + สร้าง · empty: ว่าง/ยังไม่มีข้อมูล
+const RICH_DEFS = `<defs>
+  <radialGradient id="rgShell" cx="38%" cy="28%" r="80%"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".62" stop-color="#EEF0F3"/><stop offset="1" stop-color="#BFC4CC"/></radialGradient>
+  <radialGradient id="rgVisor" cx="45%" cy="30%" r="85%"><stop offset="0" stop-color="#2C3037"/><stop offset=".7" stop-color="#0D0F12"/><stop offset="1" stop-color="#050607"/></radialGradient>
+  <radialGradient id="rgLime" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#E9FF9E"/><stop offset=".55" stop-color="#C6FF36"/><stop offset="1" stop-color="#7FB80F"/></radialGradient>
+  <filter id="rgGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>`;
+function richFace(mood) {
+  const e = { happy: '<path d="M70 98q9-11 18 0M112 98q9-11 18 0" />', open: '<ellipse cx="79" cy="95" rx="7" ry="9" fill="#C6FF36" stroke="none" class="rb-eye"/><ellipse cx="121" cy="95" rx="7" ry="9" fill="#C6FF36" stroke="none" class="rb-eye"/>',
+    wink: '<path d="M70 98q9-11 18 0"/><ellipse cx="121" cy="95" rx="7" ry="9" fill="#C6FF36" stroke="none" class="rb-eye"/>',
+    think: '<ellipse cx="84" cy="90" rx="6.5" ry="8" fill="#C6FF36" stroke="none" class="rb-eye"/><ellipse cx="124" cy="90" rx="6.5" ry="8" fill="#C6FF36" stroke="none" class="rb-eye"/>',
+    calm: '<path d="M71 96h16M113 96h16"/>' }[mood] || '';
+  const mouth = mood === 'think' ? '<path d="M94 118q6 3 12 0"/>' : mood === 'calm' ? '<path d="M93 116q7 4 14 0"/>' : '<path d="M88 113q12 11 24 0"/>';
+  return `<g fill="none" stroke="#C6FF36" stroke-width="5" stroke-linecap="round" filter="url(#rgGlow)">${e}${mouth}</g>`;
+}
+function richHead(mood) {
+  return `<g class="rb-head"><line x1="100" y1="40" x2="100" y2="18" stroke="#2A2D33" stroke-width="5" stroke-linecap="round"/><circle cx="100" cy="15" r="9" fill="url(#rgShell)"/>
+    <rect x="22" y="72" width="22" height="46" rx="11" fill="#2A2D33"/><rect x="156" y="72" width="22" height="46" rx="11" fill="#2A2D33"/>
+    <rect x="25" y="80" width="6" height="30" rx="3" fill="#C6FF36" filter="url(#rgGlow)"/><rect x="169" y="80" width="6" height="30" rx="3" fill="#C6FF36" filter="url(#rgGlow)"/>
+    <rect x="34" y="38" width="132" height="112" rx="52" fill="url(#rgShell)"/>
+    <rect x="50" y="58" width="100" height="76" rx="36" fill="url(#rgVisor)"/>
+    <path d="M62 70q16-9 40-8" stroke="rgba(255,255,255,.22)" stroke-width="5" stroke-linecap="round" fill="none"/>
+    ${richFace(mood)}</g>`;
+}
+function RICH(pose = 'wave', size = 96, cls = '') {
+  if (pose === 'head') return `<svg class="rich ${cls}" width="${size}" height="${size}" viewBox="14 0 172 160" aria-hidden="true">${RICH_DEFS}${richHead('happy')}</svg>`;
+  const mood = { wave: 'happy', think: 'think', cheer: 'wink', create: 'happy', empty: 'calm' }[pose] || 'happy';
+  const body = `<ellipse cx="100" cy="246" rx="44" ry="7" fill="rgba(0,0,0,.35)"/>
+    <rect x="62" y="150" width="76" height="72" rx="30" fill="url(#rgShell)"/><circle cx="100" cy="180" r="9" fill="url(#rgLime)" filter="url(#rgGlow)"/>
+    <rect x="72" y="214" width="20" height="26" rx="10" fill="url(#rgShell)"/><rect x="108" y="214" width="20" height="26" rx="10" fill="url(#rgShell)"/>`;
+  const arm = (x, y, rot, extra = '') => `<g transform="translate(${x} ${y}) rotate(${rot})"><rect x="-9" y="0" width="18" height="44" rx="9" fill="url(#rgShell)"/><circle cx="0" cy="48" r="12" fill="url(#rgShell)"/>${extra}</g>`;
+  const arms = {
+    wave: arm(66, 160, 28) + `<g class="rb-wave">${arm(136, 160, -150)}</g>`,
+    think: arm(66, 160, 28) + arm(132, 162, 150, ''),
+    cheer: arm(64, 160, 150) + arm(136, 160, -150, '<rect x="-4" y="54" width="8" height="16" rx="4" fill="url(#rgShell)"/>'),
+    create: arm(66, 160, 28) + arm(136, 160, -125) + `<g class="rb-plus" transform="translate(168 118)"><circle r="24" fill="url(#rgLime)" filter="url(#rgGlow)"/><path d="M0-11v22M-11 0h22" stroke="#121316" stroke-width="6" stroke-linecap="round"/></g>`,
+    empty: arm(66, 160, 20) + arm(134, 160, -20),
+  }[pose] || '';
+  const bubble = pose === 'think' ? `<g class="rb-dots" transform="translate(150 22)"><rect x="-6" y="-14" width="52" height="28" rx="14" fill="#202127" stroke="#30323B"/><circle cx="8" cy="0" r="4" fill="#C6FF36"/><circle cx="20" cy="0" r="4" fill="#C6FF36"/><circle cx="32" cy="0" r="4" fill="#C6FF36"/></g>` : '';
+  return `<svg class="rich rich-${pose} ${cls}" width="${size}" height="${Math.round(size * 1.25)}" viewBox="0 0 200 250" aria-hidden="true">${RICH_DEFS}<g class="rb-bob">${body}${arms}${richHead(mood)}</g>${bubble}</svg>`;
+}
+const richState = (pose, title, sub = '', action = '') => `<div class="rstate">${RICH(pose, 120)}<h2>${title}</h2>${sub ? `<p class="muted">${sub}</p>` : ''}${action}</div>`;
 
 // ---------- ความสนใจ ----------
 const INTEREST_GROUPS = [
@@ -87,8 +134,9 @@ function interestsView(mode) {
 function loginView(err) {
   const msg = { notready: 'ช่องทางนี้ยังไม่เปิดใช้งาน', state: 'หมดเวลา ลองกดเข้าสู่ระบบใหม่', fail: 'เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง' }[err];
   app.innerHTML = `<div class="login">
-    <div class="brand" style="font-size:24px"><span class="mark" style="width:44px;height:44px;font-size:18px">Mc</span>Rich</div>
-    <div style="display:flex;flex-direction:column;gap:12px;margin-top:24px">
+    <div class="brand" style="font-size:22px">${RICH('head', 42)}<span>Mc <em>Rich</em></span></div>
+    <div style="display:flex;justify-content:center;margin-top:4px">${RICH('wave', 150)}</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
       <h1 style="font-size:31px">ภาพและคลิปขายของ<br>ทำเสร็จในแอปเดียว</h1>
       <p style="color:var(--muted2)">โปสเตอร์ เมนู คลิปเปิดกล่อง ละครสั้น รีวิวด้วยอวตาร พร้อมแคปชั่น แล้วโพสต์ลงเพจ IG TikTok ได้เลย</p>
     </div>
@@ -103,18 +151,25 @@ function loginView(err) {
 }
 
 async function homeView() {
+  const hour = new Date().getHours();
+  const greet = hour < 11 ? 'อรุณสวัสดิ์' : hour < 17 ? 'สวัสดี' : 'สวัสดีตอนเย็น';
+  const promo = !ME.brand?.shopName
+    ? `<a class="promo" href="#brand">${RICH('create', 40)}<span><b>ตั้งชุดแบรนด์ครั้งเดียว</b><small class="muted">ทุกผลงานจะใส่ชื่อร้าน โลโก้ และสีของคุณ</small></span>${ICON.chev}</a>`
+    : `<a class="promo" href="#profile">${RICH('cheer', 40)}<span><b>ชวนเพื่อน รับ 20 ดาว</b><small class="muted">โค้ดของคุณ ${esc(ME.referralCode)}</small></span>${ICON.chev}</a>`;
   app.innerHTML = `${topbar()}<main>
-    <section class="hero">
-      <span style="font-size:13px;color:var(--muted);font-weight:600">สวัสดี ${esc(ME.name)}${ME.brand?.shopName ? ' · ' + esc(ME.brand.shopName) : ''}</span>
-      <h1 style="font-size:24px">วันนี้อยากทำอะไรให้ร้านปัง?</h1>
-      <a class="btn" href="#create">+ สร้างผลงานใหม่</a>
-      <div class="row between muted"><span>ภาพฟรีวันนี้ เหลือ ${ME.freeImages.today}</span><span>ภาพฟรีต้อนรับ เหลือ ${ME.freeImages.welcome}/10</span></div>
+    <section class="hero2">
+      <div class="hello"><div><span class="muted" style="font-size:14px">${greet} ${esc(ME.name)}</span><h1>วันนี้สร้างอะไรดี?</h1></div>${RICH('wave', 104)}</div>
+      <a class="btn cta" href="#create?new=1">${ICON.plus}สร้างผลงานใหม่</a>
+      <div class="quota"><span>ภาพฟรีวันนี้ <b>${ME.freeImages.today}</b></span><span>ภาพฟรีต้อนรับ <b>${ME.freeImages.welcome}/10</b></span></div>
     </section>
-    <section id="vBox" style="display:flex;flex-direction:column;gap:10px"><h2>🔥 ไวรัลสไตล์คุณ</h2><p class="muted">กำลังโหลด…</p></section>
-    <section style="display:flex;flex-direction:column;gap:10px"><div class="row between"><h2 id="th">แนวงานฮิต</h2><a href="#interests" style="font-size:14px">ปรับความสนใจ</a></div>
+    <nav class="quick" aria-label="ทางลัด">
+      <a href="#viral"><span class="qi">${ICON.play}</span><span><b>วิดีโอไวรัล</b><small>ไอเดียตามกระแส</small></span></a>
+      <a href="#chat"><span class="qi" style="overflow:hidden">${RICH('head', 30)}</span><span><b>คุยกับริช</b><small>ถามไอเดีย แคปชั่น</small></span></a>
+    </nav>
+    <section id="vBox" style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2>ไวรัลสไตล์คุณ</h2></div><p class="muted">กำลังโหลด…</p></section>
+    <section style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2 id="th">แนวงานฮิต</h2><a href="#interests">ปรับความสนใจ</a></div>
       <div class="grid3" id="trends"><p class="muted">กำลังโหลด…</p></div></section>
-    ${!ME.brand?.shopName ? `<a class="card" href="#brand" style="text-decoration:none;color:var(--fg)"><b>ตั้งค่าชุดแบรนด์ให้เสร็จ</b><span class="muted">ใส่ชื่อร้าน โลโก้ สี และช่องทางสั่งซื้อครั้งเดียว ทุกผลงานจะออกมาเป็นสไตล์ร้านคุณ</span></a>` : ''}
-    <a class="card" href="#profile" style="text-decoration:none;color:var(--fg);background:#1C2410;border-color:#3A4A18"><b>ชวนเพื่อน รับคนละ 20 ดาว</b><span class="muted">เมื่อเพื่อนเติมดาวครั้งแรก · โค้ดของคุณ ${esc(ME.referralCode)}</span></a>
+    ${promo}
   </main>${nav('home')}`;
   api('api/trends').then((t) => {
     $('#th').textContent = t.personalized ? 'แนวงานฮิต ตรงกับคุณ' : 'แนวงานฮิต';
@@ -153,7 +208,7 @@ async function viralBox(el, o = {}) {
     const google = st.pf === 'google';
     const tab = (t) => `<button type="button" class="chip" data-vpf="${t.key}" aria-pressed="${t.key === st.pf}" style="white-space:nowrap;flex:none">${esc(t.label)}</button>`;
     const chip = (k, label) => `<button type="button" class="chip" data-vg="${k}" aria-pressed="${st.g === k}" style="white-space:nowrap;flex:none;min-height:32px;padding:4px 12px;font-size:13px">${label}</button>`;
-    el.innerHTML = `${o.home ? `<div class="row between"><h2>🔥 ไวรัลสไตล์คุณ</h2><a href="#viral?pf=${st.pf}&g=${st.g}" style="font-size:14px">ดูทั้งหมด ›</a></div>` : ''}
+    el.innerHTML = `${o.home ? `<div class="sec-h"><h2>ไวรัลสไตล์คุณ</h2><a href="#viral?pf=${st.pf}&g=${st.g}">ดูทั้งหมด</a></div>` : ''}
       <div class="hs" role="tablist" aria-label="แพลตฟอร์ม" style="padding-bottom:0">${d.tabs.map(tab).join('')}</div>
       ${d.myChips.length ? `<div class="hs" style="padding-bottom:0">${d.myChips.length > 1 ? chip('mine', '✨ ทุกสไตล์ของฉัน') : ''}${d.myChips.map((c) => chip(c.key, `${c.emoji} ${esc(c.label)}`)).join('')}</div>` : ''}
       ${d.fallback ? '<span class="muted" style="font-size:13px">สไตล์นี้กำลังอัปเดต · ระหว่างนี้ดูคลิปมาแรงบนแพลตฟอร์มนี้ไปก่อน</span>' : ''}
@@ -162,7 +217,7 @@ async function viralBox(el, o = {}) {
       ${!o.home && !google ? `<div class="row" style="gap:8px">${['hot', 'new'].map((k) => `<button type="button" class="chip" data-vs="${k}" aria-pressed="${st.sort === k}" style="min-height:32px;padding:4px 12px;font-size:13px">${k === 'hot' ? '🔥 มาแรง' : '🆕 ใหม่สุด'}</button>`).join('')}</div>` : ''}
       <div class="vgrid" style="display:grid;grid-template-columns:${google ? '1fr' : `repeat(auto-fill,minmax(${o.home ? 104 : 150}px,1fr))`};gap:12px 10px">
         ${st.items.length ? st.items.map((x, i) => (google ? trendRow(x, i) : clipCard(x).replace('class="vcard"', 'class="vcard" style="width:auto"'))).join('')
-          : d.filling ? '<p class="muted">กำลังอัปเดตคลิปล่าสุด อีกสักครู่จะขึ้นเอง</p>' : `<p class="muted">ยังไม่มีคลิป${d.myChips.length ? 'ในสไตล์นี้' : ''}บน ${esc(d.tabs.find((t) => t.key === st.pf)?.label || '')} ลองแพลตฟอร์มอื่น หรือกลับมาใหม่อีกสักพัก</p>`}</div>
+          : `<div style="grid-column:1/-1">${richState(d.filling ? 'think' : 'empty', d.filling ? 'ริชกำลังหาคลิปให้' : 'ยังไม่มีคลิปในสไตล์นี้', d.filling ? 'อีกสักครู่จะขึ้นเอง' : `ลองแพลตฟอร์มอื่น หรือกลับมาใหม่อีกสักพัก`)}</div>`}</div>
       ${!o.home && st.items.length < d.total ? '<button type="button" class="btn dark" data-vmore>ดูเพิ่ม</button>' : ''}`;
     el.querySelectorAll('[data-vpf]').forEach((b) => b.onclick = () => { st.retry = 0; st.pf = b.dataset.vpf; savePf(st.pf); load(true).catch((e) => toast(e.message)); });
     el.querySelectorAll('[data-vg]').forEach((b) => b.onclick = () => { st.retry = 0; st.g = b.dataset.vg; load(true).catch((e) => toast(e.message)); });
@@ -259,7 +314,7 @@ function profileView(qs) {
     <div class="list">
       <a href="#interests"><span><b>ความสนใจ</b><br><span class="muted">${esc(iSum)}</span></span><span aria-hidden="true">แก้ไข ›</span></a>
       <a href="#brand"><span><b>ชุดแบรนด์</b><br><span class="muted">${ME.brand?.shopName ? esc(ME.brand.shopName) : 'โลโก้ สี ฟอนต์ ชื่อร้าน ช่องทางสั่งซื้อ'}</span></span><span aria-hidden="true">›</span></a>
-      <a href="#auto"><span><b>โหมดอัตโนมัติ 🤖</b><br><span class="muted">สร้างคอนเทนต์ให้เองตามวัน-เวลา คุมงบดาวต่อเดือน</span></span><span aria-hidden="true">›</span></a>
+      <a href="#auto"><span><b>โหมดอัตโนมัติ</b><br><span class="muted">สร้างคอนเทนต์ให้เองตามวัน-เวลา คุมงบดาวต่อเดือน</span></span><span aria-hidden="true">›</span></a>
       <a href="#links"><span><b>ลิงก์ของฉัน · สถิติคลิก</b><br><span class="muted">ลิงก์สั้นนับคลิกแยกแพลตฟอร์ม</span></span><span aria-hidden="true">›</span></a>
       <a href="#tags"><span><b>แฮชแท็กประจำ</b><br><span class="muted">${(ME.hashtags || []).length} แท็ก · ติ๊กใช้ได้ตอนสร้าง</span></span><span aria-hidden="true">›</span></a>
     </div>
@@ -1095,10 +1150,10 @@ const PLAT = [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', '
 const daysLeft = (d) => Math.max(0, Math.ceil((new Date(d) - Date.now()) / 864e5));
 const WSTAT = { queued: ['รอคิว', 'b-lime'], working: ['กำลังสร้าง', 'b-lime'], review: ['รอตรวจซับ', 'b-warn'], done: ['เสร็จแล้ว', 'b-ok'], failed: ['ไม่สำเร็จ', 'b-warn'] };
 async function worksView() {
-  app.innerHTML = `${topbar()}<main><div class="row between"><h1 style="font-size:22px">ผลงานของฉัน</h1><span class="row" style="gap:8px"><a class="btn dark sm" href="#plan">📅 ปฏิทิน</a><a class="btn dark sm" href="#auto">🤖 อัตโนมัติ</a><a class="btn sm" href="#create?new=1">+ สร้าง</a></span></div>
+  app.innerHTML = `${topbar()}<main><div class="row between" style="flex-wrap:wrap;gap:10px"><h1 style="font-size:22px;white-space:nowrap">ผลงานของฉัน</h1><span class="row" style="gap:8px"><a class="btn dark sm" href="#plan">ปฏิทิน</a><a class="btn dark sm" href="#auto">อัตโนมัติ</a><a class="btn sm" href="#create?new=1">+ สร้าง</a></span></div>
     <div id="wl" class="grid2"><p class="muted">กำลังโหลด…</p></div></main>${nav('works')}`;
   const { items } = await api('api/works');
-  if (!items.length) { $('#wl').outerHTML = `<div class="soon card"><h2>ยังไม่มีผลงาน</h2><p class="muted">สร้างภาพแรกได้เลย มีภาพฟรีให้ ${ME.freeImages.today + ME.freeImages.welcome} ภาพ</p><a class="btn" href="#create?new=1">สร้างภาพแรก</a></div>`; return; }
+  if (!items.length) { $('#wl').outerHTML = richState('create', 'ยังไม่มีผลงาน', `มีภาพฟรีให้ ${ME.freeImages.today + ME.freeImages.welcome} ภาพ ลองสร้างชิ้นแรกกับริชเลย`, '<a class="btn cta" href="#create?new=1">สร้างผลงานแรก</a>'); return; }
   $('#wl').innerHTML = items.map((w) => `<a class="wcard" href="#work?id=${w.id}">
     <div class="wthumb">${w.files[0] ? `<img src="${w.files[0].thumb}" alt="" loading="lazy">` : `<span class="muted">${w.purged ? 'ไฟล์ถูกลบแล้ว' : WSTAT[w.status]?.[0] || ''}</span>`}
       ${w.kind === 'video' ? '<span class="cnt">▶ คลิป</span>' : w.files.length > 1 ? `<span class="cnt">${w.files.length}</span>` : ''}</div>
@@ -1115,7 +1170,7 @@ async function workView(qs) {
   let w = await api(`api/works/${id}`);
   if (['queued', 'working'].includes(w.status)) {
     $('main').innerHTML = `<section class="hero" style="align-items:center;text-align:center;gap:14px;padding:32px 18px">
-      <div class="spin" aria-hidden="true"></div><h2 id="pst">${w.status === 'queued' ? 'รอคิวสร้าง…' : w.kind === 'video' ? (w.progress?.stage || 'กำลังเริ่ม…') : 'AI กำลังสร้างภาพ…'}</h2>
+      ${RICH('think', 110)}<h2 id="pst">${w.status === 'queued' ? 'รอคิวสร้าง…' : w.kind === 'video' ? (w.progress?.stage || 'กำลังเริ่ม…') : 'AI กำลังสร้างภาพ…'}</h2>
       ${w.kind === 'video' ? `<div class="pbar" aria-hidden="true"><i id="pbar" style="width:${w.progress?.pct || 2}%"></i></div>` : ''}
       <p class="muted">${esc(w.styleLabel)} · ${w.kind === 'video' ? `คลิป ${w.params?.length || 30} วิ · ประมาณ 2–5 นาที` : `${w.versions} แบบ · ประมาณ 20–60 วินาที`}<br>ออกจากหน้านี้ได้ เสร็จแล้วดูที่เมนูผลงาน</p></section>`;
     const t0 = Date.now();
@@ -1350,7 +1405,7 @@ async function autoView(qs) {
     <section class="card"><b>ให้ Mc Rich ทำคอนเทนต์ให้เอง 🤖</b>
       <span class="muted">ตั้งสินค้า วัน และเวลาโพสต์ ระบบจะสร้างภาพ/คลิปให้ล่วงหน้า ${d.leadMin} นาที หมุนแนวไม่ซ้ำ แล้วเตือนให้โพสต์ตามเวลา ตัดดาวเฉพาะตอนสร้างจริง และไม่เกินเพดานที่ตั้งไว้</span></section>
     ${d.items.length ? `<div class="list">${d.items.map((p) => `<div style="display:flex;gap:12px;align-items:flex-start">
-      ${p.thumb ? `<img src="${p.thumb}" alt="" style="width:52px;height:52px;object-fit:cover;border-radius:10px">` : '<span style="font-size:30px">🤖</span>'}
+      ${p.thumb ? `<img src="${p.thumb}" alt="" style="width:52px;height:52px;object-fit:cover;border-radius:10px">` : RICH('head', 44)}
       <span style="flex:1;min-width:0"><b>${esc(p.name)}</b><br>
         <span class="muted">${p.days.map((x) => DAYS[x]).join(' ')} · ${esc(p.time)} น. · ${p.styles.length} แนว</span><br>
         <span class="muted">เดือนนี้ใช้ ${num(p.spent)}/${num(p.cap)} ดาว · ประมาณ ${num(p.estMonth)} ดาว/เดือน · ทำไปแล้ว ${num(p.runs)} ชิ้น</span>
@@ -1441,50 +1496,76 @@ function openDraft(d) {
   if (d.kind === 'image') { const st = CAT?.styles?.find((x) => x.id === d.style); if (st) D.ratio = st.ratio; }
   REFS = []; REVS = []; VFILE = null; ITEMF = []; saveDraft(); go('create');
 }
-const bubble = (m) => `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}">${m.role === 'user' ? '' : '<span class="av" aria-hidden="true">🤖</span>'}
+const botAv = () => `<span class="av" aria-hidden="true">${RICH('head', 30)}</span>`;
+const bubble = (m) => `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}">${m.role === 'user' ? '' : botAv()}
   <div><div class="bb">${esc(m.content).replace(/\n/g, '<br>')}</div>
-  ${m.draft ? `<button type="button" class="btn sm" data-draft="${m.id ?? ''}" style="margin-top:6px">✨ ${esc(m.draft.label || 'สร้างงานนี้')}</button>` : ''}
-  ${m.channel === 'line' ? '<span class="muted" style="font-size:11px">ผ่าน LINE</span>' : ''}</div></div>`;
+  ${m.draft ? `<button type="button" class="btn sm" data-draft="${m.id ?? ''}" style="margin-top:8px">${ICON.plus}${esc(m.draft.label || 'สร้างงานนี้')}</button>` : ''}
+  ${m.channel === 'line' ? '<div class="meta">ผ่าน LINE</div>' : ''}</div></div>`;
+const CHAT_SUGG = [
+  ['ขายของออนไลน์', 'ช่วยคิดภาพหรือคลิปขายสินค้า'],
+  ['ทำ Affiliate', 'ป้ายยาให้คนกดลิงก์'],
+  ['โปรโมตร้าน', 'โพสต์เรียกลูกค้าเข้าร้าน'],
+  ['งานองค์กร', 'ประกาศ ประชาสัมพันธ์'],
+];
 async function chatView(qs) {
   const params = new URLSearchParams(qs || '');
-  app.innerHTML = `${topbar('น้องริช · ผู้ช่วย AI')}<main class="chat"><div id="msgs"><p class="muted">กำลังโหลด…</p></div></main>
-    <form class="chatbar" id="cf"><div id="chips" class="chips"></div><div class="row" style="gap:8px">
-      <input id="ct" type="text" maxlength="1000" placeholder="พิมพ์คุยกับริช…" autocomplete="off" aria-label="ข้อความ">
-      <button class="btn" style="width:auto;padding:0 18px" aria-label="ส่ง">ส่ง</button></div><span class="muted" id="cq" style="font-size:12px"></span></form>${nav('chat')}`;
+  app.innerHTML = `<header class="top chat-top"><div class="who"><span class="avbot">${RICH('head', 34)}</span><span style="display:flex;flex-direction:column;min-width:0"><b>น้องริช</b><small>ผู้ช่วย AI ของคุณ</small></span></div>
+      ${ME ? `<a class="pill num" href="#stars">${ICON.star}${num(ME.stars)} ดาว</a>` : ''}</header>
+    <main class="chat2"><div id="msgs" aria-live="polite"><div class="chat-hello">${RICH('think', 96)}<p class="muted">กำลังโหลด…</p></div></div></main>
+    <form class="composer" id="cf"><div class="in"><div id="chips" class="chips" role="group" aria-label="คำแนะนำ"></div>
+      <div class="box"><textarea id="ct" rows="1" maxlength="1000" placeholder="พิมพ์คุยกับริช…" aria-label="ข้อความถึงน้องริช" enterkeyhint="send"></textarea>
+        <button class="send" id="cs" type="submit" aria-label="ส่งข้อความ" disabled>${ICON.send}</button></div>
+      <div class="q"><span id="cq"></span><span id="cnote"></span></div></div></form>${nav('chat')}`;
+  // ---- ระยะหน้าจอ: กล่องพิมพ์ไม่ทับข้อความ, คีย์บอร์ดมือถือไม่บังกล่องพิมพ์ ----
+  const form = $('#cf'), ta = $('#ct');
+  let busy = false;
+  const setH = () => document.documentElement.style.setProperty('--composer-h', `${form.offsetHeight}px`);
+  const ro = window.ResizeObserver ? new ResizeObserver(setH) : null; ro?.observe(form); setH();
+  const vv = window.visualViewport;
+  const onVV = () => { if (!vv) return; const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); document.documentElement.style.setProperty('--kb', `${kb > 80 ? kb : 0}px`); document.body.classList.toggle('kb', kb > 80 || document.activeElement === ta && matchMedia('(pointer:coarse)').matches); };
+  vv?.addEventListener('resize', onVV); vv?.addEventListener('scroll', onVV);
+  ta.addEventListener('focus', onVV); ta.addEventListener('blur', () => setTimeout(onVV, 50));
+  const cleanup = () => { ro?.disconnect(); vv?.removeEventListener('resize', onVV); vv?.removeEventListener('scroll', onVV); document.body.classList.remove('kb'); document.documentElement.style.removeProperty('--kb'); window.removeEventListener('hashchange', cleanup); };
+  window.addEventListener('hashchange', cleanup);
+  const grow = () => { ta.style.height = 'auto'; ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`; $('#cs').disabled = !ta.value.trim() || busy; };
+  ta.addEventListener('input', grow);
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(pointer:fine)').matches) { e.preventDefault(); form.requestSubmit(); } });
+
   CHAT = await api('api/chat');
   if (params.get('draft') === 'last') {
     const d = [...CHAT.items].reverse().find((m) => m.draft);
     if (d) { if (!CAT) CAT = await api('api/create/catalog').catch(() => null); return openDraft(d.draft); }
   }
-  const starters = ['ขายของออนไลน์', 'ทำ Affiliate', 'โปรโมตร้าน', 'งานองค์กร'];
+  const scrollEnd = () => requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }));
   const draw = (chips) => {
     const items = CHAT.items;
-    $('#msgs').innerHTML = (items.length ? '' : `<div class="msg ai"><span class="av">🤖</span><div><div class="bb">ริชมาแล้วค่าา ✨<br>ขายอะไรอยู่น้า? บอกริชมา เดี๋ยวพาไปทำงานปังๆ ให้เลย</div></div></div>`)
-      + items.map(bubble).join('')
-      + (CHAT.oa && !items.length ? `<a class="card" href="${esc(CHAT.oa.url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><b>💬 คุยกับน้องริชใน LINE ก็ได้</b><span class="muted">เพิ่มเพื่อน ${esc(CHAT.oa.id)} รับแจ้งเตือนผลงานเสร็จและเวลาโพสต์</span></a>` : '');
-    $('#chips').innerHTML = (chips || (items.length ? [] : starters)).map((c) => `<button type="button" class="chip" data-chip="${esc(c)}" style="min-height:32px;font-size:13px;white-space:nowrap">${esc(c)}</button>`).join('');
+    $('#msgs').innerHTML = items.length ? items.map(bubble).join('') + (busy ? `<div class="msg ai typing">${botAv()}<div><div class="bb" aria-label="ริชกำลังพิมพ์"><i></i><i></i><i></i></div></div></div>` : '')
+      : `<div class="chat-hello">${RICH('wave', 112)}<h1>ริชพร้อมช่วยแล้ว</h1><p class="muted" style="font-size:14px">บอกว่าขายอะไรอยู่ ริชช่วยคิดภาพ คลิป และแคปชั่นให้</p>
+        <div class="sugg">${CHAT_SUGG.map(([t, d]) => `<button type="button" data-chip="${esc(t)}"><b>${esc(t)}</b><small>${esc(d)}</small></button>`).join('')}</div>
+        ${CHAT.oa ? `<a class="promo" href="${esc(CHAT.oa.url)}" target="_blank" rel="noopener" style="width:100%;margin-top:6px"><span class="qi" style="width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#06C755;color:#fff">${ICON.line}</span><span style="text-align:left"><b>คุยกับริชใน LINE ก็ได้</b><small class="muted">เพิ่มเพื่อน ${esc(CHAT.oa.id)} รับแจ้งเตือนผลงานเสร็จ</small></span>${ICON.chev}</a>` : ''}</div>`;
+    $('#chips').innerHTML = items.length && !busy ? (chips || []).map((c) => `<button type="button" class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('') : '';
     $('#cq').textContent = CHAT.ready ? `วันนี้คุยได้อีก ${CHAT.quota.left}/${CHAT.quota.max} ข้อความ` : 'ผู้ช่วย AI กำลังตั้งค่า';
+    $('#cnote').textContent = matchMedia('(pointer:fine)').matches ? 'Shift+Enter ขึ้นบรรทัดใหม่' : '';
     app.querySelectorAll('[data-chip]').forEach((b) => b.onclick = () => send(b.dataset.chip));
     app.querySelectorAll('[data-draft]').forEach((b) => b.onclick = async () => {
       const m = CHAT.items.find((x) => String(x.id ?? '') === b.dataset.draft && x.draft) || [...CHAT.items].reverse().find((x) => x.draft);
       if (!CAT) CAT = await api('api/create/catalog').catch(() => null);
       openDraft(m.draft);
     });
-    window.scrollTo(0, document.body.scrollHeight);
+    setH(); grow(); if (items.length) scrollEnd();
   };
   const send = async (text) => {
-    text = String(text || '').trim(); if (!text) return;
-    $('#ct').value = '';
+    text = String(text || '').trim(); if (!text || busy) return;
+    ta.value = ''; grow();
     CHAT.items.push({ role: 'user', content: text });
-    CHAT.items.push({ role: 'model', content: 'ริชกำลังพิมพ์…' });
-    draw([]);
+    busy = true; draw([]);
     try {
       const r = await api('api/chat', { method: 'POST', body: { text } });
-      CHAT.items.pop(); CHAT.items.push({ id: `n${Date.now()}`, role: 'model', content: r.reply, draft: r.draft }); CHAT.quota = r.quota;
-      draw(r.chips);
-    } catch (e) { CHAT.items.pop(); CHAT.items.push({ role: 'model', content: e.message }); draw([]); }
+      CHAT.items.push({ id: `n${Date.now()}`, role: 'model', content: r.reply, draft: r.draft }); CHAT.quota = r.quota;
+      busy = false; draw(r.chips);
+    } catch (e) { busy = false; CHAT.items.push({ role: 'model', content: e.message }); draw([]); }
   };
-  $('#cf').onsubmit = (e) => { e.preventDefault(); send($('#ct').value); };
+  form.onsubmit = (e) => { e.preventDefault(); send(ta.value); };
   draw();
 }
 
@@ -1527,7 +1608,7 @@ async function linksView() {
 // ---------- เงื่อนไข / ข้อมูลของฉัน (PDPA) ----------
 function termsView(again) {
   app.innerHTML = `<div class="login" style="gap:16px">
-    <div class="brand" style="font-size:22px"><span class="mark" style="width:40px;height:40px;font-size:16px">Mc</span>Rich</div>
+    <div class="brand" style="font-size:22px">${RICH('head', 40)}<span>Mc <em>Rich</em></span></div>
     <h1 style="font-size:26px;margin-top:12px">${again ? 'เราปรับปรุงเงื่อนไขการใช้งาน' : 'ก่อนเริ่มใช้งาน'}</h1>
     <p style="color:var(--muted2)">${again ? 'อ่านและกดยอมรับฉบับใหม่ก่อนใช้งานต่อนะ' : 'อ่านสรุปสั้นๆ แล้วกดยอมรับเพื่อเริ่มใช้ Mc Rich'}</p>
     <section class="card" style="gap:8px"><b>สรุปสำคัญ</b>

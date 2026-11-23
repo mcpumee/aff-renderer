@@ -261,7 +261,7 @@ function viralSheet(x, make) {
     <span class="muted">${x.source === 'gtrends' ? `🔥 คำค้นหามาแรง${x.traffic ? ` · ${esc(x.traffic)} ครั้ง` : ''}` : `🎬 ${PF[x.platform] || ''}${x.channel ? ' · ' + esc(x.channel) : ''}${x.views ? ` · ▶ ${views(x.views)}` : ''}${x.likes ? ` · ♥ ${views(x.likes)}` : ''}`}</span>
     ${i?.summary ? `<p style="margin:0;color:var(--muted2)">${esc(i.summary)}</p>` : ''}
     ${x.news ? `<a href="${esc(x.news.url)}" target="_blank" rel="noopener" class="card" style="text-decoration:none;color:var(--fg);padding:10px"><span style="font-size:14px">${esc(x.news.title)}</span><span class="muted" style="font-size:12px">${esc(x.news.source || 'ข่าว')} ↗</span></a>` : ''}
-    ${i ? `<section class="card" style="background:#1C2410;border-color:#3A4A18"><b>${esc(i.emoji)} ไอเดียเกาะกระแส · ${esc(i.label)}</b>
+    ${i ? `<section class="card" style="background:var(--acc-card);border-color:var(--acc-line)"><b>${esc(i.emoji)} ไอเดียเกาะกระแส · ${esc(i.label)}</b>
       <span style="font-size:17px;font-weight:700">"${esc(i.hook)}"</span><span class="muted">${esc(i.angle)}</span>
       ${i.product ? `<span class="muted" style="font-size:13px">เหมาะกับ: ${esc(i.product)}</span>` : ''}</section>` : '<span class="muted">AI กำลังคิดไอเดียสำหรับกระแสนี้…</span>'}
     <span class="muted" style="font-size:12px">เกาะกระแสอย่างสร้างสรรค์ ไม่อ้างว่าเกี่ยวข้องกับคนดังหรือแบรนด์ในข่าว และตรวจข้อมูลก่อนโพสต์</span>
@@ -325,9 +325,11 @@ function profileView(qs) {
         <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>TikTok</span><span>เร็วๆ นี้</span></span>
         <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>YouTube</span><span>เร็วๆ นี้</span></span>
       </div></section>
-    <section class="card" style="background:#1C2410;border-color:#3A4A18"><b>ชวนเพื่อน รับคนละ 20 ดาว</b>
+    <section class="card" style="background:var(--acc-card);border-color:var(--acc-line)"><b>ชวนเพื่อน รับคนละ 20 ดาว</b>
       <div class="row"><input type="text" id="inv" readonly value="${esc(inviteUrl)}" aria-label="ลิงก์ชวนเพื่อน"><button type="button" class="btn sm" id="copyInv">คัดลอก</button></div>
       <span class="muted">ชวนแล้ว ${ME.referred} คน · ได้ดาวเมื่อเพื่อนเติมดาวครั้งแรก</span></section>
+    <section class="card"><b>ธีมแอป</b><span class="muted">อัตโนมัติ = สว่างหรือมืดตามการตั้งค่าของมือถือ</span>
+      <div class="theme-seg">${[['auto', '🌓 อัตโนมัติ'], ['light', '☀️ กลางวัน'], ['dark', '🌙 มืด']].map(([k, l]) => `<button type="button" class="chip" data-theme-set="${k}" aria-pressed="${themeNow() === k}">${l}</button>`).join('')}</div></section>
     <div class="list"><a href="#mydata"><span><b>ข้อมูลและความเป็นส่วนตัว</b><br><span class="muted">ดาวน์โหลดข้อมูลของฉัน · ปิดบัญชี</span></span><span aria-hidden="true">›</span></a></div>
     <div class="row" style="justify-content:center;gap:16px;flex-wrap:wrap"><a href="terms" class="muted">เงื่อนไขการใช้</a><a href="privacy" class="muted">ความเป็นส่วนตัว</a><a href="refund" class="muted">การคืนเงิน</a></div>
     ${ME.admin ? '<a class="btn dark" href="#admin">หลังบ้านแอดมิน</a>' : ''}
@@ -592,7 +594,7 @@ async function adminDash() {
   const max = Math.max(1, ...d.days.map((x) => x.baht));
   $('main').innerHTML = `
     ${d.works.stuck ? `<div class="card" style="border-color:var(--warn)"><b>⚠️ งานค้างเกิน 30 นาที ${d.works.stuck} ชิ้น</b><a href="#admin?t=works&s=working">ดูรายการ ›</a></div>` : ''}
-    ${d.money.review ? `<a class="card" href="#admin?t=topups" style="text-decoration:none;color:inherit;border-color:var(--lime)"><b>สลิปรอตรวจ ${d.money.review} รายการ ›</b></a>` : ''}
+    ${d.money.review ? `<a class="card" href="#admin?t=topups" style="text-decoration:none;color:inherit;border-color:var(--lime-text)"><b>สลิปรอตรวจ ${d.money.review} รายการ ›</b></a>` : ''}
     <h2>รายได้ (เติมดาว)</h2>
     <div class="grid2">${kpi('วันนี้', '฿' + num(d.money.today))}${kpi('เดือนนี้', '฿' + num(d.money.month))}${kpi('ทั้งหมด', '฿' + num(d.money.total), `ลูกค้าจ่ายเงิน ${num(d.money.payers)} คน`)}${kpi('ดาวค้างในระบบ', num(d.stars.outstanding), 'ดาวที่ลูกค้ายังไม่ได้ใช้')}</div>
     <section class="card"><b>14 วันล่าสุด</b>
@@ -737,6 +739,20 @@ async function starsView() {
 
 // ---------- สร้างผลงาน (ภาพ) ----------
 let CAT = null;
+const themeNow = () => { try { const t = localStorage.getItem('mr_theme'); return t === 'light' || t === 'dark' ? t : 'auto'; } catch { return 'auto'; } };
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { if (t === 'auto') localStorage.removeItem('mr_theme'); else localStorage.setItem('mr_theme', t); } catch {}
+  const light = t === 'light' || (t === 'auto' && matchMedia('(prefers-color-scheme: light)').matches);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#F3F4F6' : '#15161B');
+}
+applyTheme(themeNow());
+matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => applyTheme(themeNow()));
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('[data-theme-set]'); if (!b) return;
+  applyTheme(b.dataset.themeSet);
+  document.querySelectorAll('[data-theme-set]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+});
 let D = null;        // ร่างงานที่กำลังสร้าง
 let REFS = [];       // ไฟล์ภาพอ้างอิง (อยู่ในหน่วยความจำ)
 let REVS = [];       // แคปรีวิว (คลิป)
@@ -1314,7 +1330,7 @@ function drawStep() {
     const price = (l) => CAT.video.prices[l] + (D.premiumVoice ? CAT.video.premiumExtra : 0);
     stepShell(`<h1 style="font-size:22px">ความยาวคลิป</h1>
       <div style="display:flex;flex-direction:column;gap:10px">${CAT.video.lengths.map((l) => `<button type="button" class="card opt tier" data-len="${l.id}" aria-pressed="${Number(D.length) === l.id}">
-        <span class="row between" style="width:100%"><b>${esc(l.label)}</b><b class="num" style="color:var(--lime)">${ICON.star}${price(l.id)} ดาว</b></span>
+        <span class="row between" style="width:100%"><b>${esc(l.label)}</b><b class="num" style="color:var(--lime-text)">${ICON.star}${price(l.id)} ดาว</b></span>
         <span class="muted">${{ 15: 'สั้น กระชับ เหมาะ Reels/TikTok ป้ายยาเร็ว', 30: 'ยอดนิยม เล่าจุดเด่นได้ครบ', 45: 'เล่าละเอียด เหมาะสินค้าราคาสูง' }[l.id] || ''}</span></button>`).join('')}</div>
       <p class="muted">คลิป 9:16 1080p พร้อมซับไทย ป้ายราคา และปุ่มชวนซื้อ · ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
     app.querySelectorAll('[data-len]').forEach((b) => b.onclick = () => { D.length = Number(b.dataset.len); drawStep(); });
@@ -1328,7 +1344,7 @@ function drawStep() {
         const dis = t.free && !free;
         return `<button type="button" class="card opt tier" data-tier="${t.id}" aria-pressed="${D.tier === t.id}" ${dis ? 'disabled' : ''}>
           <span class="row between" style="width:100%"><b>${esc(t.label)} <span class="muted">${esc(t.size)}</span></b>
-          <b class="num" style="color:var(--lime)">${t.free ? `ฟรี · เหลือ ${free}` : `${ICON.star}${cost(t)} ดาว`}</b></span>
+          <b class="num" style="color:var(--lime-text)">${t.free ? `ฟรี · เหลือ ${free}` : `${ICON.star}${cost(t)} ดาว`}</b></span>
           <span class="muted">${esc(t.note)}${dis ? ' · ภาพฟรีหมดแล้ว (ได้ใหม่พรุ่งนี้ 1 ภาพ)' : ''}</span></button>`;
       }).join('')}</div>
       ${D.tier !== 'free' ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>จำนวนภาพ (ได้หลายแบบให้เลือก)</h2>
@@ -1499,7 +1515,7 @@ async function workView(qs) {
     };
     if (w.params?.link) api(`api/stats/clicks?work=${w.id}`).then((st) => {
       const tot = st.byPlatform.reduce((a, b) => a + b.clicks, 0); const el = $('#wstats'); if (!el) return;
-      el.innerHTML = `<section class="card"><div class="row between"><b>คลิกลิงก์จากผลงานนี้</b><b class="num" style="font-size:22px;color:var(--lime)">${num(tot)}</b></div>
+      el.innerHTML = `<section class="card"><div class="row between"><b>คลิกลิงก์จากผลงานนี้</b><b class="num" style="font-size:22px;color:var(--lime-text)">${num(tot)}</b></div>
         ${bars(st.days)}<div class="chips">${st.byPlatform.map((p) => `<span class="chip" style="cursor:default">${esc(p.label)} ${num(p.clicks)}</span>`).join('')}</div>
         <span class="muted">นับจากลิงก์สั้นในแคปชั่น แยกตามแพลตฟอร์ม</span></section>`;
     }).catch(() => {});
@@ -1594,7 +1610,7 @@ async function schedCard(w, postNow) {
   const next = new Date(Date.now() + 3600e3); next.setMinutes(0, 0, 0);
   const due = postNow ? items.find((x) => x.platform === postNow && x.status === 'due') : null;
   el.innerHTML = `
-    ${due ? `<div class="card" style="background:#1C2410;border-color:var(--lime)"><b>📣 ถึงเวลาโพสต์ ${esc(due.platformLabel)}</b>
+    ${due ? `<div class="card" style="background:var(--acc-card);border-color:var(--lime-line)"><b>📣 ถึงเวลาโพสต์ ${esc(due.platformLabel)}</b>
       <span class="muted">1) บันทึกคลิป/ภาพ 2) คัดลอกแคปชั่น 3) เปิดแอป ${esc(due.platformLabel)} แล้วโพสต์</span>
       <div class="grid2"><button type="button" class="btn sm" id="dueCopy">คัดลอกแคปชั่น</button><button type="button" class="btn dark sm" id="dueDone">โพสต์แล้ว ✓</button></div></div>` : ''}
     <div class="row between"><b>ตั้งเวลาโพสต์</b><a href="#plan" style="font-size:14px">ปฏิทินโพสต์</a></div>
@@ -1869,7 +1885,7 @@ async function linksView() {
     <section class="hero"><div class="grid3">
       <div><span class="muted">คลิกทั้งหมด</span><br><b class="num" style="font-size:24px">${num(d.total.clicks)}</b></div>
       <div><span class="muted">คนไม่ซ้ำ</span><br><b class="num" style="font-size:24px">${num(d.total.uniques)}</b></div>
-      <div><span class="muted">7 วันล่าสุด</span><br><b class="num" style="font-size:24px;color:var(--lime)">${num(d.total.week)}</b></div></div>
+      <div><span class="muted">7 วันล่าสุด</span><br><b class="num" style="font-size:24px;color:var(--lime-text)">${num(d.total.week)}</b></div></div>
       ${bars(st.days)}
       ${st.byPlatform.length ? `<div class="chips">${st.byPlatform.map((p) => `<span class="chip" style="cursor:default">${esc(p.label)} ${num(p.clicks)}</span>`).join('')}</div>` : ''}</section>
     <section class="card"><b>ย่อลิงก์ใหม่</b><span class="muted">วางลิงก์ Affiliate หรือลิงก์ร้าน ได้ลิงก์สั้นที่นับคลิกได้ ทำแยกต่อแพลตฟอร์มจะรู้ว่าที่ไหนคนกดเยอะ</span>

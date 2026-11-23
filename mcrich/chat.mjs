@@ -1,6 +1,8 @@
 // Mc Rich — ผู้ช่วย AI "น้องริช" (แชทในแอป + LINE OA) และแจ้งเตือนผ่าน LINE
 import crypto from 'node:crypto';
-import sharp from 'sharp';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { STYLES, GOALS } from './create.mjs';
 import { VIDEO_STYLES, VIDEO_PRICE, DRAMA_PRICE } from './video.mjs';
 
@@ -12,7 +14,8 @@ const OA_TOKEN = () => process.env.LINEOA_TOKEN || '';
 const OA_ID = () => (process.env.LINEOA_ID || '').trim();
 const LINE_API = () => (process.env.LINE_API_URL || 'https://api.line.me').replace(/\/+$/, '');
 const LINE_DATA = () => (process.env.LINE_DATA_URL || process.env.LINE_API_URL || 'https://api-data.line.me').replace(/\/+$/, '');
-const RM_VERSION = 'v2';
+const RM_VERSION = 'v3';
+const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
 // บังคับรูปแบบคำตอบ (กันโมเดลตอบนอกรูปแบบ)
 const CHAT_SCHEMA = {
   type: 'OBJECT', required: ['reply'],
@@ -248,41 +251,19 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
   }));
 
   // ---------- ริชเมนู (เมนูล่างในแชท LINE) ----------
-  async function richMenuImage() {
-    const W = 2500, H = 1686, cw = W / 3, ch = H / 2;
-    // ไอคอนวาดเอง (ระบบเรนเดอร์ภาพไม่รองรับอีโมจิสี)
-    const icon = (k, cx, cy, c) => ({
-      create: `<circle cx="${cx}" cy="${cy}" r="110" fill="none" stroke="${c}" stroke-width="22"/><path d="M${cx - 55} ${cy}h110M${cx} ${cy - 55}v110" stroke="${c}" stroke-width="26" stroke-linecap="round"/>`,
-      works: `<rect x="${cx - 120}" y="${cy - 90}" width="240" height="180" rx="30" fill="none" stroke="${c}" stroke-width="22"/><path d="M${cx - 30} ${cy - 45}L${cx + 50} ${cy}L${cx - 30} ${cy + 45}Z" fill="${c}"/>`,
-      chat: `<path d="M${cx - 120} ${cy - 90}h240a30 30 0 0 1 30 30v110a30 30 0 0 1-30 30h-130l-70 55v-55h-40a30 30 0 0 1-30-30v-110a30 30 0 0 1 30-30z" fill="none" stroke="${c}" stroke-width="22" stroke-linejoin="round"/><circle cx="${cx - 55}" cy="${cy - 5}" r="17" fill="${c}"/><circle cx="${cx}" cy="${cy - 5}" r="17" fill="${c}"/><circle cx="${cx + 55}" cy="${cy - 5}" r="17" fill="${c}"/>`,
-      star: `<path d="M${cx} ${cy - 120}l35 75 82 10-60 57 16 82-73-41-73 41 16-82-60-57 82-10z" fill="${c}"/>`,
-      topup: `<rect x="${cx - 130}" y="${cy - 85}" width="260" height="170" rx="26" fill="none" stroke="${c}" stroke-width="22"/><path d="M${cx - 130} ${cy - 30}h260" stroke="${c}" stroke-width="26"/><path d="M${cx + 40} ${cy + 40}h50" stroke="${c}" stroke-width="22" stroke-linecap="round"/>`,
-      plan: `<rect x="${cx - 115}" y="${cy - 95}" width="230" height="205" rx="26" fill="none" stroke="${c}" stroke-width="22"/><path d="M${cx - 115} ${cy - 30}h230M${cx - 60} ${cy - 125}v55M${cx + 60} ${cy - 125}v55" stroke="${c}" stroke-width="22" stroke-linecap="round"/><path d="M${cx - 50} ${cy + 40}l35 35 70-75" fill="none" stroke="${c}" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>`,
-    }[k]);
-    const cells = [['create', 'สร้างงาน', 'ภาพ · คลิป'], ['works', 'ผลงานของฉัน', 'ดู · บันทึก'], ['chat', 'คุยน้องริช', 'ไอเดีย · แคปชั่น'],
-      ['star', 'ดาวของฉัน', 'เช็กยอด'], ['topup', 'เติมดาว', 'พร้อมเพย์'], ['plan', 'ปฏิทินโพสต์', 'ตั้งเวลา']];
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#0B0C0F"/>
-      ${cells.map(([k, t, sub], i) => { const x = (i % 3) * cw, y = Math.floor(i / 3) * ch, hi = i === 0;
-        return `<rect x="${x + 18}" y="${y + 18}" width="${cw - 36}" height="${ch - 36}" rx="48" fill="${hi ? '#C8F94A' : '#16181D'}" stroke="#2A2E36" stroke-width="4"/>
-        ${icon(k, x + cw / 2, y + 250, hi ? '#0B0B0D' : '#C8F94A')}
-        <text x="${x + cw / 2}" y="${y + 540}" font-size="112" font-weight="700" text-anchor="middle" fill="${hi ? '#0B0B0D' : '#FFFFFF'}" font-family="Garuda, Loma, sans-serif">${t}</text>
-        <text x="${x + cw / 2}" y="${y + 660}" font-size="70" text-anchor="middle" fill="${hi ? '#2B3A0B' : '#8B93A1'}" font-family="Garuda, Loma, sans-serif">${sub}</text>`; }).join('')}</svg>`;
-    return sharp(Buffer.from(svg)).png({ compressionLevel: 9 }).toBuffer();
-  }
+  // ภาพเมนู 3 ช่อง (2500×843) · สร้างงาน | วิดีโอไวรัล | คุยกับน้องริช
+  const richMenuImage = () => fs.promises.readFile(path.join(PUBLIC_DIR, 'img', 'richmenu.jpg'));
   async function installRichMenu() {
     const H = { authorization: `Bearer ${OA_TOKEN()}` };
     const list = await fetch(`${LINE_API()}/v2/bot/richmenu/list`, { headers: H }).then((r) => r.json()).catch(() => ({}));
-    const W = 2500, Hh = 1686, cw = Math.floor(W / 3), ch = Math.floor(Hh / 2);
-    const acts = [
-      { type: 'uri', uri: appUrl('create?new=1') }, { type: 'uri', uri: appUrl('works') }, { type: 'message', text: 'ริชช่วยหน่อย' },
-      { type: 'message', text: 'ดาว' }, { type: 'uri', uri: appUrl('topup') }, { type: 'uri', uri: appUrl('plan') },
-    ];
+    const W = 2500, Hh = 843, cw = Math.floor(W / 3), ch = Hh;
+    const acts = [{ type: 'uri', uri: appUrl('create?new=1') }, { type: 'uri', uri: appUrl('viral') }, { type: 'message', text: 'ริชช่วยหน่อย' }];
     const body = { size: { width: W, height: Hh }, selected: true, name: `mcrich-main-${RM_VERSION}`, chatBarText: 'เมนู Mc Rich',
-      areas: acts.map((a, i) => ({ bounds: { x: (i % 3) * cw, y: Math.floor(i / 3) * ch, width: cw, height: ch }, action: a })) };
+      areas: acts.map((a, i) => ({ bounds: { x: i * cw, y: 0, width: i === 2 ? W - 2 * cw : cw, height: ch }, action: a })) };
     const r = await fetch(`${LINE_API()}/v2/bot/richmenu`, { method: 'POST', headers: { ...H, 'content-type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.richMenuId) throw new Error(`richmenu ${r.status} ${JSON.stringify(j).slice(0, 200)}`);
-    const up = await fetch(`${LINE_DATA()}/v2/bot/richmenu/${j.richMenuId}/content`, { method: 'POST', headers: { ...H, 'content-type': 'image/png' }, body: await richMenuImage() });
+    const up = await fetch(`${LINE_DATA()}/v2/bot/richmenu/${j.richMenuId}/content`, { method: 'POST', headers: { ...H, 'content-type': 'image/jpeg' }, body: await richMenuImage() });
     if (!up.ok) throw new Error(`richmenu image ${up.status} ${(await up.text()).slice(0, 200)}`);
     const def = await fetch(`${LINE_API()}/v2/bot/user/all/richmenu/${j.richMenuId}`, { method: 'POST', headers: H });
     if (!def.ok) throw new Error(`richmenu default ${def.status}`);

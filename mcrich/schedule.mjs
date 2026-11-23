@@ -83,7 +83,7 @@ export function registerSchedule(app, { q, auth, wrap, log, PUBLIC_URL }) {
   // ทุก 1 นาที: รายการที่ถึงเวลา → แจ้งเตือน
   async function tick() {
     const { rows } = await q(`UPDATE schedules s SET status='due' FROM works w
-      WHERE s.status='scheduled' AND s.at <= now() + interval '30 seconds' AND w.id = s.work_id
+      WHERE s.status='scheduled' AND s.target_id IS NULL AND s.at <= now() + interval '30 seconds' AND w.id = s.work_id
       RETURNING s.id, s.user_id, s.work_id, s.platform, w.title`);
     for (const r of rows) {
       const n = await push(r.user_id, { title: `ถึงเวลาโพสต์ ${PLATFORMS[r.platform] || r.platform} 📣`, body: `${r.title || 'ผลงาน'} · แตะเพื่อเปิด คัดลอกแคปชั่นแล้วโพสต์ได้เลย`, url: `./#work?id=${r.work_id}&post=${r.platform}`, tag: `s${r.id}` }).catch(() => 0);

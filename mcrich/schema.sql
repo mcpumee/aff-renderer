@@ -293,3 +293,21 @@ CREATE TABLE IF NOT EXISTS avatars (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS avatars_user ON avatars(user_id);
+
+-- โพสต์ตรง: บัญชีโซเชียลที่เชื่อมไว้ (token เข้ารหัส)
+CREATE TABLE IF NOT EXISTS social_accounts (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,              -- youtube | fbpage | igbiz
+  ext_id     TEXT NOT NULL,
+  name       TEXT NOT NULL DEFAULT '',
+  token_enc  TEXT NOT NULL,
+  meta       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  broken     BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, kind, ext_id)
+);
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS target_id BIGINT REFERENCES social_accounts(id) ON DELETE SET NULL;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS opts JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS result JSONB;
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS error TEXT NOT NULL DEFAULT '';

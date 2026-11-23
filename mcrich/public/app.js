@@ -310,6 +310,7 @@ function profileView(qs) {
     <div class="list">
       <a href="#interests"><span><b>ความสนใจ</b><br><span class="muted">${esc(iSum)}</span></span><span aria-hidden="true">แก้ไข ›</span></a>
       <a href="#brand"><span><b>ชุดแบรนด์</b><br><span class="muted">${ME.brand?.shopName ? esc(ME.brand.shopName) : 'โลโก้ สี ฟอนต์ ชื่อร้าน ช่องทางสั่งซื้อ'}</span></span><span aria-hidden="true">›</span></a>
+      <a href="#social"><span><b>โพสต์ตรงจากแอป</b><br><span class="muted">เชื่อม YouTube · Facebook Page · Instagram แล้วโพสต์/ตั้งเวลาได้ในคลิกเดียว</span></span><span aria-hidden="true">›</span></a>
       <a href="#avatars"><span><b>อวตารของฉัน</b><br><span class="muted">ออกแบบคนเหมือนจริง เก็บไว้ใช้ทำวิดีโอพูดได้ 4 ภาษา</span></span><span aria-hidden="true">›</span></a>
       <a href="#auto"><span><b>โหมดอัตโนมัติ</b><br><span class="muted">สร้างคอนเทนต์ให้เองตามวัน-เวลา คุมงบดาวต่อเดือน</span></span><span aria-hidden="true">›</span></a>
       <a href="#links"><span><b>ลิงก์ของฉัน · สถิติคลิก</b><br><span class="muted">ลิงก์สั้นนับคลิกแยกแพลตฟอร์ม</span></span><span aria-hidden="true">›</span></a>
@@ -1618,7 +1619,8 @@ async function workView(qs) {
           <button type="button" class="btn ghost sm" id="copyAll">คัดลอกรวม (แคปชั่น + ลิงก์ + แฮชแท็ก)</button>
           <span class="muted">TikTok / IG ไม่ให้กดลิงก์ในแคปชั่น · คัดลอกลิงก์แยกไปวางในตะกร้า/ไบโอ/คอมเมนต์</span>`
           : '<button type="button" class="btn dark" id="copyCap">คัดลอกแคปชั่น + แฮชแท็ก</button>'}</section>` : ''}
-      <section class="card"><b>โพสต์ไปที่ไหนแล้ว</b><span class="muted">ติ๊กไว้ จะได้รู้ว่างานไหนโพสต์แล้ว (โพสต์ตรงจากแอปจะเปิดเร็วๆ นี้)</span>
+      ${w.purged ? '' : '<section class="card" id="pubcard"><b>โพสต์ตรง</b><span class="muted">กำลังโหลด…</span></section>'}
+      <section class="card"><b>โพสต์ไปที่ไหนแล้ว</b><span class="muted">ติ๊กไว้ จะได้รู้ว่างานไหนโพสต์แล้ว (โพสต์ตรงจะติ๊กให้อัตโนมัติ)</span>
         <div class="chips">${PLAT.map(([k, l]) => `<button type="button" class="chip" data-post="${k}" aria-pressed="${!!w.posted?.[k]}">${l}${w.posted?.[k] ? ' · ' + new Date(w.posted[k]).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : ''}</button>`).join('')}</div></section>
       <div id="wstats"></div>
       ${w.purged ? '' : '<button type="button" class="btn dark" id="toDrive">ส่งเข้า Google Drive</button>'}
@@ -1630,6 +1632,7 @@ async function workView(qs) {
       <button type="button" class="btn ghost" id="del">ลบผลงานนี้</button>`;
     const fx = $('#fixsubs'); if (fx) fx.onclick = () => subsEditor(w, qs);
     schedCard(w, new URLSearchParams(qs || '').get('post')).catch(() => {});
+    if (!w.purged) pubCard(w).catch(() => {});
     app.querySelectorAll('[data-cap]').forEach((b) => b.onclick = () => {
       app.querySelectorAll('[data-cap]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
       $('#cap').value = capText(b.dataset.cap);
@@ -1738,6 +1741,64 @@ function subsEditor(w, qs) {
 const PLAT_S = [['tiktok', 'TikTok'], ['facebook', 'Facebook'], ['instagram', 'Instagram'], ['youtube', 'YouTube'], ['line', 'LINE'], ['shopee', 'Shopee'], ['lazada', 'Lazada']];
 const localDT = (d) => { const x = new Date(d.getTime() - d.getTimezoneOffset() * 60e3); return x.toISOString().slice(0, 16); };
 const fmtWhen = (d) => new Date(d).toLocaleString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+// ---------- โพสต์ตรง ----------
+const SOC_ICON = { youtube: '▶️', fbpage: '📘', igbiz: '📸' };
+async function socialView(qs) {
+  const r0 = new URLSearchParams(qs || '').get('r');
+  const d = await api('api/social');
+  const msg = { ok: '✅ เชื่อมบัญชีแล้ว', fail: 'เชื่อมไม่สำเร็จ ลองใหม่อีกครั้ง (ต้องกดยอมรับทุกสิทธิ์)', nochannel: 'บัญชี Google นี้ยังไม่มีช่อง YouTube สร้างช่องก่อนแล้วเชื่อมใหม่', nopage: 'ไม่พบเพจที่คุณเป็นแอดมิน (Instagram ต้องเป็นบัญชีธุรกิจที่ผูกกับเพจ)', notready: 'ระบบยังไม่ได้ตั้งค่า แจ้งแอดมิน' }[r0];
+  const acc = d.accounts;
+  app.innerHTML = `${topbar('โพสต์ตรงจากแอป', 'profile')}<main>
+    ${msg ? `<section class="card"><b>${esc(msg)}</b></section>` : ''}
+    <p class="muted">เชื่อมบัญชีครั้งเดียว แล้วกด "โพสต์ตรง" ในหน้าผลงานได้เลย หรือตั้งเวลาให้ระบบโพสต์เอง · แคปชั่น + แฮชแท็กใส่ให้อัตโนมัติ</p>
+    <div class="list">${acc.length ? acc.map((a) => `<div><span>${SOC_ICON[a.kind] || ''} <b>${esc(a.name)}</b><br><span class="muted">${esc(a.label)}${a.broken ? ' · ⚠️ การเชื่อมต่อหมดอายุ เชื่อมใหม่' : ''}</span></span>
+      <button type="button" class="btn ghost sm" data-unlink="${a.id}">ยกเลิก</button></div>`).join('') : '<div class="muted">ยังไม่ได้เชื่อมบัญชี</div>'}</div>
+    <section class="card"><b>▶️ YouTube Shorts</b><span class="muted">โพสต์คลิปแนวตั้งเป็น Shorts ใส่ชื่อ คำอธิบาย แฮชแท็กให้</span>
+      ${d.ready.youtube ? '<a class="btn" href="social/youtube/connect">เชื่อม YouTube</a>' : '<span class="badge b-warn">ระบบกำลังตั้งค่า</span>'}</section>
+    <section class="card"><b>📘 Facebook Page + 📸 Instagram</b><span class="muted">โพสต์ลงเพจที่คุณเป็นแอดมิน (คลิป = Reels, ภาพ = โพสต์รูป) · Instagram ต้องเป็นบัญชีธุรกิจ/ครีเอเตอร์ที่ผูกกับเพจ</span>
+      ${d.ready.meta ? '<a class="btn" href="social/meta/connect">เชื่อม Facebook / Instagram</a>' : '<span class="badge b-warn">ระบบกำลังตั้งค่า</span>'}</section>
+    <p class="muted">TikTok: ยังโพสต์ตรงไม่ได้ (TikTok ต้องอนุมัติแอปก่อน) ใช้ปุ่มคัดลอกแคปชั่น + บันทึกคลิปไปก่อน</p>
+  </main>${nav('profile')}`;
+  app.querySelectorAll('[data-unlink]').forEach((b) => b.onclick = async () => {
+    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'แตะอีกครั้ง'; return; }
+    await api(`api/social/${b.dataset.unlink}`, { method: 'DELETE' }).catch((e) => toast(e.message)); socialView('');
+  });
+}
+async function pubCard(w) {
+  const el = $('#pubcard'); if (!el) return;
+  const [d, h] = await Promise.all([api('api/social'), api(`api/works/${w.id}/publish`)]);
+  const vid = w.kind === 'video';
+  const accs = d.accounts.filter((a) => !a.broken && (vid || a.kind !== 'youtube'));
+  const st = { scheduled: '⏳ รอโพสต์', posting: '🔄 กำลังโพสต์', posted: '✅ โพสต์แล้ว', failed: '⚠️ ไม่สำเร็จ', canceled: 'ยกเลิก' };
+  const hist = h.items.length ? `<div class="list">${h.items.map((x) => `<div><span><b>${esc(x.name || x.platform)}</b> · ${st[x.status] || x.status}<br><span class="muted">${new Date(x.at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}${x.error ? ' · ' + esc(x.error) : ''}</span></span>
+    ${x.result?.url ? `<a class="btn ghost sm" href="${esc(x.result.url)}" target="_blank" rel="noopener">เปิดดู</a>` : ''}</div>`).join('')}</div>` : '';
+  if (!accs.length) {
+    el.innerHTML = `<b>โพสต์ตรง</b><span class="muted">เชื่อม ${vid ? 'YouTube · ' : ''}Facebook Page · Instagram ครั้งเดียว แล้วโพสต์จากที่นี่ได้เลย</span><a class="btn dark" href="#social">เชื่อมบัญชี</a>${hist}`;
+    return;
+  }
+  el.innerHTML = `<b>โพสต์ตรง</b><span class="muted">เลือกบัญชี · แคปชั่นตามแพลตฟอร์ม + แฮชแท็กใส่ให้เอง</span>
+    <div class="chips">${accs.map((a) => `<button type="button" class="chip" data-tg="${a.id}" aria-pressed="false">${SOC_ICON[a.kind] || ''} ${esc(a.name)}</button>`).join('')}</div>
+    ${accs.some((a) => a.kind === 'youtube') ? `<label class="f" for="ytp">YouTube: การมองเห็น<select id="ytp"><option value="public">สาธารณะ</option><option value="unlisted">ไม่เป็นสาธารณะ (มีลิงก์ดูได้)</option><option value="private">ส่วนตัว</option></select></label>` : ''}
+    <label class="row between" for="pubLater"><span>ตั้งเวลาโพสต์</span><input id="pubLater" type="checkbox" class="sw-in"></label>
+    <input id="pubAt" type="datetime-local" hidden>
+    <button type="button" class="btn" id="pubGo">โพสต์เลย</button>${hist}`;
+  const sel = new Set();
+  el.querySelectorAll('[data-tg]').forEach((b) => b.onclick = () => { const id = Number(b.dataset.tg); if (sel.has(id)) sel.delete(id); else sel.add(id); b.setAttribute('aria-pressed', String(sel.has(id))); });
+  const later = $('#pubLater'), at = $('#pubAt'), go = $('#pubGo');
+  later.onchange = () => { at.hidden = !later.checked; go.textContent = later.checked ? 'ตั้งเวลาโพสต์' : 'โพสต์เลย'; if (later.checked && !at.value) { const t = new Date(Date.now() + 3600e3); t.setMinutes(t.getMinutes() - t.getTimezoneOffset()); at.value = t.toISOString().slice(0, 16); } };
+  go.onclick = async () => {
+    if (!sel.size) return toast('เลือกบัญชีที่จะโพสต์');
+    let when;
+    if (later.checked) { if (!at.value) return toast('เลือกเวลา'); when = new Date(at.value).toISOString(); }
+    go.disabled = true;
+    try {
+      const r = await api(`api/works/${w.id}/publish`, { method: 'POST', body: { targets: [...sel], at: when, privacy: $('#ytp')?.value } });
+      toast(when ? `ตั้งเวลาแล้ว ${r.n} บัญชี` : `กำลังโพสต์ ${r.n} บัญชี · เสร็จแล้วแจ้งเตือนทาง LINE`);
+      setTimeout(() => pubCard(w).catch(() => {}), 1500);
+      if (!when) { let n = 0; const iv = setInterval(() => { if (++n > 40 || !location.hash.startsWith('#work')) return clearInterval(iv); pubCard(w).then(() => {}).catch(() => {}); }, 8000); }
+    } catch (e) { toast(e.message); go.disabled = false; }
+  };
+}
 async function schedCard(w, postNow) {
   const el = $('#sched'); if (!el) return;
   const { items } = await api(`api/schedules?work=${w.id}`);
@@ -2180,6 +2241,7 @@ async function route() {
     case 'auto': return autoView(qs).catch((e) => toast(e.message));
     case 'brand': return brandView();
     case 'avatars': return avatarsView(qs).catch((e) => toast(e.message));
+    case 'social': return socialView(qs).catch((e) => toast(e.message));
     case 'tags': return tagsView();
     case 'stars': return starsView().catch((e) => toast(e.message));
     case 'topup': return topupView().catch((e) => toast(e.message));

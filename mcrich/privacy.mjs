@@ -59,6 +59,7 @@ export function registerPrivacy(app, { q, pool, auth, wrap, log, DATA_DIR, PUBLI
       autoPlans: await all('SELECT name, goal, product, styles, days, post_time, platforms, cap_month, active, created_at FROM auto_plans WHERE user_id=$1').catch(() => []),
       chat: await all('SELECT role, content, channel, created_at FROM chat_messages WHERE user_id=$1 ORDER BY id').catch(() => []),
       googleDrive: (await all('SELECT email, created_at FROM drive_accounts WHERE user_id=$1'))[0] || null,
+      socialAccounts: await all('SELECT kind, name, created_at FROM social_accounts WHERE user_id=$1'),
     };
     await q('INSERT INTO audit_log(user_id,action,detail) VALUES($1,$2,$3)', [uid, 'data_export', {}]);
     res.setHeader('content-disposition', `attachment; filename="mcrich-${u.public_id}.json"`);
@@ -83,7 +84,9 @@ export function registerPrivacy(app, { q, pool, auth, wrap, log, DATA_DIR, PUBLI
       for (const i of ids) await c.query('INSERT INTO closed_identities(hash) VALUES($1) ON CONFLICT DO NOTHING', [idHash(i.provider, i.subject)]);
       const bal = (await c.query('SELECT COALESCE(sum(delta),0)::int s FROM star_ledger WHERE user_id=$1', [uid])).rows[0].s;
       if (bal > 0) await c.query("INSERT INTO star_ledger(user_id,delta,kind,note) VALUES($1,$2,'closed','ปิดบัญชี')", [uid, -bal]);
-      for (const t of ['identities', 'profiles', 'free_quota', 'drive_accounts', 'schedules', 'push_subs', 'chat_messages', 'auto_plans', 'links', 'works']) {
+      // อวตาร (รูปหน้า) ลบไฟล์ด้วย
+      for (const r of (await c.query('SELECT file FROM avatars WHERE user_id=$1', [uid])).rows) fs.rm(path.join(DATA_DIR, 'avatars', path.basename(r.file)), { force: true }, () => {});
+      for (const t of ['identities', 'profiles', 'free_quota', 'drive_accounts', 'schedules', 'social_accounts', 'avatars', 'push_subs', 'chat_messages', 'auto_plans', 'links', 'works']) {
         await c.query(`DELETE FROM ${t} WHERE user_id=$1`, [uid]);
       }
       // เก็บไว้ตามกฎหมายบัญชี/ภาษี: star_ledger, topups (ใบเสร็จ) · ลบข้อมูลระบุตัวตนในโปรไฟล์ผู้ใช้

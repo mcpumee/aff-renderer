@@ -11,6 +11,8 @@ import { registerPay } from './pay.mjs';
 import { registerCreate } from './create.mjs';
 import { registerExtras } from './extras.mjs';
 import { registerSchedule } from './schedule.mjs';
+import { registerSocial } from './social.mjs';
+import { probe as probeVideo } from './video.mjs';
 import { registerChat } from './chat.mjs';
 import { registerAuto } from './auto.mjs';
 import { registerBackoffice } from './backoffice.mjs';
@@ -164,7 +166,7 @@ async function mergeUsers(c, from, into) {
   // โบนัสสมัคร/ชวนเพื่อนที่ซ้ำกันเก็บไว้ชุดเดียว (ของบัญชีหลัก)
   await c.query(`DELETE FROM star_ledger f WHERE f.user_id=$1 AND (f.kind='signup_bonus' AND EXISTS (SELECT 1 FROM star_ledger t WHERE t.user_id=$2 AND t.kind='signup_bonus')
     OR f.kind IN ('referral','refund') AND EXISTS (SELECT 1 FROM star_ledger t WHERE t.user_id=$2 AND t.kind=f.kind AND t.ref=f.ref))`, [from, into]);
-  for (const t of ['identities', 'star_ledger', 'topups', 'works', 'links', 'schedules', 'push_subs', 'chat_messages', 'auto_plans', 'audit_log']) {
+  for (const t of ['identities', 'star_ledger', 'topups', 'works', 'links', 'schedules', 'push_subs', 'chat_messages', 'auto_plans', 'audit_log', 'avatars']) {
     await c.query(`UPDATE ${t} SET user_id=$2 WHERE user_id=$1`, [from, into]);
   }
   await c.query('UPDATE users SET referred_by=$2 WHERE referred_by=$1 AND id<>$2', [from, into]);
@@ -177,6 +179,8 @@ async function mergeUsers(c, from, into) {
     FROM users f WHERE t.id=$2 AND f.id=$1`, [from, into]);
   await c.query('DELETE FROM profiles WHERE user_id=$1', [from]);
   await c.query('DELETE FROM free_quota WHERE user_id=$1', [from]);
+  await c.query('UPDATE social_accounts s SET user_id=$2 WHERE user_id=$1 AND NOT EXISTS (SELECT 1 FROM social_accounts t WHERE t.user_id=$2 AND t.kind=s.kind AND t.ext_id=s.ext_id)', [from, into]);
+  await c.query('DELETE FROM social_accounts WHERE user_id=$1', [from]);
   await c.query('DELETE FROM drive_accounts WHERE user_id=$1', [from]);
   await c.query(`UPDATE users SET name='รวมเข้ากับบัญชีอื่นแล้ว', avatar_url='', email='', banned=TRUE, is_admin=FALSE, deleted_at=now() WHERE id=$1`, [from]);
   await c.query('INSERT INTO audit_log(user_id,action,detail) VALUES($1,$2,$3)', [into, 'account_merge', { from }]);
@@ -401,6 +405,7 @@ const extras = registerExtras(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC_
 const sched = registerSchedule(app, { q, auth, wrap, log, PUBLIC_URL });
 const chat = registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL });
 sched.setNotify((uid, text) => chat.notifyLine(uid, text));
+const social = registerSocial(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC_URL, SECRET, makeToken, readToken, getCookie, setCookie, G_ID, G_SECRET, probe: probeVideo, notify: (uid, t) => chat.notifyLine(uid, t) });
 const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks: extras.hooks });
 const auto = registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, videoPrice: VIDEO_PRICE, notify: (uid, t) => chat.notifyLine(uid, t) });
 const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNED });
@@ -424,5 +429,5 @@ app.get(['/', '/index.html'], (_q, res) => { res.setHeader('cache-control', 'no-
 app.get('/sw.js', (_q, r) => { r.setHeader('cache-control', 'no-cache'); r.setHeader('service-worker-allowed', './'); r.sendFile(path.join(__dir, 'public', 'sw.js')); });
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 
-migrate().then(() => office.start()).then(() => { create.start(); sched.start(); chat.start(); auto.start(); priv.start(); viral.start(); samples.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
+migrate().then(() => office.start()).then(() => { create.start(); sched.start(); social.start(); chat.start(); auto.start(); priv.start(); viral.start(); samples.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

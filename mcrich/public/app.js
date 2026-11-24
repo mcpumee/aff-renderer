@@ -1431,13 +1431,16 @@ function drawStep() {
     $('#next').onclick = () => { D.step = 5; drawStep(); };
   } else if (s === 4) {
     const free = CAT.free.today + CAT.free.welcome;
-    if (D.tier === 'free' && !free) D.tier = 'std';
+    const rec = CAT.styles.find((x) => x.id === D.style)?.rec || 'std';
+    // เข้าหน้านี้ครั้งแรกของแต่ละแนว: เลือกให้ถูกที่สุดก่อน (ฟรีถ้ามีโควตา ไม่งั้นตามที่แนะนำ)
+    if (D.tierFor !== D.style) { D.tierFor = D.style; D.tier = free ? 'free' : rec; if (D.tier === 'free') D.versions = 1; }
+    if (D.tier === 'free' && !free) D.tier = rec;
     const cost = (t) => t.free ? 0 : t.stars * D.versions;
     stepShell(`<h1 style="font-size:22px">เลือกคุณภาพ</h1>
       <div style="display:flex;flex-direction:column;gap:10px">${CAT.tiers.map((t) => {
         const dis = t.free && !free;
         return `<button type="button" class="card opt tier" data-tier="${t.id}" aria-pressed="${D.tier === t.id}" ${dis ? 'disabled' : ''}>
-          <span class="row between" style="width:100%"><b>${esc(t.label)} <span class="muted">${esc(t.size)}</span></b>
+          <span class="row between" style="width:100%"><b>${esc(t.label)} <span class="muted">${esc(t.size)}</span>${t.id === rec ? ' <span class="badge b-lime">แนะนำงานนี้</span>' : ''}</b>
           <b class="num" style="color:var(--lime-text)">${t.free ? `ฟรี · เหลือ ${free}` : `${ICON.star}${cost(t)} ดาว`}</b></span>
           <span class="muted">${esc(t.note)}${dis ? ' · ภาพฟรีหมดแล้ว (ได้ใหม่พรุ่งนี้ 1 ภาพ)' : ''}</span></button>`;
       }).join('')}</div>

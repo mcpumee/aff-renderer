@@ -25,6 +25,9 @@ export const TIERS = [
   { id: 'pro4k', label: 'โปร 4K', note: 'สำหรับพิมพ์ป้าย ไวนิล', model: 'gemini-3-pro-image', size: '4K', stars: 16 },
 ];
 const MODEL_OVERRIDE = process.env.MCRICH_IMAGE_MODEL || '';
+// ระดับที่แนะนำตามงาน (ถูกที่สุดที่ยังได้ผลดี): ข้อความแน่น/อ่านบนจอใหญ่ → ชัดพิเศษ 2K · ที่เหลือ → มาตรฐาน 1K (ภาพฟรีใช้ได้ทุกงานถ้ายังมีโควตา)
+const REC_TIER = { poster_menu: 'hd', knowledge: 'hd', agent_plan: 'hd', agent_tips: 'hd', agent_compare: 'hd', pr_news: 'hd', pr_event: 'hd', pr_hiring: 'hd' };
+const recTier = (id) => REC_TIER[id] || 'std';
 
 export const GOALS = [
   { id: 'sell', label: 'ขายของตัวเอง', hint: 'ปิดการขาย ให้ทักแชท/สั่งซื้อ' },
@@ -398,7 +401,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     const m = await me(req.uid);
     res.json({
       ready: ready(), goals: GOALS, agentTypes: AGENT_TYPES.map(({ id, label }) => ({ id, label })), ratios: RATIOS, tones: TONES, concepts: CONCEPTS,
-      styles: STYLES.map(({ id, label, emoji, color, ratio, text, pr, agent }) => ({ id, label, emoji, color, ratio, text: !!text, pr: !!pr, agent: !!agent })),
+      styles: STYLES.map(({ id, label, emoji, color, ratio, text, pr, agent }) => ({ id, label, emoji, color, ratio, text: !!text, pr: !!pr, agent: !!agent, rec: recTier(id) })),
       tiers: TIERS.map(({ id, label, note, stars, free, size }) => ({ id, label, note, stars, free: !!free, size })),
       stars: m.stars, free: m.freeImages, keepDays: KEEP_DAYS,
       video: {

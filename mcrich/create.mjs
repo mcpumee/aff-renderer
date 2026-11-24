@@ -376,8 +376,8 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       return { video: true, style, tier: { id: 'info', free: false, stars: cost }, versions: 1, p, cost, ...cI };
     }
     if (style.id === 'v_film') {
-      const quality = b.quality === 'pro' ? 'pro' : 'std';
-      const epLen = FM.FILM_LENS.includes(Number(b.epLen)) ? Number(b.epLen) : 60;
+      const quality = FM.FILM_QUALITIES.includes(b.quality) ? b.quality : 'std';
+      const epLen = FM.FILM_LENS.includes(Number(b.epLen)) ? Number(b.epLen) : 30;
       Object.assign(p, { filmId: Math.max(0, Number(b.filmId) || 0), ep: Math.max(1, Number(b.ep) || 1), quality, epLen, dialogue: false, premium: false });
       if (!p.filmId) return { error: 'เลือกโปรเจกต์หนังก่อน' };
       const cost = FM.filmCost(quality, epLen);
@@ -1246,7 +1246,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     const last = ep.n >= f.episodes.length;
     try {
       stage('ใส่ซับ ดนตรี และการ์ดตอนต่อไป', 85);
-      const out = await V.render({ type: 'self', videoUrl: V.fileUrl(r.file), segments: r.segments, origVolume: 1, captionStyle: 'box', music, musicVolume: 0.1,
+      const out = await V.render({ type: 'self', videoUrl: V.fileUrl(r.file), segments: r.segments, origVolume: 1, captionStyle: 'box', music, musicVolume: p.quality === 'cine' ? 0.06 : 0.1,
         hookText: `EP.${ep.n} ${ep.script.hook ? ep.script.hook.split('\n')[0] : ep.title}`.slice(0, 50), cta: last ? 'จบบริบูรณ์ 🎬' : `ติดตาม EP.${ep.n + 1}\nกดติดตามไว้เลย`, metadata: { mcrich: w.id } },
       (s) => stage(s.status === 'queued' ? 'รอคิวตัดต่อ' : 'กำลังตัดต่อ', 85 + Math.round((s.progress || 0) * 0.1)));
       V.moveFile(out.mp4, final); if (out.jpg) fs.rm(out.jpg, () => {});

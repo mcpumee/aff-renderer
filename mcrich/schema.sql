@@ -279,6 +279,9 @@ CREATE TABLE IF NOT EXISTS style_samples (
   error      TEXT NOT NULL DEFAULT '',
   at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE style_samples ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'image';
+ALTER TABLE style_samples ADD COLUMN IF NOT EXISTS poster TEXT NOT NULL DEFAULT '';
+ALTER TABLE style_samples ADD COLUMN IF NOT EXISTS photo_work BIGINT;
 
 -- อวตารของผู้ใช้ (ออกแบบด้วย AI หรืออัปโหลดรูปตัวเอง) ใช้ซ้ำได้ทุกผลงาน
 CREATE TABLE IF NOT EXISTS avatars (

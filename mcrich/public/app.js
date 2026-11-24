@@ -232,6 +232,21 @@ async function viralView(qs) {
   if (ps.get('pf')) savePf(ps.get('pf'));
   await viralBox($('#vAll'), { pf: ps.get('pf') || '', g: ps.get('g') || 'mine' });
 }
+function sampleSheet(src, kind, label) {
+  if (!src) return;
+  const bg = document.createElement('div');
+  bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="ตัวอย่าง ${esc(label)}"><span class="grab" aria-hidden="true"></span>
+    ${kind === 'video' ? `<video src="${src}" autoplay loop playsinline controls style="width:100%;max-height:66vh;border-radius:14px;background:#000"></video>`
+      : `<img src="${src}" alt="ตัวอย่าง ${esc(label)}" style="width:100%;max-height:66vh;object-fit:contain;border-radius:14px;background:var(--s2)">`}
+    <b style="font-size:18px">${esc(label)}</b><span class="muted">ตัวอย่างที่สร้างด้วย Mc Rich · ผลงานของคุณจะใช้สินค้า/ข้อมูลของคุณเอง</span>
+    <button type="button" class="btn" id="scl">ปิด</button></div>`;
+  const close = () => { bg.remove(); window.removeEventListener('hashchange', close); };
+  bg.onclick = (e) => { if (e.target === bg) close(); };
+  window.addEventListener('hashchange', close);
+  document.body.appendChild(bg);
+  bg.querySelector('#scl').onclick = close;
+}
 function trendSheet(x) {
   if (!x) return;
   const go_ = () => go(`create?style=${encodeURIComponent(x.style)}&kind=${encodeURIComponent(x.kind)}`);
@@ -667,7 +682,7 @@ async function adminPrices() {
     <section class="card"><b>คลิปทั่วไป (ดาว/คลิป)</b><div class="grid2">${Object.keys(p.video).map((k) => inp('v_' + k, p.video[k], df.video[k], `${k} วินาที`)).join('')}${inp('pv', p.premiumVoice, df.premiumVoice, 'บวกเสียงพรีเมียม')}</div></section>
     <section class="card"><b>ละครสั้น (ดาว/เรื่อง)</b><div class="grid2">${Object.keys(p.drama).map((k) => inp('d_' + k, p.drama[k], df.drama[k], `${k} ฉาก`)).join('')}</div></section>
     ${p.series ? `<section class="card"><b>ซีรีส์แนวตั้ง (ดาว/ตอน)</b><div class="grid2">${Object.keys(p.series).map((k) => inp('sr_' + k, p.series[k], df.series[k], `${k} ฉาก`)).join('')}</div></section>` : ''}
-    ${p.filmStd ? `<section class="card"><b>หนังสั้นแนวตั้ง (ดาว/ตอน)</b><span class="muted" style="font-size:12px">ต้นทุนโดยประมาณต่อตอน 60 วิ: มาตรฐาน ~$3.4 ≈ 120 บาท · คุณภาพสูง ~$6.3 ≈ 220 บาท (ภาพ + Kling + ขยับปาก)</span><div class="grid2">${Object.keys(p.filmStd).map((k) => inp('fs_' + k, p.filmStd[k], df.filmStd[k], `มาตรฐาน ${k} วิ`)).join('')}${Object.keys(p.filmPro).map((k) => inp('fp_' + k, p.filmPro[k], df.filmPro[k], `คุณภาพสูง ${k} วิ`)).join('')}</div></section>` : ''}
+    ${p.filmStd ? `<section class="card"><b>หนังสั้นแนวตั้ง (ดาว/ตอน)</b><span class="muted" style="font-size:12px">ต้นทุนต่อตอน 30 วิ (ประมาณ): มาตรฐาน ~$0.9 ≈ 32 บาท · คุณภาพสูง ~$3.2 ≈ 110 บาท · หนังโรง Seedance ~$15 ≈ 520 บาท (60 วิ และ 90 วิ คูณ 2 และ 3)</span><div class="grid2">${Object.keys(p.filmStd).map((k) => inp('fs_' + k, p.filmStd[k], df.filmStd[k], `มาตรฐาน ${k} วิ`)).join('')}${Object.keys(p.filmPro).map((k) => inp('fp_' + k, p.filmPro[k], df.filmPro[k], `คุณภาพสูง ${k} วิ`)).join('')}${Object.keys(p.filmCine || {}).map((k) => inp('fc_' + k, p.filmCine[k], df.filmCine?.[k] ?? p.filmCine[k], `หนังโรง ${k} วิ`)).join('')}</div></section>` : ''}
     ${p.avatar ? `<section class="card"><b>วิดีโออวตาร (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน: มาตรฐาน (Kling) ~$0.84/นาที ≈ 30 บาท + ท่าทางฐาน ~15 บาท/อวตาร (ครั้งเดียว) · พรีเมียม (HeyGen) ~$3/นาที ≈ 105 บาท · ออกแบบภาพ ~2 บาท/ครั้ง</span><div class="grid2">${Object.keys(p.avatar).map((k) => inp('av_' + k, p.avatar[k], df.avatar[k], `มาตรฐาน ${k} วิ`)).join('')}${Object.keys(p.avatarPro || {}).map((k) => inp('avp_' + k, p.avatarPro[k], df.avatarPro[k], `พรีเมียม ${k} วิ`)).join('')}${inp('avd_std', p.avatarDesign.std, df.avatarDesign.std, 'ออกแบบอวตาร/ครั้ง')}</div></section>` : ''}
     ${p.motion ? `<section class="card"><b>คลิป AI ภาพเคลื่อนไหวจริง (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน Omni Flash ราว $0.10/วิ (720p) ≈ 35 บาท/คลิป 10 วิ</span><div class="grid2">${inp('mo_std', p.motion.std, df.motion.std, '~10 วิ 720p')}</div></section>` : ''}
     <p class="muted" style="font-size:13px">มีผลทันทีกับงานใหม่ งานที่สั่งไปแล้วไม่เปลี่ยน · ราคาต้นทุน+80% คำนวณไว้แล้วในค่าเดิม</p>
@@ -676,7 +691,7 @@ async function adminPrices() {
   $('#psave').onclick = async () => {
     const body = { tiers: Object.fromEntries(Object.keys(p.tiers).map((k) => [k, val('t_' + k)])), video: Object.fromEntries(Object.keys(p.video).map((k) => [k, val('v_' + k)])),
       drama: Object.fromEntries(Object.keys(p.drama).map((k) => [k, val('d_' + k)])), premiumVoice: val('pv'),
-      ...(p.series ? { series: Object.fromEntries(Object.keys(p.series).map((k) => [k, val('sr_' + k)])) } : {}), ...(p.motion ? { motion: { std: val('mo_std') } } : {}), ...(p.avatar ? { avatar: Object.fromEntries(Object.keys(p.avatar).map((k) => [k, val('av_' + k)])), avatarPro: Object.fromEntries(Object.keys(p.avatarPro || {}).map((k) => [k, val('avp_' + k)])), avatarDesign: { std: val('avd_std') } } : {}), ...(p.filmStd ? { filmStd: Object.fromEntries(Object.keys(p.filmStd).map((k) => [k, val('fs_' + k)])), filmPro: Object.fromEntries(Object.keys(p.filmPro).map((k) => [k, val('fp_' + k)])) } : {}) };
+      ...(p.series ? { series: Object.fromEntries(Object.keys(p.series).map((k) => [k, val('sr_' + k)])) } : {}), ...(p.motion ? { motion: { std: val('mo_std') } } : {}), ...(p.avatar ? { avatar: Object.fromEntries(Object.keys(p.avatar).map((k) => [k, val('av_' + k)])), avatarPro: Object.fromEntries(Object.keys(p.avatarPro || {}).map((k) => [k, val('avp_' + k)])), avatarDesign: { std: val('avd_std') } } : {}), ...(p.filmStd ? { filmStd: Object.fromEntries(Object.keys(p.filmStd).map((k) => [k, val('fs_' + k)])), filmPro: Object.fromEntries(Object.keys(p.filmPro).map((k) => [k, val('fp_' + k)])), ...(p.filmCine ? { filmCine: Object.fromEntries(Object.keys(p.filmCine).map((k) => [k, val('fc_' + k)])) } : {}) } : {}) };
     try { await api('api/admin/prices', { method: 'PUT', body }); CAT = null; toast('บันทึกราคาแล้ว'); adminPrices(); } catch (e) { toast(e.message); }
   };
   $('#preset').onclick = async () => { if (!confirm('คืนราคาทั้งหมดเป็นค่าเดิม?')) return; await api('api/admin/prices', { method: 'PUT', body: { reset: true } }); CAT = null; toast('คืนค่าแล้ว'); adminPrices(); };
@@ -698,13 +713,17 @@ async function adminTrends() {
       <span class="muted" style="flex:1;font-size:13px">ตัวอย่าง: ${({ done: '✓ พร้อมแล้ว', queued: 'รอคิวสร้าง', photo: 'กำลังสร้างรูปสินค้า…', render: 'กำลังสร้างตัวอย่าง…', failed: `✗ ไม่สำเร็จ ${esc(t.sample?.error || '')}` })[t.sample?.status] || 'ยังไม่มี (ระบบจะสร้างให้อัตโนมัติ)'}</span>
       <button type="button" class="btn dark sm" data-smp>${t.sample?.has ? 'สร้างใหม่' : 'สร้างตัวอย่าง'}</button></div>` : ''}</section>`;
   const ss = await api('api/admin/style-samples').catch(() => ({ items: [] }));
-  const ST = { done: '✓', render: 'กำลังสร้าง…', queued: 'รอคิว', failed: '✗ ไม่สำเร็จ', none: 'รอสร้างอัตโนมัติ' };
+  const ST = { done: '✓', render: 'กำลังสร้าง…', photo: 'สร้างรูปสินค้า…', queued: 'รอคิว', failed: '✗ ไม่สำเร็จ', none: 'รอสร้างอัตโนมัติ', trend: 'ใช้ตัวอย่างจากการ์ดแนวงานฮิต', manual: 'รออัปโหลด / เลือกจากผลงาน' };
   $('main').innerHTML = `<p class="muted">การ์ดเทรนด์หน้าแรก เรียงตามลำดับ แสดงตามความสนใจของลูกค้า</p>${row(null)}${d.items.map(row).join('')}
-    <h2>ภาพตัวอย่างแนวงานภาพ (ขั้นเลือกแนวงาน)</h2><span class="muted" style="font-size:13px">ระบบสร้างให้อัตโนมัติทีละแบบ ไม่ตัดดาว</span>
-    <div class="grid3">${ss.items.map((x) => `<div class="card" style="padding:8px;gap:6px">${x.src ? `<img src="${x.src}" alt="" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:10px">` : '<div style="aspect-ratio:4/5;border-radius:10px;background:var(--s2)"></div>'}
-      <span style="font-size:12px">${esc(x.style)}</span><span class="muted" style="font-size:11px">${ST[x.status] || x.status}${x.error ? ` ${esc(x.error)}` : ''}</span>
-      <button type="button" class="btn dark sm" data-ssr="${esc(x.style)}" style="min-height:32px">สร้างใหม่</button></div>`).join('')}</div>`;
+    <h2>ตัวอย่างทุกแนวงาน (ขั้นเลือกแนวงาน)</h2><span class="muted" style="font-size:13px">ระบบสร้างให้อัตโนมัติทีละแบบ ไม่ตัดดาว · หนังสั้น/อวตาร/ใส่ซับคลิป ใช้ของจริง: อัปโหลดคลิป หรือใส่เลขผลงานที่ทำได้ดี</span>
+    ${[['image', 'แนวงานภาพ'], ['video', 'แนวคลิป']].map(([k, t]) => `<h2 style="font-size:16px">${t}</h2><div class="grid3">${ss.items.filter((x) => x.kind === k).map((x) => `<div class="card" style="padding:8px;gap:6px">${x.src ? `<img src="${x.src}" alt="" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:10px">` : x.play ? `<video src="${x.play}#t=0.6" muted playsinline preload="metadata" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:10px;background:#000"></video>` : '<div style="aspect-ratio:4/5;border-radius:10px;background:var(--s2)"></div>'}
+      <span style="font-size:12px">${esc(x.label || x.style)}</span><span class="muted" style="font-size:11px">${ST[x.status] || x.status}${x.error ? ` ${esc(x.error)}` : ''}</span>
+      ${x.manual ? '' : `<button type="button" class="btn dark sm" data-ssr="${esc(x.style)}" style="min-height:32px">สร้างใหม่</button>`}
+      <label class="btn ghost sm" style="min-height:32px">อัปโหลด<input type="file" accept="${k === 'video' ? 'video/*' : 'image/*'}" data-ssu="${esc(x.style)}" hidden></label>
+      <button type="button" class="btn ghost sm" data-ssw="${esc(x.style)}" style="min-height:32px">จากผลงาน #</button></div>`).join('')}</div>`).join('')}`;
   app.querySelectorAll('[data-ssr]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/style-samples/${b.dataset.ssr}`, { method: 'POST', body: {} }); toast('เข้าคิวแล้ว'); adminTrends(); } catch (e) { toast(e.message); } });
+  app.querySelectorAll('[data-ssu]').forEach((i) => i.onchange = async () => { const f = i.files[0]; if (!f) return; const fd = new FormData(); fd.append('file', f); toast('กำลังอัปโหลด…'); try { await api(`api/admin/style-samples/${i.dataset.ssu}/upload`, { method: 'POST', body: fd }); toast('ตั้งเป็นตัวอย่างแล้ว'); adminTrends(); } catch (e) { toast(e.message); } });
+  app.querySelectorAll('[data-ssw]').forEach((b) => b.onclick = async () => { const id = prompt('เลขผลงาน (ดูได้จากลิงก์ #work?id=...)'); if (!id) return; try { await api(`api/admin/style-samples/${b.dataset.ssw}/from-work`, { method: 'POST', body: { workId: Number(id) } }); toast('ตั้งเป็นตัวอย่างแล้ว'); adminTrends(); } catch (e) { toast(e.message); } });
   app.querySelectorAll('[data-id]').forEach((card) => {
     const get = () => { const o = {}; card.querySelectorAll('[name]').forEach((i) => { o[i.name] = i.type === 'checkbox' ? i.checked : i.value; }); return o; };
     const id = card.dataset.id;
@@ -936,8 +955,9 @@ function drawStep() {
         <button type="button" class="card opt" data-kind="image" aria-pressed="${!vid}"><b>ภาพ</b><span class="muted">โปสเตอร์ ภาพสินค้า ป้ายโปร</span></button>
         <button type="button" class="card opt" data-kind="video" aria-pressed="${vid}"><b>คลิปวิดีโอ</b><span class="muted">เปิดกล่อง ลุ้นของ พากย์เสียง</span></button></div>
       ${(() => {
-        const card = (x) => { const im = (vid ? SAMPLES?.video : SAMPLES?.image)?.[x.id]; return `<button type="button" class="stylecard has-img" data-style="${x.id}" aria-pressed="${D.style === x.id}">
-          ${im ? `<span class="sx"><img src="${im}" alt="ตัวอย่าง ${esc(x.label)}" loading="lazy">${vid ? '<i>▶ ตัวอย่าง</i>' : ''}</span>` : `<span class="sx sxe" style="background:${esc(x.color)}">${x.emoji}</span>`}<b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`; };
+        const card = (x) => { const im = (vid ? SAMPLES?.video : SAMPLES?.image)?.[x.id]; const pl = vid ? SAMPLES?.play?.[x.id] : im; return `<button type="button" class="stylecard has-img" data-style="${x.id}" aria-pressed="${D.style === x.id}">
+          ${im ? `<span class="sx"><img src="${im}" alt="ตัวอย่าง ${esc(x.label)}" loading="lazy">${pl ? `<i data-play="${x.id}">${vid ? '▶ ดูตัวอย่าง' : '🔍 ดูภาพ'}</i>` : ''}</span>`
+            : pl ? `<span class="sx"><video src="${pl}#t=0.6" muted playsinline preload="metadata"></video><i data-play="${x.id}">▶ ดูตัวอย่าง</i></span>` : `<span class="sx sxe" style="background:${esc(x.color)}">${x.emoji}</span>`}<b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`; };
         const biz = list.filter((x) => !x.pr && !x.agent), pr = list.filter((x) => x.pr), ag = list.filter((x) => x.agent);
         const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>`;
         const g2 = pr.length ? `<h2>ประชาสัมพันธ์องค์กร</h2><div class="grid2">${pr.map(card).join('')}</div>` : '';
@@ -950,7 +970,9 @@ function drawStep() {
       })()}`, { disabled: !D.style || !(D.showAllStyles ? list : goalStyles(list)[1]).some((x) => x.id === D.style) });
     app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
     const sa = $('#showAll'); if (sa) sa.onclick = () => { D.showAllStyles = true; drawStep(); };
-    app.querySelectorAll('[data-style]').forEach((b) => b.onclick = () => {
+    app.querySelectorAll('[data-style]').forEach((b) => b.onclick = (e) => {
+      const pl = e.target.closest('[data-play]');
+      if (pl) { const x = list.find((y) => y.id === pl.dataset.play); sampleSheet(vid ? SAMPLES?.play?.[x.id] : SAMPLES?.image?.[x.id], vid ? 'video' : 'image', x.label); }
       D.style = b.dataset.style; if (!vid) D.ratio = CAT.styles.find((x) => x.id === D.style).ratio;
       if (D.style === 'v_series') { D.goal = 'content'; if (!CAT.video.seriesGenres.some((g) => g.id === D.genre)) D.genre = 'magic'; if (!CAT.video.seriesPrices[D.scenes]) D.scenes = 4; }
       else if (D.style === 'v_drama' && !CAT.video.genres.some((g) => g.id === D.genre)) { D.genre = 'inlaw'; if (D.scenes === 8) D.scenes = 6; }
@@ -1782,7 +1804,7 @@ async function filmView(qs) {
 async function filmNew() {
   const C = FILMCAT;
   if (!AVS_LOADED) await loadAvatars();
-  FD = FD || { genre: 'revenge', art: 'cine', lang: 'th', episodes: 5, epLen: 60, cast: [], premise: '', ideas: null, pick: -1, title: '', logline: '' };
+  FD = FD || { genre: 'revenge', art: 'cine', lang: 'th', episodes: 5, epLen: 30, cast: [], premise: '', ideas: null, pick: -1, title: '', logline: '' };
   const castRows = FD.cast.map((c, i) => { const a = AVS.find((x) => x.id === c.avatarId); return `<div class="card" style="gap:8px"><div class="row" style="gap:10px;align-items:center">
       <img src="${a?.img || ''}" alt="" style="width:56px;height:76px;object-fit:cover;border-radius:10px"><div style="flex:1;display:flex;flex-direction:column;gap:6px">
       <input type="text" data-cn="${i}" maxlength="30" value="${esc(c.name)}" placeholder="ชื่อตัวละคร" aria-label="ชื่อตัวละคร">
@@ -1846,9 +1868,12 @@ async function filmProject(id) {
         ${e.workId ? `<a class="btn sm" href="#work?id=${e.workId}">▶ ดูตอนนี้</a>` : ''}
         <a class="btn ${e.hasScript ? 'dark' : ''} sm" href="#film?id=${f.id}&ep=${e.n}">${e.hasScript ? 'สคริปต์ / ถ่ายทำ' : 'เขียนสคริปต์ (ฟรี)'}</a></div></div>`).join('')}</div>
     <button type="button" class="btn ghost" id="addep">+ เพิ่มตอน</button>
-    <p class="muted">ราคาถ่ายทำต่อตอน: มาตรฐาน ${price('std')} ดาว · คุณภาพสูง ${price('pro')} ดาว</p>
+    <section class="card" style="gap:8px"><b>ความยาวต่อตอน</b>${fchips(C.lens.map((x) => ({ id: x, label: `${x} วิ` })), f.epLen, 'len')}
+      <span class="muted" style="font-size:13px">เปลี่ยนความยาว: ตอนที่ยังไม่ถ่ายต้องให้ AI เขียนสคริปต์ใหม่ (ฟรี) · ตอนที่ถ่ายแล้วไม่เปลี่ยน</span>
+      <span class="muted">ราคาถ่ายทำต่อตอน ${f.epLen} วิ: มาตรฐาน ${price('std')} · คุณภาพสูง ${price('pro')}${C.prices.cine ? ` · หนังโรง ${price('cine')}` : ''} ดาว</span></section>
     <button type="button" class="btn ghost sm" id="delf">ลบเรื่องนี้</button>
   </main>${nav('create')}`;
+  bindF({ set len(v) { if (Number(v) === f.epLen) return; api(`api/films/${id}`, { method: 'PATCH', body: { epLen: Number(v) } }).then(() => { toast(`เปลี่ยนเป็น ${v} วิ/ตอนแล้ว`); filmProject(id); }).catch((e) => toast(e.message)); } }, () => {});
   $('#addep').onclick = async () => { try { await api(`api/films/${id}`, { method: 'PATCH', body: { addEpisode: { title: '' } } }); filmProject(id); } catch (e) { toast(e.message); } };
   $('#delf').onclick = async (e) => { const b = e.currentTarget; if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'แตะอีกครั้งเพื่อลบ (ตอนที่ถ่ายแล้วยังอยู่ในผลงาน)'; return; } await api(`api/films/${id}`, { method: 'DELETE' }); go('film'); };
 }
@@ -1863,17 +1888,18 @@ async function filmEp(id, n) {
     app.innerHTML = `${topbar(`EP.${ep.n} ${ep.title}`, `film?id=${id}`)}<main>
       <section class="card"><b>EP.${ep.n} ${esc(ep.title)}</b><span class="muted">${esc(ep.summary)}</span></section>
       ${!sc ? `<button type="button" class="btn" id="wscript">✨ ให้ AI เขียนสคริปต์ตอนนี้ (ฟรี)</button><p class="muted">AI จะแบ่งเป็นช็อตละ 5 วินาที พร้อมบทพูดของแต่ละตัวละครที่ยาวพอดีเวลา แก้ได้ทุกช็อตก่อนถ่ายทำ</p>`
-        : `${sc.shots.map((s, i) => `<section class="card" style="gap:6px"><b>ช็อต ${i + 1} · 5 วิ <span class="badge ${ep.plan?.[FQ]?.[i] === 'motion' ? 'b-lime' : ''}">${ep.plan?.[FQ]?.[i] === 'motion' ? '🎥 วิดีโอ AI' : s.speaker && s.line ? '🗣️ กล้องเคลื่อน + ปากขยับ' : '📷 กล้องเคลื่อน'}</span></b>
+        : `${sc.shots.map((s, i) => `<section class="card" style="gap:6px"><b>ช็อต ${i + 1} · 5 วิ <span class="badge ${ep.plan?.[FQ]?.[i] === 'motion' ? 'b-lime' : ''}">${ep.plan?.[FQ]?.[i] === 'motion' ? (FQ === 'cine' ? '🎞️ หนังโรง Seedance' : '🎥 วิดีโอ AI') : s.speaker && s.line ? '🗣️ กล้องเคลื่อน + ปากขยับ' : '📷 กล้องเคลื่อน'}</span></b>
           <label class="f">ฉาก / สิ่งที่เกิดขึ้น (AI ใช้สร้างภาพ)<textarea data-sa="${i}" rows="2" maxlength="400">${esc(s.action)}</textarea></label>
           <label class="f">สถานที่ / แสง<input type="text" data-ss="${i}" maxlength="300" value="${esc(s.scene)}"></label>
           <span class="muted">ในภาพ:</span><div class="chips">${names.map((nm) => `<button type="button" class="chip" data-sc="${i}" data-v="${esc(nm)}" aria-pressed="${s.chars.includes(nm)}">${esc(nm)}</button>`).join('')}</div>
           <label class="f">คนพูด<select data-sp="${i}"><option value="">(ไม่มีบทพูด)</option>${names.map((nm) => `<option ${s.speaker === nm ? 'selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>
           <label class="f">บทพูด<input type="text" data-sl="${i}" maxlength="120" value="${esc(s.line)}" placeholder="ประโยคสั้นๆ พูดจบใน 5 วิ"></label>
           <button type="button" class="btn ghost sm" data-del="${i}">ลบช็อตนี้</button></section>`).join('')}
-        <button type="button" class="btn ghost" id="addshot">+ เพิ่มช็อต</button>
+        <p class="muted" style="margin:0">${sc.shots.length}/${ep.maxShots || sc.shots.length} ช็อต · ยาวประมาณ ${sc.shots.length * 5} วิ (ตอนละ ${f.epLen} วิ)</p>
+        ${sc.shots.length < (ep.maxShots || 99) ? '<button type="button" class="btn ghost" id="addshot">+ เพิ่มช็อต</button>' : ''}
         <div class="grid2"><button type="button" class="btn dark" id="rescript">เขียนใหม่ทั้งตอน</button><button type="button" class="btn dark" id="savescript">บันทึกสคริปต์</button></div>
-        <section class="hero"><b>ถ่ายทำตอนนี้</b>${fchips([{ id: 'std', label: `มาตรฐาน · ${C.prices.std[f.epLen]} ดาว` }, { id: 'pro', label: `คุณภาพสูง · ${C.prices.pro[f.epLen]} ดาว` }], FQ, 'q')}
-          <span class="muted">${FQ === 'pro' ? 'คุณภาพสูง: วิดีโอ AI เคลื่อนไหวจริงทุกช็อต ภาพคมระดับโปร เหมาะเอาไปทำรายได้ · ใช้เวลาประมาณ 8–15 นาที' : 'มาตรฐาน: ช็อตแอ็กชันสำคัญเป็นวิดีโอ AI ช็อตบทพูดเป็นกล้องเคลื่อน+ปากขยับตามเสียง ถูกและเร็ว · ใช้เวลาประมาณ 4–8 นาที'} · ไม่สำเร็จคืนดาวอัตโนมัติ</span>
+        <section class="hero"><b>ถ่ายทำตอนนี้</b>${fchips([{ id: 'std', label: `มาตรฐาน · ${C.prices.std[f.epLen]} ดาว` }, { id: 'pro', label: `คุณภาพสูง · ${C.prices.pro[f.epLen]} ดาว` }, ...(C.prices.cine ? [{ id: 'cine', label: `🎞️ หนังโรง · ${C.prices.cine[f.epLen]} ดาว` }] : [])], FQ, 'q')}
+          <span class="muted">${FQ === 'cine' ? 'หนังโรง: Seedance 2.5 ทุกช็อต ฉากแอ็กชันลื่นระดับภาพยนตร์ มีเสียงประกอบฉากในตัว ภาพคม 720p · ใช้เวลาประมาณ 8–15 นาที' : FQ === 'pro' ? 'คุณภาพสูง: วิดีโอ AI เคลื่อนไหวจริงทุกช็อต ภาพคมระดับโปร เหมาะเอาไปทำรายได้ · ใช้เวลาประมาณ 8–15 นาที' : 'มาตรฐาน: ช็อตแอ็กชันสำคัญเป็นวิดีโอ AI ช็อตบทพูดเป็นกล้องเคลื่อน+ปากขยับตามเสียง ถูกและเร็ว · ใช้เวลาประมาณ 4–8 นาที'} · ไม่สำเร็จคืนดาวอัตโนมัติ</span>
           <button type="button" class="btn" id="shoot" ${C.ready ? '' : 'disabled'}>🎬 ถ่ายทำ EP.${ep.n} · ${C.prices[FQ][f.epLen]} ดาว</button>${C.ready ? '' : '<span class="badge b-warn">ระบบถ่ายทำกำลังตั้งค่า</span>'}</section>`}
     </main>${nav('create')}`;
     const keep = () => { if (!ep.script) return; ep.script.shots.forEach((s, i) => { s.action = $(`[data-sa="${i}"]`).value; s.scene = $(`[data-ss="${i}"]`).value; s.speaker = $(`[data-sp="${i}"]`).value; s.line = $(`[data-sl="${i}"]`).value; }); };
@@ -1882,7 +1908,7 @@ async function filmEp(id, n) {
     bindF({ set q(v) { FQ = v; } }, () => { keep(); draw(); });
     app.querySelectorAll('[data-sc]').forEach((b) => b.onclick = () => { keep(); const s = ep.script.shots[Number(b.dataset.sc)]; const nm = b.dataset.v; s.chars = s.chars.includes(nm) ? s.chars.filter((x) => x !== nm) : [...s.chars, nm].slice(0, 3); draw(); });
     app.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { keep(); ep.script.shots.splice(Number(b.dataset.del), 1); draw(); });
-    $('#addshot').onclick = () => { keep(); ep.script.shots.push({ scene: ep.script.shots.at(-1)?.scene || '', action: '', camera: 'medium shot', chars: [], speaker: '', line: '', mood: 'tense' }); draw(); };
+    if ($('#addshot')) $('#addshot').onclick = () => { keep(); ep.script.shots.push({ scene: ep.script.shots.at(-1)?.scene || '', action: '', camera: 'medium shot', chars: [], speaker: '', line: '', mood: 'tense' }); draw(); };
     const save = async () => { keep(); f = await api(`api/films/${id}/episodes/${n}/script`, { method: 'PUT', body: { shots: ep.script.shots } }); ep = f.episodes.find((e) => e.n === n); };
     $('#savescript').onclick = async () => { try { await save(); toast('บันทึกแล้ว'); draw(); } catch (e) { toast(e.message); } };
     $('#rescript').onclick = async (e) => { const b = e.currentTarget; if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'แตะอีกครั้ง (บทที่แก้ไว้จะหาย)'; return; } b.disabled = true; b.textContent = 'AI กำลังเขียน…'; try { f = await api(`api/films/${id}/episodes/${n}/script`, { method: 'POST' }); ep = f.episodes.find((x) => x.n === n); draw(); } catch (er) { toast(er.message); b.disabled = false; } };

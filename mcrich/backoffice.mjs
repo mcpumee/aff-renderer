@@ -106,7 +106,7 @@ export function registerBackoffice(app, { q, pool, auth, wrap, log, banned }) {
   // ---------- ราคา ----------
   const priceNow = () => ({
     tiers: Object.fromEntries(TIERS.filter((t) => !t.free).map((t) => [t.id, t.stars])),
-    video: { ...V.VIDEO_PRICE }, drama: { ...V.DRAMA_PRICE }, series: { ...V.SERIES_PRICE }, motion: { ...V.MOTION_PRICE }, avatar: { ...V.AVATAR_PRICE }, avatarPro: { ...V.AVATAR_PRO_PRICE }, avatarDesign: { ...V.AVATAR_DESIGN_PRICE }, filmStd: { ...FILM_PRICE.std }, filmPro: { ...FILM_PRICE.pro }, premiumVoice: V.PREMIUM_VOICE_EXTRA,
+    video: { ...V.VIDEO_PRICE }, drama: { ...V.DRAMA_PRICE }, series: { ...V.SERIES_PRICE }, motion: { ...V.MOTION_PRICE }, avatar: { ...V.AVATAR_PRICE }, avatarPro: { ...V.AVATAR_PRO_PRICE }, avatarDesign: { ...V.AVATAR_DESIGN_PRICE }, filmStd: { ...FILM_PRICE.std }, filmPro: { ...FILM_PRICE.pro }, filmCine: { ...FILM_PRICE.cine }, premiumVoice: V.PREMIUM_VOICE_EXTRA,
   });
   const DEFAULTS = priceNow();
   function apply(p) {
@@ -117,7 +117,7 @@ export function registerBackoffice(app, { q, pool, auth, wrap, log, banned }) {
     for (const k of Object.keys(V.SERIES_PRICE)) if (p?.series?.[k] != null) V.SERIES_PRICE[k] = n(p.series[k], V.SERIES_PRICE[k]);
     if (p?.motion?.std != null) V.MOTION_PRICE.std = n(p.motion.std, V.MOTION_PRICE.std);
     for (const k of Object.keys(V.AVATAR_PRICE)) if (p?.avatar?.[k] != null) V.AVATAR_PRICE[k] = n(p.avatar[k], V.AVATAR_PRICE[k]);
-    for (const k of Object.keys(FILM_PRICE.std)) { if (p?.filmStd?.[k] != null) FILM_PRICE.std[k] = n(p.filmStd[k], FILM_PRICE.std[k]); if (p?.filmPro?.[k] != null) FILM_PRICE.pro[k] = n(p.filmPro[k], FILM_PRICE.pro[k]); }
+    for (const k of Object.keys(FILM_PRICE.std)) { if (p?.filmStd?.[k] != null) FILM_PRICE.std[k] = n(p.filmStd[k], FILM_PRICE.std[k]); if (p?.filmPro?.[k] != null) FILM_PRICE.pro[k] = n(p.filmPro[k], FILM_PRICE.pro[k]); if (p?.filmCine?.[k] != null) FILM_PRICE.cine[k] = n(p.filmCine[k], FILM_PRICE.cine[k]); }
     for (const k of Object.keys(V.AVATAR_PRO_PRICE)) if (p?.avatarPro?.[k] != null) V.AVATAR_PRO_PRICE[k] = n(p.avatarPro[k], V.AVATAR_PRO_PRICE[k]);
     if (p?.avatarDesign?.std != null) V.AVATAR_DESIGN_PRICE.std = n(p.avatarDesign.std, V.AVATAR_DESIGN_PRICE.std);
     if (p?.premiumVoice != null) V.setPremiumExtra(n(p.premiumVoice, V.PREMIUM_VOICE_EXTRA));

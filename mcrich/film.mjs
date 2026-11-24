@@ -41,9 +41,16 @@ export const FILM_ARTS = [
   { id: '3d', label: 'แอนิเมชัน 3D', en: 'high-end 3D animated feature film style, soft global illumination, expressive stylized characters' },
 ];
 export const FILM_LENS = [30, 60, 90];
-export const FILM_PRICE = { std: { 30: 59, 60: 109, 90: 159 }, pro: { 30: 179, 60: 349, 90: 499 } };
+export const FILM_PRICE = { std: { 30: 59, 60: 109, 90: 159 }, pro: { 30: 179, 60: 349, 90: 499 }, cine: { 30: 899, 60: 1690, 90: 2490 } };
+export const FILM_QUALITIES = ['std', 'pro', 'cine'];
+const qOf = (x) => (FILM_QUALITIES.includes(x) ? x : 'std');
 const SHOT_SEC = 5;
-const I2V = { std: () => process.env.FILM_I2V_STD || 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video', pro: () => process.env.FILM_I2V_PRO || 'fal-ai/kling-video/v2.5-turbo/pro/image-to-video' };
+const I2V = { std: () => process.env.FILM_I2V_STD || 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video', pro: () => process.env.FILM_I2V_PRO || 'fal-ai/kling-video/v2.5-turbo/pro/image-to-video',
+  cine: () => process.env.FILM_I2V_CINE || 'bytedance/seedance-2.5/image-to-video' };
+// เกรดหนังโรง (Seedance 2.5): ความละเอียด และวิธีพากย์ — dub = เสียงพากย์ไทยของเรา + ขยับปาก (เสียงฉากจาก Seedance), native = ให้ Seedance พูดเองพร้อมปาก
+const CINE_RES = () => (process.env.FILM_CINE_RES === '480p' ? '480p' : '720p');
+const cineVoice = (lang) => (['dub', 'native'].includes(process.env.FILM_CINE_VOICE) ? process.env.FILM_CINE_VOICE : lang === 'th' ? 'dub' : 'native');
+// ราคา Seedance คิดตามโทเคน: กว้าง×สูง×24fps/1024 × $0.0214/1k → 9:16 720p ≈ $0.462/วิ, 480p ≈ $0.206/วิ
 export const filmReady = () => !!KEY() && V.klingReady();
 
 const langOf = (id) => V.AVATAR_LANGS.find((l) => l.id === id) || V.AVATAR_LANGS[0];
@@ -105,7 +112,7 @@ ${castText(f.cast)}
   const out = (o.shots || []).slice(0, shots).map((s, i) => {
     const sp = names.has(String(s.speaker || '').trim()) ? String(s.speaker).trim() : '';
     return { n: i + 1, scene: clean(s.scene, 300), action: clean(s.action, 400), camera: clean(s.camera, 120), chars: (Array.isArray(s.chars) ? s.chars : []).map((x) => String(x).trim()).filter((x) => names.has(x)).slice(0, 3),
-      speaker: sp, line: sp ? clean(s.line, maxChars * 2) : '', mood: clean(s.mood, 20) };
+      speaker: sp, line: sp ? clean(s.line, Math.round(maxChars * 1.25)) : '', mood: clean(s.mood, 20) };
   });
   if (!out.length) throw new Error('film_no_shots');
   return { shots: out, hook: clean(o.hook, 80), captions: { facebook: clean(o.facebook, 1200), tiktok: clean(o.tiktok, 300), instagram: clean(o.instagram, 1000), shopee: '' }, hashtags: (o.hashtags || []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, '')).slice(0, 10) };
@@ -116,10 +123,13 @@ const COST = {
   key: { std: Number(process.env.FILM_COST_KEY_STD || 0.034), pro: Number(process.env.FILM_COST_KEY_PRO || 0.134) },
   i2v: { std: Number(process.env.FILM_COST_I2V_STD || 0.21), pro: Number(process.env.FILM_COST_I2V_PRO || 0.35) },
   lipPerSec: Number(process.env.FILM_COST_LIP_SEC || 0.014),
+  cinePerSec: () => Number(process.env.FILM_COST_CINE_SEC || (CINE_RES() === '480p' ? 0.206 : 0.462)),
 };
+COST.key.cine = COST.key.pro;
+const i2vCost = (q) => (q === 'cine' ? COST.cinePerSec() * SHOT_SEC : COST.i2v[q]);
 /** วางแผนช็อต: มาตรฐาน = ช็อตพูดใช้ภาพนิ่งเคลื่อนกล้อง + ขยับปาก, ช็อตแอ็กชันใช้วิดีโอ AI เฉพาะช็อตสำคัญ · คุณภาพสูง = วิดีโอ AI ทุกช็อต */
 export function planShots(shots, quality) {
-  if (quality === 'pro') return shots.map(() => 'motion');
+  if (quality === 'pro' || quality === 'cine') return shots.map(() => 'motion');
   const cap = Math.max(1, Math.round(shots.length / 3));
   const plan = shots.map((s) => (s.speaker && s.line ? 'still' : 'cand'));
   // เลือกช็อตไม่พูดที่สำคัญที่สุดก่อน: ช็อตแรก (ฮุค) → ช็อตสุดท้าย (ค้างคา) → อารมณ์แรง
@@ -129,9 +139,9 @@ export function planShots(shots, quality) {
   return plan.map((m, i) => (m === 'cand' ? (pick.has(i) ? 'motion' : 'still') : m));
 }
 export function estimateCost(shots, quality, plan = planShots(shots, quality)) {
-  const q = quality === 'pro' ? 'pro' : 'std';
+  const q = qOf(quality);
   const n = shots.length, motion = plan.filter((m) => m === 'motion').length, talk = shots.filter((s) => s.speaker && s.line).length;
-  return +(n * COST.key[q] + motion * COST.i2v[q] + talk * SHOT_SEC * COST.lipPerSec + 0.02).toFixed(2);
+  return +(n * COST.key[q] + motion * i2vCost(q) + talk * SHOT_SEC * COST.lipPerSec + 0.02).toFixed(2);
 }
 // ทำงานพร้อมกันทีละ n
 async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } })); }
@@ -139,13 +149,15 @@ async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ le
 /** เรนเดอร์ 1 ตอน → ไฟล์ mp4 (ยังไม่ใส่ซับ) + ช่วงซับ + ต้นทุนโดยประมาณ */
 export async function renderEpisode({ f, ep, quality, castImgs, WORK_DIR, pubUrl, log, stage, id }) {
   const A = (FILM_ARTS.find((a) => a.id === f.art) || FILM_ARTS[0]);
-  const q = quality === 'pro' ? 'pro' : 'std';
-  const tier = q === 'pro' ? TIERS.find((t) => t.id === 'pro') : TIERS.find((t) => t.id === 'std') || TIERS[1];
+  const q = qOf(quality);
+  const tier = q !== 'std' ? TIERS.find((t) => t.id === 'pro') : TIERS.find((t) => t.id === 'std') || TIERS[1];
+  const cine = q === 'cine', dub = !cine || cineVoice(f.lang) === 'dub';
+  // ล็อกความยาว: ไม่เกินจำนวนช็อตของความยาวตอนที่จ่าย
   const tmp = []; const T = (ext) => { const p = path.join(WORK_DIR, `fl-${id}-${tmp.length}-${Math.random().toString(36).slice(2, 6)}${ext}`); tmp.push(p); return p; };
   const castBy = Object.fromEntries(f.cast.map((c) => [c.name, c]));
-  const shots = ep.script.shots;
+  const shots = ep.script.shots.slice(0, Math.max(1, Math.round((f.ep_len || 60) / SHOT_SEC)));
   const plan = planShots(shots, q);
-  const used = { key: 0, i2v: 0, lipSec: 0 };
+  const used = { key: 0, i2v: 0, lipSec: 0, cineSec: 0 };
   try {
     // 1) ภาพหลัก: รอบแรกวาดช็อตแรกของแต่ละฉากพร้อมกัน → รอบสองวาดช็อตที่เหลือพร้อมกัน โดยอ้างอิงภาพแรกของฉากนั้น (ต่อเนื่องแต่เร็ว)
     const keys = new Array(shots.length); let kd = 0;
@@ -176,8 +188,21 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
     const clips = new Array(shots.length); let done = 0;
     await pool(shots.map((_, i) => i), 6, async (i) => {
       const s = shots[i];
-      let v1 = T('.mp4');
-      if (plan[i] === 'motion') {
+      let v1 = T('.mp4'), sfx = null;
+      if (plan[i] === 'motion' && cine) {
+        // Seedance 2.5: ภาพแรก = ภาพหลักของช็อต · มีเสียงฉากในตัว (และบทพูดถ้าเป็นโหมด native)
+        const v0 = T('.mp4');
+        const talk = s.speaker && s.line;
+        const o = await V.falRun(I2V.cine(), {
+          prompt: `${A.en}. ${s.action}. Camera: ${s.camera}. Mood: ${s.mood}. Cinematic film shot, natural physics, consistent faces and costumes, no cuts within the shot.${talk ? (dub ? ` ${s.speaker} is talking (mouth moving naturally) but keep the audio to ambient sound effects only, no voices, no music.` : ` ${s.speaker} says in ${langOf(f.lang).name}: "${s.line}"`) : ' Ambient sound effects only, no voices, no music.'} No text, no subtitles, no watermark.`,
+          image_url: pubUrl(keys[i]), duration: String(SHOT_SEC), resolution: CINE_RES(), aspect_ratio: '9:16', generate_audio: true,
+        });
+        used.i2v++; used.cineSec += SHOT_SEC;
+        await V.download(o.video?.url || o.video_url || o.url, v0);
+        await V.ff(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryfast', v1]);
+        sfx = T('.wav');
+        try { await V.ff(['-i', v0, '-vn', '-ac', '1', '-ar', '44100', sfx]); } catch { sfx = null; }
+      } else if (plan[i] === 'motion') {
         const v0 = T('.mp4');
         const o = await V.falRun(I2V[q](), {
           prompt: `${s.action}. Camera: ${s.camera}. ${s.speaker ? `${s.speaker} talks naturally, subtle lip movement.` : ''} Cinematic, consistent faces, smooth natural motion, ${s.mood} mood.`,
@@ -195,11 +220,20 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
         await V.ff(['-loop', '1', '-i', keys[i], '-vf', `scale=1440:2560,zoompan=z=${z}:x=${x}:y='ih/2-(ih/zoom/2)':d=${fr}:s=720x1280:fps=30,format=yuv420p`, '-t', String(SHOT_SEC), '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', v1]);
       }
       let vid = v1, audio = null, aSec = 0, lineSec = 0;
-      if (s.speaker && s.line) {
+      if (s.speaker && s.line && !dub) { audio = sfx; lineSec = SHOT_SEC - 0.4; } // Seedance พูดเองแล้ว
+      else if (s.speaker && s.line) {
         const c = castBy[s.speaker];
         const vo = await V.voiceGemini([s.line], c?.voice || (c?.gender === 'male' ? 'Puck' : 'Kore'), { tense: 'ตื่นเต้น', sad: 'อบอุ่น ใส่ใจ', sweet: 'อบอุ่น ใส่ใจ', funny: 'ตลก ขำๆ' }[s.mood] || 'เป็นกันเอง');
         audio = T('.wav'); fs.writeFileSync(audio, Buffer.from(vo.audio_base64, 'base64'));
         aSec = (await V.probe(audio)).sec; lineSec = V.speechEnd(vo.alignment) || aSec;
+        // พูดยาวเกินช็อต → เร่งเสียงขึ้นไม่เกิน 1.3 เท่า แทนการยืดช็อต (ความยาวตอนต้องตรงที่จ่าย)
+        const room = SHOT_SEC - 0.35;
+        if (lineSec > room) {
+          const k = Math.min(1.3, lineSec / room); const fast = T('.wav');
+          await V.ff(['-i', audio, '-af', `atempo=${k.toFixed(3)}`, fast]); audio = fast;
+          aSec /= k; lineSec /= k;
+        }
+        if (aSec > lineSec + 0.4) { const cut = T('.wav'); await V.ff(['-i', audio, '-t', (lineSec + 0.4).toFixed(3), cut]); audio = cut; aSec = lineSec + 0.4; }
         if (s.chars.includes(s.speaker)) {
           try {
             const mp3 = T('.mp3'); await V.ff(['-i', audio, '-af', 'apad=whole_dur=2', '-ac', '1', '-ar', '44100', '-b:a', '96k', mp3]);
@@ -209,8 +243,15 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
           } catch (e) { log('film lipsync skip', id, i + 1, e.message.slice(0, 160)); if (/exhausted balance|locked/i.test(e.message)) throw e; }
         }
       }
+      if (sfx && audio && audio !== sfx) {
+        // เสียงพากย์ + เสียงฉากจาก Seedance
+        const mix = T('.wav');
+        await V.ff(['-i', audio, '-i', sfx, '-filter_complex', '[1:a]volume=0.45[s];[0:a][s]amix=inputs=2:duration=longest:normalize=0', '-ac', '1', '-ar', '44100', mix]);
+        audio = mix;
+      } else if (sfx && !audio) audio = sfx;
       const vSec = (await V.probe(vid)).sec || SHOT_SEC;
-      const len = Math.max(Math.min(vSec, SHOT_SEC + 0.2), aSec + 0.35);
+      // ช็อตยาวไม่เกิน 5.2 วิ (ยืดได้นิดเดียวถ้าเสียงยังไม่จบ สูงสุด 5.6 วิ)
+      const len = Math.min(SHOT_SEC + 0.6, Math.max(Math.min(vSec, SHOT_SEC + 0.2), aSec + 0.25));
       const out = T('.mp4');
       await V.ff(['-i', vid, ...(audio ? ['-i', audio] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono']),
         '-filter_complex', '[0:v]tpad=stop_mode=clone:stop_duration=6,scale=1080:1920:flags=lanczos,fps=30,format=yuv420p[v];[1:a]aresample=44100,aformat=channel_layouts=mono,apad[a]',
@@ -224,7 +265,7 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
     await V.ff(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', full], 300000);
     const segments = []; let t = 0;
     for (const c of clips) { if (c.line) segments.push({ start: t + 0.05, end: t + Math.max(0.8, c.lineSec || c.len - 0.3), text: c.line }); t += c.len; }
-    const costUsd = +(used.key * COST.key[q] + used.i2v * COST.i2v[q] + used.lipSec * COST.lipPerSec + 0.02).toFixed(2);
+    const costUsd = +(used.key * COST.key[q] + (cine ? used.cineSec * COST.cinePerSec() : used.i2v * COST.i2v[q]) + used.lipSec * COST.lipPerSec + 0.02).toFixed(2);
     return { file: full, segments, sec: t, costUsd, used: { ...used, shots: shots.length, motion: plan.filter((m) => m === 'motion').length } };
   } finally { tmp.forEach((p) => fs.rmSync(p, { force: true })); }
 }
@@ -248,12 +289,12 @@ export function registerFilm(app, { q, auth, wrap, log }) {
   };
   const view = (f) => ({ id: Number(f.id), title: f.title, genre: f.genre, art: f.art, lang: f.lang, logline: f.logline, premise: f.premise, epLen: f.ep_len, cast: f.cast || f.cast_list || [], bible: f.bible,
     episodes: (f.episodes || []).map((e) => ({ n: e.n, title: e.title, summary: e.summary, cliff: e.cliff, hasScript: !!e.script, script: e.script, workId: e.workId || null,
-      plan: e.script ? { std: planShots(e.script.shots, 'std'), pro: planShots(e.script.shots, 'pro') } : null, estUsd: e.script ? { std: estimateCost(e.script.shots, 'std'), pro: estimateCost(e.script.shots, 'pro') } : null })), createdAt: f.created_at });
+      plan: e.script ? { std: planShots(e.script.shots, 'std'), pro: planShots(e.script.shots, 'pro'), cine: planShots(e.script.shots, 'cine') } : null, estUsd: e.script ? { std: estimateCost(e.script.shots, 'std'), pro: estimateCost(e.script.shots, 'pro'), cine: estimateCost(e.script.shots, 'cine') } : null, maxShots: Math.round(f.ep_len / SHOT_SEC) })), createdAt: f.created_at });
   const get = async (uid, id) => (await q('SELECT * FROM films WHERE id=$1 AND user_id=$2', [Number(id) || 0, uid])).rows[0];
 
   app.get('/api/films', auth, wrap(async (req, res) => {
     const { rows } = await q('SELECT * FROM films WHERE user_id=$1 ORDER BY id DESC LIMIT 50', [req.uid]);
-    res.json({ items: rows.map(view), ready: filmReady(), genres: FILM_GENRES.map(({ id, label }) => ({ id, label })), arts: FILM_ARTS.map(({ id, label }) => ({ id, label })), lens: FILM_LENS, prices: FILM_PRICE, langs: V.AVATAR_LANGS.map(({ id, label }) => ({ id, label })), voices: V.VOICES });
+    res.json({ items: rows.map(view), ready: filmReady(), genres: FILM_GENRES.map(({ id, label }) => ({ id, label })), arts: FILM_ARTS.map(({ id, label }) => ({ id, label })), lens: FILM_LENS, prices: FILM_PRICE, cine: { res: CINE_RES(), voice: cineVoice('th') }, langs: V.AVATAR_LANGS.map(({ id, label }) => ({ id, label })), voices: V.VOICES });
   }));
   app.get('/api/films/:id', auth, wrap(async (req, res) => { const f = await get(req.uid, req.params.id); if (!f) return res.status(404).json({ error: 'ไม่พบโปรเจกต์' }); res.json(view(f)); }));
   app.post('/api/films/ideas', auth, wrap(async (req, res) => {
@@ -275,7 +316,7 @@ export function registerFilm(app, { q, auth, wrap, log }) {
     if ((await q('SELECT count(*)::int n FROM films WHERE user_id=$1', [req.uid])).rows[0].n >= 30) return res.status(429).json({ error: 'มีโปรเจกต์ครบ 30 เรื่องแล้ว ลบเรื่องที่ไม่ใช้ก่อน' });
     if (!limit(req.uid)) return res.status(429).json({ error: 'วันนี้ใช้ AI เขียนเรื่องครบแล้ว พรุ่งนี้ใช้ได้ใหม่' });
     const f = { title, logline, premise: clean(b.premise, 1500), genre: FILM_GENRES.some((g) => g.id === b.genre) ? b.genre : 'revenge', art: FILM_ARTS.some((a) => a.id === b.art) ? b.art : 'cine',
-      lang: V.AVATAR_LANGS.some((l) => l.id === b.lang) ? b.lang : 'th', ep_len: FILM_LENS.includes(Number(b.epLen)) ? Number(b.epLen) : 60, n: Math.min(30, Math.max(1, Number(b.episodes) || 5)), cast, episodes: [] };
+      lang: V.AVATAR_LANGS.some((l) => l.id === b.lang) ? b.lang : 'th', ep_len: FILM_LENS.includes(Number(b.epLen)) ? Number(b.epLen) : 30, n: Math.min(30, Math.max(1, Number(b.episodes) || 5)), cast, episodes: [] };
     const o = await filmOutline(f);
     const r = (await q('INSERT INTO films(user_id,title,genre,art,lang,logline,premise,ep_len,cast_list,bible,episodes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
       [req.uid, f.title, f.genre, f.art, f.lang, f.logline, f.premise, f.ep_len, JSON.stringify(cast), o.bible, JSON.stringify(o.episodes)])).rows[0];
@@ -286,8 +327,13 @@ export function registerFilm(app, { q, auth, wrap, log }) {
     const f = await get(req.uid, req.params.id); if (!f) return res.status(404).json({ error: 'ไม่พบโปรเจกต์' });
     const b = req.body || {}; const eps = norm(f).episodes;
     if (Array.isArray(b.episodes)) for (const e of b.episodes) { const x = eps.find((y) => y.n === Number(e.n)); if (x) { if (e.title != null) x.title = clean(e.title, 60); if (e.summary != null) x.summary = clean(e.summary, 500); if (e.cliff != null) x.cliff = clean(e.cliff, 200); } }
+    let len = f.ep_len;
+    if (b.epLen != null && FILM_LENS.includes(Number(b.epLen)) && Number(b.epLen) !== f.ep_len) {
+      len = Number(b.epLen);
+      for (const e of eps) if (!e.workId) e.script = null; // ตอนที่ยังไม่ถ่าย: สคริปต์เดิมเขียนไว้สำหรับความยาวเก่า ต้องเขียนใหม่
+    }
     if (b.addEpisode && eps.length < 30) eps.push({ n: eps.length + 1, title: clean(b.addEpisode.title, 60) || `ตอนที่ ${eps.length + 1}`, summary: clean(b.addEpisode.summary, 500), cliff: '', script: null, workId: null });
-    const r = (await q('UPDATE films SET episodes=$2, title=COALESCE($3,title), updated_at=now() WHERE id=$1 RETURNING *', [f.id, JSON.stringify(eps), b.title ? clean(b.title, 60) : null])).rows[0];
+    const r = (await q('UPDATE films SET episodes=$2, title=COALESCE($3,title), ep_len=$4, updated_at=now() WHERE id=$1 RETURNING *', [f.id, JSON.stringify(eps), b.title ? clean(b.title, 60) : null, len])).rows[0];
     res.json(view(norm(r)));
   }));
   app.delete('/api/films/:id', auth, wrap(async (req, res) => { await q('DELETE FROM films WHERE id=$1 AND user_id=$2', [Number(req.params.id) || 0, req.uid]); res.json({ ok: true }); }));
@@ -306,7 +352,7 @@ export function registerFilm(app, { q, auth, wrap, log }) {
     const f = norm(f0); const ep = f.episodes.find((e) => e.n === Number(req.params.n)); if (!ep?.script) return res.status(404).json({ error: 'ยังไม่มีสคริปต์' });
     const names = new Set(f.cast.map((c) => c.name));
     const L = langOf(f.lang); const maxChars = Math.round(L.cps * SHOT_SEC * 1.6);
-    const shots = (Array.isArray(req.body?.shots) ? req.body.shots : []).slice(0, 24).map((s, i) => ({
+    const shots = (Array.isArray(req.body?.shots) ? req.body.shots : []).slice(0, Math.round(f.ep_len / SHOT_SEC)).map((s, i) => ({
       n: i + 1, scene: clean(s.scene, 300), action: clean(s.action, 400), camera: clean(s.camera, 120), mood: clean(s.mood, 20),
       chars: (Array.isArray(s.chars) ? s.chars : []).filter((x) => names.has(x)).slice(0, 3),
       speaker: names.has(s.speaker) ? s.speaker : '', line: names.has(s.speaker) ? clean(s.line, maxChars) : '',
@@ -320,4 +366,4 @@ export function registerFilm(app, { q, auth, wrap, log }) {
   return { get: async (uid, id) => { const f = await get(uid, id); return f ? norm(f) : null; }, save: (f) => q('UPDATE films SET episodes=$2, updated_at=now() WHERE id=$1', [f.id, JSON.stringify(f.episodes)]) };
 }
 const norm = (r) => ({ ...r, cast: r.cast_list || [], episodes: r.episodes || [] });
-export const filmCost = (quality, len) => (FILM_PRICE[quality === 'pro' ? 'pro' : 'std'] || FILM_PRICE.std)[len] || FILM_PRICE.std[60];
+export const filmCost = (quality, len) => FILM_PRICE[qOf(quality)][len] || FILM_PRICE[qOf(quality)][60];

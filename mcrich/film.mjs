@@ -41,7 +41,7 @@ export const FILM_ARTS = [
   { id: '3d', label: 'แอนิเมชัน 3D', en: 'high-end 3D animated feature film style, soft global illumination, expressive stylized characters' },
 ];
 export const FILM_LENS = [30, 60, 90];
-export const FILM_PRICE = { std: { 30: 59, 60: 109, 90: 159 }, pro: { 30: 179, 60: 349, 90: 499 }, cine: { 30: 899, 60: 1690, 90: 2490 } };
+export const FILM_PRICE = { std: { 30: 89, 60: 169, 90: 249 }, pro: { 30: 249, 60: 479, 90: 699 }, cine: { 30: 899, 60: 1690, 90: 2490 } };
 export const FILM_QUALITIES = ['std', 'pro', 'cine'];
 const qOf = (x) => (FILM_QUALITIES.includes(x) ? x : 'std');
 const SHOT_SEC = 5;
@@ -126,22 +126,30 @@ const COST = {
   cinePerSec: () => Number(process.env.FILM_COST_CINE_SEC || (CINE_RES() === '480p' ? 0.206 : 0.462)),
 };
 COST.key.cine = COST.key.pro;
+// ช็อตพูด: Kling AI Avatar v2 (ภาพ + เสียง → ตัวละครพูดทั้งหน้า ขยับหัว กะพริบตา ปากตรงเสียง)
+const AVATAR_MODEL = { std: () => process.env.FILM_AVATAR_STD || 'fal-ai/kling-video/ai-avatar/v2/standard', pro: () => process.env.FILM_AVATAR_PRO || 'fal-ai/kling-video/ai-avatar/v2/pro' };
+COST.avatar = { std: Number(process.env.FILM_COST_AV_STD || 0.0562), pro: Number(process.env.FILM_COST_AV_PRO || 0.115) };
+const avTier = (q) => (q === 'std' ? 'std' : 'pro');
+const isTalk = (s) => !!(s.speaker && s.line && (s.chars || []).includes(s.speaker));
 const i2vCost = (q) => (q === 'cine' ? COST.cinePerSec() * SHOT_SEC : COST.i2v[q]);
 /** วางแผนช็อต: มาตรฐาน = ช็อตพูดใช้ภาพนิ่งเคลื่อนกล้อง + ขยับปาก, ช็อตแอ็กชันใช้วิดีโอ AI เฉพาะช็อตสำคัญ · คุณภาพสูง = วิดีโอ AI ทุกช็อต */
-export function planShots(shots, quality) {
-  if (quality === 'pro' || quality === 'cine') return shots.map(() => 'motion');
+export function planShots(shots, quality, lang = 'th') {
+  // ช็อตพูด → 'talk' (AI Avatar) ยกเว้นหนังโรงโหมดให้ Seedance พูดเอง
+  const talk = (s) => isTalk(s) && !(quality === 'cine' && cineVoice(lang) === 'native');
+  if (quality === 'pro' || quality === 'cine') return shots.map((s) => (talk(s) ? 'talk' : 'motion'));
   const cap = Math.max(1, Math.round(shots.length / 3));
-  const plan = shots.map((s) => (s.speaker && s.line ? 'still' : 'cand'));
+  const plan = shots.map((s) => (talk(s) ? 'talk' : s.speaker && s.line ? 'still' : 'cand'));
   // เลือกช็อตไม่พูดที่สำคัญที่สุดก่อน: ช็อตแรก (ฮุค) → ช็อตสุดท้าย (ค้างคา) → อารมณ์แรง
   const order = plan.map((m, i) => ({ i, m, w: (i === 0 ? 3 : 0) + (i === shots.length - 1 ? 2 : 0) + (/tense|scary|epic/.test(shots[i].mood) ? 1 : 0) }))
     .filter((x) => x.m === 'cand').sort((a, b) => b.w - a.w);
   const pick = new Set(order.slice(0, cap).map((x) => x.i));
   return plan.map((m, i) => (m === 'cand' ? (pick.has(i) ? 'motion' : 'still') : m));
 }
-export function estimateCost(shots, quality, plan = planShots(shots, quality)) {
+export function estimateCost(shots, quality, plan = planShots(shots, quality), lang = 'th') {
   const q = qOf(quality);
-  const n = shots.length, motion = plan.filter((m) => m === 'motion').length, talk = shots.filter((s) => s.speaker && s.line).length;
-  return +(n * COST.key[q] + motion * i2vCost(q) + talk * SHOT_SEC * COST.lipPerSec + 0.02).toFixed(2);
+  const n = shots.length, motion = plan.filter((m) => m === 'motion').length, talk = plan.filter((m) => m === 'talk').length;
+  const lip = shots.filter((s, i) => s.speaker && s.line && plan[i] !== 'talk' && !(q === 'cine' && plan[i] === 'motion')).length;
+  return +(n * COST.key[q] + motion * i2vCost(q) + talk * SHOT_SEC * COST.avatar[avTier(q)] + lip * SHOT_SEC * COST.lipPerSec + 0.02).toFixed(2);
 }
 // ทำงานพร้อมกันทีละ n
 async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } })); }
@@ -156,8 +164,8 @@ export async function renderEpisode({ f, ep, quality, castImgs, WORK_DIR, pubUrl
   const tmp = []; const T = (ext) => { const p = path.join(WORK_DIR, `fl-${id}-${tmp.length}-${Math.random().toString(36).slice(2, 6)}${ext}`); tmp.push(p); return p; };
   const castBy = Object.fromEntries(f.cast.map((c) => [c.name, c]));
   const shots = ep.script.shots.slice(0, Math.max(1, Math.round((f.ep_len || 60) / SHOT_SEC)));
-  const plan = planShots(shots, q);
-  const used = { key: 0, i2v: 0, lipSec: 0, cineSec: 0 };
+  const plan = planShots(shots, q, f.lang);
+  const used = { key: 0, i2v: 0, lipSec: 0, cineSec: 0, avSec: 0, avFail: 0 };
   try {
     // 1) ภาพหลัก: รอบแรกวาดช็อตแรกของแต่ละฉากพร้อมกัน → รอบสองวาดช็อตที่เหลือพร้อมกัน โดยอ้างอิงภาพแรกของฉากนั้น (ต่อเนื่องแต่เร็ว)
     const keys = new Array(shots.length); let kd = 0;
@@ -172,7 +180,7 @@ export async function renderEpisode({ f, ep, quality, castImgs, WORK_DIR, pubUrl
 Scene: ${s.scene}. Action: ${s.action}. Camera: ${s.camera}. Mood: ${s.mood}.
 ${s.chars.length ? `Characters in frame: ${who}. The attached portrait photos show exactly how each character looks — keep the same face, hair, age and outfit style (same actor).` : 'No main characters in frame.'}
 ${useAnchor ? 'The last attached image is another shot of the same scene — keep location, lighting and costumes consistent.' : ''}
-${s.speaker ? `${s.speaker} is speaking, face clearly visible and well lit, facing the camera.` : ''}
+${plan[i] === 'talk' ? `Medium close-up of ${s.speaker} speaking: ONLY ${s.speaker}'s face is clearly visible (others out of focus, from behind or out of frame), face toward camera at a slight angle, mouth slightly open, eyes open, sharp and well lit, cinematic depth of field.` : s.speaker ? `${s.speaker} is speaking, face clearly visible and well lit, facing the camera.` : ''}
 Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
       let buf;
       try { buf = await genImage({ model: tier.model, prompt, refs, ratio: '9:16', size: tier.size }); used.key++; }
@@ -189,7 +197,41 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
     await pool(shots.map((_, i) => i), 6, async (i) => {
       const s = shots[i];
       let v1 = T('.mp4'), sfx = null;
-      if (plan[i] === 'motion' && cine) {
+      // เสียงพากย์ก่อน (ช็อตพูดต้องใช้เสียงสร้างวิดีโอ): ตัดเงียบหัวท้าย → ปรับดังเท่ากันทุกช็อต → เว้นหายใจ 0.2 วิ
+      let voice = null, vSecVoice = 0;
+      if (s.speaker && s.line && dub) {
+        const c = castBy[s.speaker];
+        const vo = await V.voiceGemini([s.line], c?.voice || (c?.gender === 'male' ? 'Puck' : 'Kore'), { tense: 'ตื่นเต้น', sad: 'อบอุ่น ใส่ใจ', sweet: 'อบอุ่น ใส่ใจ', funny: 'ตลก ขำๆ' }[s.mood] || 'เป็นกันเอง');
+        const raw = T('.wav'); fs.writeFileSync(raw, Buffer.from(vo.audio_base64, 'base64'));
+        const trim = 'silenceremove=start_periods=1:start_threshold=-42dB:start_silence=0.03';
+        let sp = (await V.probe(raw)).sec;
+        const tight = T('.wav'); await V.ff(['-i', raw, '-af', `${trim},areverse,${trim},areverse`, '-ac', '1', '-ar', '48000', tight]);
+        sp = (await V.probe(tight)).sec || sp;
+        const room = SHOT_SEC - 0.6;
+        const k = sp > room ? Math.min(1.15, sp / room) : 1; // เร่งได้นิดเดียว ไม่ให้เสียงเพี้ยน
+        voice = T('.wav');
+        await V.ff(['-i', tight, '-af', `${k > 1 ? `atempo=${k.toFixed(3)},` : ''}loudnorm=I=-16:TP=-1.5:LRA=7,adelay=200,afade=t=in:d=0.02,aresample=48000`, '-ac', '1', '-ar', '48000', voice]);
+        vSecVoice = sp / k + 0.2;
+      }
+      let avDone = false;
+      if (plan[i] === 'talk' && voice) {
+        // AI Avatar: เสียงเติมเงียบให้ครบช็อต → ตัวละครพูดแล้วนิ่งฟังตามธรรมชาติ
+        try {
+          const pad = T('.mp3');
+          await V.ff(['-i', voice, '-af', `apad=whole_dur=${Math.max(SHOT_SEC, vSecVoice + 0.4).toFixed(2)}`, '-ac', '1', '-ar', '44100', '-b:a', '128k', pad]);
+          const o = await V.falRun(AVATAR_MODEL[avTier(q)](), { image_url: pubUrl(keys[i]), audio_url: pubUrl(pad),
+            prompt: `${s.speaker} speaks naturally in a drama scene, ${s.mood} mood, natural blinking, subtle head and shoulder movement, small expressive gestures, cinematic, stable camera with a slow gentle push-in.` });
+          const sec = Number(o.duration) || Math.max(SHOT_SEC, vSecVoice + 0.4);
+          used.avSec += sec;
+          const v0 = T('.mp4'); await V.download(o.video.url, v0);
+          await V.ff(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryfast', v1]);
+          avDone = true;
+        } catch (e) {
+          used.avFail++; log('film avatar fallback', id, i + 1, e.message.slice(0, 160));
+          if (/exhausted balance|locked/i.test(e.message)) throw e;
+        }
+      }
+      if (avDone) { /* ได้วิดีโอพูดแล้ว */ } else if (plan[i] === 'motion' && cine) {
         // Seedance 2.5: ภาพแรก = ภาพหลักของช็อต · มีเสียงฉากในตัว (และบทพูดถ้าเป็นโหมด native)
         const v0 = T('.mp4');
         const talk = s.speaker && s.line;
@@ -202,9 +244,9 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
         await V.ff(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryfast', v1]);
         sfx = T('.wav');
         try { await V.ff(['-i', v0, '-vn', '-ac', '1', '-ar', '44100', sfx]); } catch { sfx = null; }
-      } else if (plan[i] === 'motion') {
+      } else if (plan[i] === 'motion' || (plan[i] === 'talk' && q !== 'std')) {
         const v0 = T('.mp4');
-        const o = await V.falRun(I2V[q](), {
+        const o = await V.falRun(I2V[q === 'cine' ? 'pro' : q](), {
           prompt: `${s.action}. Camera: ${s.camera}. ${s.speaker ? `${s.speaker} talks naturally, subtle lip movement.` : ''} Cinematic, consistent faces, smooth natural motion, ${s.mood} mood.`,
           image_url: pubUrl(keys[i]), duration: '5', cfg_scale: 0.5,
           negative_prompt: 'text, subtitles, watermark, extra limbs, distorted face, morphing, blur, low quality',
@@ -221,26 +263,18 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
       }
       let vid = v1, audio = null, aSec = 0, lineSec = 0;
       if (s.speaker && s.line && !dub) { audio = sfx; lineSec = SHOT_SEC - 0.4; } // Seedance พูดเองแล้ว
-      else if (s.speaker && s.line) {
-        const c = castBy[s.speaker];
-        const vo = await V.voiceGemini([s.line], c?.voice || (c?.gender === 'male' ? 'Puck' : 'Kore'), { tense: 'ตื่นเต้น', sad: 'อบอุ่น ใส่ใจ', sweet: 'อบอุ่น ใส่ใจ', funny: 'ตลก ขำๆ' }[s.mood] || 'เป็นกันเอง');
-        audio = T('.wav'); fs.writeFileSync(audio, Buffer.from(vo.audio_base64, 'base64'));
-        aSec = (await V.probe(audio)).sec; lineSec = V.speechEnd(vo.alignment) || aSec;
-        // พูดยาวเกินช็อต → เร่งเสียงขึ้นไม่เกิน 1.3 เท่า แทนการยืดช็อต (ความยาวตอนต้องตรงที่จ่าย)
-        const room = SHOT_SEC - 0.35;
-        if (lineSec > room) {
-          const k = Math.min(1.3, lineSec / room); const fast = T('.wav');
-          await V.ff(['-i', audio, '-af', `atempo=${k.toFixed(3)}`, fast]); audio = fast;
-          aSec /= k; lineSec /= k;
-        }
-        if (aSec > lineSec + 0.4) { const cut = T('.wav'); await V.ff(['-i', audio, '-t', (lineSec + 0.4).toFixed(3), cut]); audio = cut; aSec = lineSec + 0.4; }
-        if (s.chars.includes(s.speaker)) {
-          try {
-            const mp3 = T('.mp3'); await V.ff(['-i', audio, '-af', 'apad=whole_dur=2', '-ac', '1', '-ar', '44100', '-b:a', '96k', mp3]);
-            const ls = await V.falRun(V.KLING_LIPSYNC_MODEL(), { video_url: pubUrl(v1), audio_url: pubUrl(mp3) });
-            used.lipSec += SHOT_SEC;
-            const lv = T('.mp4'); await V.download(ls.video.url, lv); vid = lv;
-          } catch (e) { log('film lipsync skip', id, i + 1, e.message.slice(0, 160)); if (/exhausted balance|locked/i.test(e.message)) throw e; }
+      else if (voice) {
+        audio = voice; aSec = lineSec = vSecVoice;
+        // สำรอง: AI Avatar ไม่สำเร็จ → ขยับปากบนวิดีโอเดิม (ลองซ้ำ 1 ครั้ง)
+        if (!avDone && isTalk(s)) {
+          for (let t = 0; t < 2; t++) {
+            try {
+              const mp3 = T('.mp3'); await V.ff(['-i', audio, '-af', `apad=whole_dur=${SHOT_SEC}`, '-ac', '1', '-ar', '44100', '-b:a', '128k', mp3]);
+              const ls = await V.falRun(V.KLING_LIPSYNC_MODEL(), { video_url: pubUrl(v1), audio_url: pubUrl(mp3) });
+              used.lipSec += SHOT_SEC;
+              const lv = T('.mp4'); await V.download(ls.video.url, lv); vid = lv; break;
+            } catch (e) { log('film lipsync fail', id, i + 1, t, e.message.slice(0, 160)); if (/exhausted balance|locked/i.test(e.message)) throw e; }
+          }
         }
       }
       if (sfx && audio && audio !== sfx) {
@@ -251,11 +285,11 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
       } else if (sfx && !audio) audio = sfx;
       const vSec = (await V.probe(vid)).sec || SHOT_SEC;
       // ช็อตยาวไม่เกิน 5.2 วิ (ยืดได้นิดเดียวถ้าเสียงยังไม่จบ สูงสุด 5.6 วิ)
-      const len = Math.min(SHOT_SEC + 0.6, Math.max(Math.min(vSec, SHOT_SEC + 0.2), aSec + 0.25));
+      const len = Math.min(SHOT_SEC + 2, Math.max(Math.min(vSec, SHOT_SEC + 0.2), aSec + 0.35));
       const out = T('.mp4');
       await V.ff(['-i', vid, ...(audio ? ['-i', audio] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono']),
-        '-filter_complex', '[0:v]tpad=stop_mode=clone:stop_duration=6,scale=1080:1920:flags=lanczos,fps=30,format=yuv420p[v];[1:a]aresample=44100,aformat=channel_layouts=mono,apad[a]',
-        '-map', '[v]', '-map', '[a]', '-t', len.toFixed(3), '-c:v', 'libx264', '-crf', '19', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '160k', out], 300000);
+        '-filter_complex', `[0:v]tpad=stop_mode=clone:stop_duration=6,scale=1080:1920:flags=lanczos,fps=30,format=yuv420p[v];[1:a]aresample=48000,aformat=channel_layouts=mono,apad,afade=t=in:d=0.02,afade=t=out:st=${Math.max(0, len - 0.08).toFixed(3)}:d=0.08[a]`,
+        '-map', '[v]', '-map', '[a]', '-t', len.toFixed(3), '-c:v', 'libx264', '-crf', '19', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', out], 300000);
       clips[i] = { file: out, len, line: s.line, lineSec };
       done++; stage(`ถ่ายทำช็อต ${done}/${shots.length}`, 30 + Math.round((done / shots.length) * 50));
     });
@@ -264,8 +298,8 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
     const full = path.join(WORK_DIR, `fl-${id}-full-${Math.random().toString(36).slice(2, 6)}.mp4`);
     await V.ff(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', full], 300000);
     const segments = []; let t = 0;
-    for (const c of clips) { if (c.line) segments.push({ start: t + 0.05, end: t + Math.max(0.8, c.lineSec || c.len - 0.3), text: c.line }); t += c.len; }
-    const costUsd = +(used.key * COST.key[q] + (cine ? used.cineSec * COST.cinePerSec() : used.i2v * COST.i2v[q]) + used.lipSec * COST.lipPerSec + 0.02).toFixed(2);
+    for (const c of clips) { if (c.line) segments.push({ start: t + 0.2, end: t + Math.max(0.8, c.lineSec || c.len - 0.3), text: c.line }); t += c.len; }
+    const costUsd = +(used.key * COST.key[q] + (cine ? used.cineSec * COST.cinePerSec() + Math.max(0, used.i2v - used.cineSec / SHOT_SEC) * COST.i2v.pro : used.i2v * COST.i2v[q]) + used.avSec * COST.avatar[avTier(q)] + used.lipSec * COST.lipPerSec + 0.02).toFixed(2);
     return { file: full, segments, sec: t, costUsd, used: { ...used, shots: shots.length, motion: plan.filter((m) => m === 'motion').length } };
   } finally { tmp.forEach((p) => fs.rmSync(p, { force: true })); }
 }
@@ -289,7 +323,7 @@ export function registerFilm(app, { q, auth, wrap, log }) {
   };
   const view = (f) => ({ id: Number(f.id), title: f.title, genre: f.genre, art: f.art, lang: f.lang, logline: f.logline, premise: f.premise, epLen: f.ep_len, cast: f.cast || f.cast_list || [], bible: f.bible,
     episodes: (f.episodes || []).map((e) => ({ n: e.n, title: e.title, summary: e.summary, cliff: e.cliff, hasScript: !!e.script, script: e.script, workId: e.workId || null,
-      plan: e.script ? { std: planShots(e.script.shots, 'std'), pro: planShots(e.script.shots, 'pro'), cine: planShots(e.script.shots, 'cine') } : null, estUsd: e.script ? { std: estimateCost(e.script.shots, 'std'), pro: estimateCost(e.script.shots, 'pro'), cine: estimateCost(e.script.shots, 'cine') } : null, maxShots: Math.round(f.ep_len / SHOT_SEC) })), createdAt: f.created_at });
+      plan: e.script ? Object.fromEntries(FILM_QUALITIES.map((k) => [k, planShots(e.script.shots, k, f.lang)])) : null, estUsd: e.script ? Object.fromEntries(FILM_QUALITIES.map((k) => [k, estimateCost(e.script.shots, k, planShots(e.script.shots, k, f.lang), f.lang)])) : null, maxShots: Math.round(f.ep_len / SHOT_SEC) })), createdAt: f.created_at });
   const get = async (uid, id) => (await q('SELECT * FROM films WHERE id=$1 AND user_id=$2', [Number(id) || 0, uid])).rows[0];
 
   app.get('/api/films', auth, wrap(async (req, res) => {

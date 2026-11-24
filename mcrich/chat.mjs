@@ -78,13 +78,32 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
     const contents = [...hist.map((h) => ({ role: h.role === 'model' ? 'model' : 'user', parts: [{ text: h.content.slice(0, 400) }] })), { role: 'user', parts: [{ text }] }];
     let out = { reply: 'แง ริชค้างแป๊บ ลองพิมพ์ใหม่อีกทีน้า 🥺', draft: null, chips: [] };
     try {
-      const r = await fetch(`${API()}/v1beta/models/${MODEL}:generateContent`, {
-        method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() },
-        body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: { responseMimeType: 'application/json', temperature: 0.9, responseSchema: CHAT_SCHEMA } }),
-        signal: AbortSignal.timeout(60000),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(`gemini ${r.status} ${j.error?.message || ''}`);
+      if (!KEY()) throw new Error('ไม่มี GEMINI_API_KEY');
+      // ลองโมเดลหลัก → สำรอง · เจอคิวเต็ม/ล่ม (429/5xx/หมดเวลา) รอแล้วลองใหม่ · 400 ลองแบบไม่บังคับ schema
+      const models = [...new Set([MODEL, ...(process.env.MCRICH_CHAT_FALLBACK || 'gemini-2.5-flash,gemini-2.5-flash-lite').split(',').map((x) => x.trim()).filter(Boolean)])];
+      let j = null, lastErr = null;
+      for (const [mi, model] of models.entries()) {
+        for (let t = 0; t < 2 && !j; t++) {
+          try {
+            const gc = { responseMimeType: 'application/json', temperature: 0.9, ...(t === 0 || lastErr?.status !== 400 ? { responseSchema: CHAT_SCHEMA } : {}) };
+            const r = await fetch(`${API()}/v1beta/models/${model}:generateContent`, {
+              method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() },
+              body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: gc }),
+              signal: AbortSignal.timeout(mi === 0 ? 45000 : 30000),
+            });
+            const jj = await r.json().catch(() => ({}));
+            if (!r.ok) { const e = new Error(`gemini ${model} ${r.status} ${jj.error?.message || ''}`); e.status = r.status; throw e; }
+            if (!(jj.candidates?.[0]?.content?.parts || []).some((p) => p.text && !p.thought)) { const e = new Error(`gemini ${model} ว่าง ${jj.candidates?.[0]?.finishReason || jj.promptFeedback?.blockReason || ''}`); e.status = 0; throw e; }
+            j = jj; if (mi || t) log('chat recovered', model, t);
+          } catch (e) {
+            lastErr = e; log('chat try fail', uid, e.message.slice(0, 200));
+            if ([401, 403].includes(e.status)) break; // คีย์ผิด/ไม่มีสิทธิ์: ลองโมเดลอื่นต่อ
+            if (e.status === 429 || e.status >= 500 || e.name === 'TimeoutError') await new Promise((ok) => setTimeout(ok, 1200));
+          }
+        }
+        if (j) break;
+      }
+      if (!j) throw lastErr || new Error('gemini ไม่ตอบ');
       const raw = (j.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('').replace(/^```(json)?|```$/g, '').trim();
       let o;
       try { o = JSON.parse(raw); } catch {
@@ -107,8 +126,13 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
       let chips = (Array.isArray(o.chips) ? o.chips : []).map((c) => String(c).trim().slice(0, 40)).filter(Boolean).slice(0, 3);
       // ริชบอกให้กดปุ่ม/เลือก แต่ไม่ได้ให้ปุ่มมา → เติมปุ่มพื้นฐานให้ (ทั้งเว็บและ LINE)
       if (!draft && !chips.length && /กด|เลือก|ปุ่ม|\?|ไหม|มั้ย/.test(String(o.reply || ''))) chips = ['ทำภาพขายของ', 'ทำคลิปขายของ', 'ขอไอเดียหน่อย'];
-      out = { reply: String(o.reply || '').slice(0, 3000) || out.reply, draft, chips };
-    } catch (e) { log('chat fail', uid, e.message.slice(0, 300)); }
+      if (!String(o.reply || '').trim()) { const e = new Error(`gemini ตอบไม่มีข้อความ: ${raw.slice(0, 120)}`); throw e; }
+      out = { reply: String(o.reply).slice(0, 3000), draft, chips };
+    } catch (e) {
+      log('chat fail', uid, e.message.slice(0, 300));
+      // แอดมินเห็นสาเหตุจริง (ลูกค้าเห็นข้อความปกติ)
+      if (m.admin) out.reply += `\n\n[แอดมิน] สาเหตุ: ${e.message.slice(0, 220)}`;
+    }
     const ins = await q('INSERT INTO chat_messages(user_id,role,content,draft,channel,chips) VALUES($1,$2,$3,$4,$5,$6) RETURNING id', [uid, 'model', out.reply, out.draft, channel, out.chips || []]);
     out.id = ins.rows[0]?.id;
     return out;

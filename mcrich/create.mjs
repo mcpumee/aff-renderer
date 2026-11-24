@@ -1237,6 +1237,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
         const why = await explainRefusal({ fields: { plot: `${s.scene} ${s.action}`, script: s.line }, refs: s.chars.map((n) => castImgs[n]).filter(Boolean).slice(0, 2), what: 'film frame image', aiText: e.text || e.message });
         return fail(`AI ไม่สร้างภาพช็อตที่ ${e.shot}${why ? ` · ${why.replace('รูปที่แนบ', 'รูปนักแสดง')}` : ' ลองแก้ฉาก/บทของช็อตนี้'} · คืนดาวแล้ว`);
       }
+      if (/exhausted balance|user is locked|insufficient|billing|fal_submit 40[23]/i.test(e.message)) return fail('ระบบถ่ายทำไม่พร้อมชั่วคราว (เครดิตผู้ให้บริการ AI หมด) แจ้งแอดมินแล้ว · คืนดาวแล้ว');
       return fail(/safety|policy|nsfw|content/i.test(e.message) ? 'AI ไม่รับบางฉากในตอนนี้ ลองปรับฉากที่รุนแรง/วาบหวิว · คืนดาวแล้ว' : 'สร้างตอนนี้ไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว');
     }
     const base = `${w.user_id}-${w.id}-f-${rand(6).toLowerCase()}`;
@@ -1319,6 +1320,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     }
     catch (e) {
       log(`avatar ${useKling ? 'kling' : 'heygen'} fail`, w.id, e.message.slice(0, 300)); fs.rm(raw, { force: true }, () => {});
+      if (/exhausted balance|user is locked|insufficient|billing|fal_submit 40[23]|credit/i.test(e.message)) return fail('ระบบอวตารไม่พร้อมชั่วคราว (เครดิตผู้ให้บริการ AI หมด) แจ้งแอดมินแล้ว · คืนดาวแล้ว');
       if (!/moderation|policy|safety|face|celebr|nsfw|content/i.test(e.message)) return fail('สร้างวิดีโออวตารไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว');
       const why = await explainRefusal({ fields: { script: lines, product: p.product, details: p.details }, refs: [img], what: 'talking avatar video', aiText: e.message });
       return fail(`ระบบอวตารไม่รับงานนี้${why ? ` · ${why.replace('รูปที่แนบ', 'รูปอวตาร')}` : ' ลองอวตารอื่นหรือปรับบท'} · คืนดาวแล้ว`);

@@ -657,7 +657,7 @@ async function adminWorks(st) {
     <div class="list">${d.items.map((w) => `<a href="#admin?t=users&u=${esc(w.public_id)}" style="text-decoration:none;color:inherit;display:block"><b>#${w.id} ${esc(w.title || w.style)}</b><br>
       <span class="muted">${esc(w.name)} (${esc(w.public_id)}) · ${esc(w.style)} · ${w.cost} ดาว${w.status === 'failed' ? (w.refunded ? ' · คืนดาวแล้ว ✓' : w.cost ? ' · ยังไม่คืนดาว' : '') : ''}</span><br>
       <span class="muted">${new Date(w.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}${w.done_at ? ' → ' + new Date(w.done_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-      ${w.error ? `<br><span style="color:var(--bad);font-size:14px;overflow-wrap:anywhere">${esc(w.error)}</span>` : ''}${w.fail_detail ? `<br><span class="muted" style="font-size:12px;overflow-wrap:anywhere">สาเหตุจากระบบ: ${esc(w.fail_detail)}</span>` : ''}</a>`).join('') || '<div class="muted">ไม่มีรายการ</div>'}</div>`;
+      ${w.error ? `<br><span style="color:var(--bad);font-size:14px;overflow-wrap:anywhere">${esc(w.error)}</span>` : ''}${w.fail_detail ? `<br><span class="muted" style="font-size:12px;overflow-wrap:anywhere">สาเหตุจากระบบ: ${esc(w.fail_detail)}</span>` : ''}${w.cost_usd ? `<br><span class="muted" style="font-size:12px">ต้นทุน AI โดยประมาณ $${esc(w.cost_usd)} (~${Math.round(Number(w.cost_usd) * 35)} บาท)</span>` : ''}</a>`).join('') || '<div class="muted">ไม่มีรายการ</div>'}</div>`;
 }
 async function adminPrices() {
   const d = await api('api/admin/prices');
@@ -1863,7 +1863,7 @@ async function filmEp(id, n) {
     app.innerHTML = `${topbar(`EP.${ep.n} ${ep.title}`, `film?id=${id}`)}<main>
       <section class="card"><b>EP.${ep.n} ${esc(ep.title)}</b><span class="muted">${esc(ep.summary)}</span></section>
       ${!sc ? `<button type="button" class="btn" id="wscript">✨ ให้ AI เขียนสคริปต์ตอนนี้ (ฟรี)</button><p class="muted">AI จะแบ่งเป็นช็อตละ 5 วินาที พร้อมบทพูดของแต่ละตัวละครที่ยาวพอดีเวลา แก้ได้ทุกช็อตก่อนถ่ายทำ</p>`
-        : `${sc.shots.map((s, i) => `<section class="card" style="gap:6px"><b>ช็อต ${i + 1} · 5 วิ</b>
+        : `${sc.shots.map((s, i) => `<section class="card" style="gap:6px"><b>ช็อต ${i + 1} · 5 วิ <span class="badge ${ep.plan?.[FQ]?.[i] === 'motion' ? 'b-lime' : ''}">${ep.plan?.[FQ]?.[i] === 'motion' ? '🎥 วิดีโอ AI' : s.speaker && s.line ? '🗣️ กล้องเคลื่อน + ปากขยับ' : '📷 กล้องเคลื่อน'}</span></b>
           <label class="f">ฉาก / สิ่งที่เกิดขึ้น (AI ใช้สร้างภาพ)<textarea data-sa="${i}" rows="2" maxlength="400">${esc(s.action)}</textarea></label>
           <label class="f">สถานที่ / แสง<input type="text" data-ss="${i}" maxlength="300" value="${esc(s.scene)}"></label>
           <span class="muted">ในภาพ:</span><div class="chips">${names.map((nm) => `<button type="button" class="chip" data-sc="${i}" data-v="${esc(nm)}" aria-pressed="${s.chars.includes(nm)}">${esc(nm)}</button>`).join('')}</div>
@@ -1873,7 +1873,7 @@ async function filmEp(id, n) {
         <button type="button" class="btn ghost" id="addshot">+ เพิ่มช็อต</button>
         <div class="grid2"><button type="button" class="btn dark" id="rescript">เขียนใหม่ทั้งตอน</button><button type="button" class="btn dark" id="savescript">บันทึกสคริปต์</button></div>
         <section class="hero"><b>ถ่ายทำตอนนี้</b>${fchips([{ id: 'std', label: `มาตรฐาน · ${C.prices.std[f.epLen]} ดาว` }, { id: 'pro', label: `คุณภาพสูง · ${C.prices.pro[f.epLen]} ดาว` }], FQ, 'q')}
-          <span class="muted">${FQ === 'pro' ? 'คุณภาพสูง: ภาพคมระดับโปร การเคลื่อนไหวลื่นและสมจริงกว่า เหมาะเอาไปทำรายได้' : 'มาตรฐาน: คุ้มค่า เหมาะทดลองเรื่องใหม่'} · ใช้เวลาประมาณ 10–25 นาที · ไม่สำเร็จคืนดาวอัตโนมัติ</span>
+          <span class="muted">${FQ === 'pro' ? 'คุณภาพสูง: วิดีโอ AI เคลื่อนไหวจริงทุกช็อต ภาพคมระดับโปร เหมาะเอาไปทำรายได้ · ใช้เวลาประมาณ 8–15 นาที' : 'มาตรฐาน: ช็อตแอ็กชันสำคัญเป็นวิดีโอ AI ช็อตบทพูดเป็นกล้องเคลื่อน+ปากขยับตามเสียง ถูกและเร็ว · ใช้เวลาประมาณ 4–8 นาที'} · ไม่สำเร็จคืนดาวอัตโนมัติ</span>
           <button type="button" class="btn" id="shoot" ${C.ready ? '' : 'disabled'}>🎬 ถ่ายทำ EP.${ep.n} · ${C.prices[FQ][f.epLen]} ดาว</button>${C.ready ? '' : '<span class="badge b-warn">ระบบถ่ายทำกำลังตั้งค่า</span>'}</section>`}
     </main>${nav('create')}`;
     const keep = () => { if (!ep.script) return; ep.script.shots.forEach((s, i) => { s.action = $(`[data-sa="${i}"]`).value; s.scene = $(`[data-ss="${i}"]`).value; s.speaker = $(`[data-sp="${i}"]`).value; s.line = $(`[data-sl="${i}"]`).value; }); };

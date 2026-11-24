@@ -1257,7 +1257,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     const { captions, tags } = await finalizeCaptions(w, { ...p, hashtags: [] }, { ...ep.script.captions, hashtags: ep.script.hashtags || [] });
     const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
     await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
-      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ seconds: Math.round(r.sec), filmTitle: f.title })]);
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ seconds: Math.round(r.sec), filmTitle: f.title, costUsd: r.costUsd, costUse: r.used })]);
     ep.workId = Number(w.id); await films.save(f).catch(() => {});
     PROG.delete(w.id);
     if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));

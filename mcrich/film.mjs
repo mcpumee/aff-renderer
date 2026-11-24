@@ -41,7 +41,7 @@ export const FILM_ARTS = [
   { id: '3d', label: 'แอนิเมชัน 3D', en: 'high-end 3D animated feature film style, soft global illumination, expressive stylized characters' },
 ];
 export const FILM_LENS = [30, 60, 90];
-export const FILM_PRICE = { std: { 30: 99, 60: 199, 90: 289 }, pro: { 30: 179, 60: 349, 90: 499 } };
+export const FILM_PRICE = { std: { 30: 59, 60: 109, 90: 159 }, pro: { 30: 179, 60: 349, 90: 499 } };
 const SHOT_SEC = 5;
 const I2V = { std: () => process.env.FILM_I2V_STD || 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video', pro: () => process.env.FILM_I2V_PRO || 'fal-ai/kling-video/v2.5-turbo/pro/image-to-video' };
 export const filmReady = () => !!KEY() && V.klingReady();
@@ -102,7 +102,7 @@ ${castText(f.cast)}
 - ห้ามเนื้อหาทางเพศโจ่งแจ้ง ความรุนแรงเกินเหตุ หรือเด็กในฉากอันตราย
 ตอบ JSON: {"shots":[{"scene":"EN location + time + lighting","action":"EN what happens and facial expression","camera":"EN shot type and movement e.g. close-up slow push-in","chars":["ชื่อตัวละครในภาพ"],"speaker":"ชื่อคนพูด หรือ ว่าง","line":"บทพูด หรือ ว่าง","mood":"tense|sad|sweet|funny|scary|epic"}],"hook":"ข้อความฮุคบนจอช่วงเปิด 2 บรรทัด คั่นด้วย \\n (ภาษาไทย)","facebook":"แคปชั่นโพสต์ภาษาไทย 2-4 บรรทัด ชวนดูต่อ","tiktok":"แคปชั่นสั้น","instagram":"แคปชั่น","hashtags":["5-8 แท็ก"]}`, 0.85, 150000);
   const names = new Set(f.cast.map((c) => c.name));
-  const out = (o.shots || []).slice(0, shots + 2).map((s, i) => {
+  const out = (o.shots || []).slice(0, shots).map((s, i) => {
     const sp = names.has(String(s.speaker || '').trim()) ? String(s.speaker).trim() : '';
     return { n: i + 1, scene: clean(s.scene, 300), action: clean(s.action, 400), camera: clean(s.camera, 120), chars: (Array.isArray(s.chars) ? s.chars : []).map((x) => String(x).trim()).filter((x) => names.has(x)).slice(0, 3),
       speaker: sp, line: sp ? clean(s.line, maxChars * 2) : '', mood: clean(s.mood, 20) };
@@ -111,82 +111,121 @@ ${castText(f.cast)}
   return { shots: out, hook: clean(o.hook, 80), captions: { facebook: clean(o.facebook, 1200), tiktok: clean(o.tiktok, 300), instagram: clean(o.instagram, 1000), shopee: '' }, hashtags: (o.hashtags || []).map((t) => '#' + String(t).replace(/^#+/, '').replace(/\s+/g, '')).slice(0, 10) };
 }
 
-/** เรนเดอร์ 1 ตอน → ไฟล์ mp4 (ยังไม่ใส่ซับ) + ช่วงซับ */
+// ราคาต้นทุน (USD) ใช้ประเมินต่อตอน · ปรับตามราคาผู้ให้บริการได้ทาง env
+const COST = {
+  key: { std: Number(process.env.FILM_COST_KEY_STD || 0.034), pro: Number(process.env.FILM_COST_KEY_PRO || 0.134) },
+  i2v: { std: Number(process.env.FILM_COST_I2V_STD || 0.21), pro: Number(process.env.FILM_COST_I2V_PRO || 0.35) },
+  lipPerSec: Number(process.env.FILM_COST_LIP_SEC || 0.014),
+};
+/** วางแผนช็อต: มาตรฐาน = ช็อตพูดใช้ภาพนิ่งเคลื่อนกล้อง + ขยับปาก, ช็อตแอ็กชันใช้วิดีโอ AI เฉพาะช็อตสำคัญ · คุณภาพสูง = วิดีโอ AI ทุกช็อต */
+export function planShots(shots, quality) {
+  if (quality === 'pro') return shots.map(() => 'motion');
+  const cap = Math.max(1, Math.round(shots.length / 3));
+  const plan = shots.map((s) => (s.speaker && s.line ? 'still' : 'cand'));
+  // เลือกช็อตไม่พูดที่สำคัญที่สุดก่อน: ช็อตแรก (ฮุค) → ช็อตสุดท้าย (ค้างคา) → อารมณ์แรง
+  const order = plan.map((m, i) => ({ i, m, w: (i === 0 ? 3 : 0) + (i === shots.length - 1 ? 2 : 0) + (/tense|scary|epic/.test(shots[i].mood) ? 1 : 0) }))
+    .filter((x) => x.m === 'cand').sort((a, b) => b.w - a.w);
+  const pick = new Set(order.slice(0, cap).map((x) => x.i));
+  return plan.map((m, i) => (m === 'cand' ? (pick.has(i) ? 'motion' : 'still') : m));
+}
+export function estimateCost(shots, quality, plan = planShots(shots, quality)) {
+  const q = quality === 'pro' ? 'pro' : 'std';
+  const n = shots.length, motion = plan.filter((m) => m === 'motion').length, talk = shots.filter((s) => s.speaker && s.line).length;
+  return +(n * COST.key[q] + motion * COST.i2v[q] + talk * SHOT_SEC * COST.lipPerSec + 0.02).toFixed(2);
+}
+// ทำงานพร้อมกันทีละ n
+async function pool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } })); }
+
+/** เรนเดอร์ 1 ตอน → ไฟล์ mp4 (ยังไม่ใส่ซับ) + ช่วงซับ + ต้นทุนโดยประมาณ */
 export async function renderEpisode({ f, ep, quality, castImgs, WORK_DIR, pubUrl, log, stage, id }) {
   const A = (FILM_ARTS.find((a) => a.id === f.art) || FILM_ARTS[0]);
-  const tier = quality === 'pro' ? TIERS.find((t) => t.id === 'pro') : TIERS.find((t) => t.id === 'hd') || TIERS[1];
+  const q = quality === 'pro' ? 'pro' : 'std';
+  const tier = q === 'pro' ? TIERS.find((t) => t.id === 'pro') : TIERS.find((t) => t.id === 'std') || TIERS[1];
   const tmp = []; const T = (ext) => { const p = path.join(WORK_DIR, `fl-${id}-${tmp.length}-${Math.random().toString(36).slice(2, 6)}${ext}`); tmp.push(p); return p; };
   const castBy = Object.fromEntries(f.cast.map((c) => [c.name, c]));
   const shots = ep.script.shots;
+  const plan = planShots(shots, q);
+  const used = { key: 0, i2v: 0, lipSec: 0 };
   try {
-    // 1) ภาพหลักทีละช็อต (ใช้รูปนักแสดงเป็นต้นแบบ + ภาพช็อตก่อนหน้าถ้าฉากเดียวกัน → ต่อเนื่อง)
-    const keys = [];
-    for (const [i, s] of shots.entries()) {
-      stage(`วาดฉากที่ ${i + 1}/${shots.length}`, 5 + Math.round((i / shots.length) * 25));
+    // 1) ภาพหลัก: รอบแรกวาดช็อตแรกของแต่ละฉากพร้อมกัน → รอบสองวาดช็อตที่เหลือพร้อมกัน โดยอ้างอิงภาพแรกของฉากนั้น (ต่อเนื่องแต่เร็ว)
+    const keys = new Array(shots.length); let kd = 0;
+    const firstOf = {}; shots.forEach((s, i) => { const k = s.scene || `#${i}`; if (firstOf[k] === undefined) firstOf[k] = i; });
+    const drawKey = async (s, i) => {
       const refs = s.chars.map((n) => castImgs[n]).filter(Boolean).slice(0, 3);
-      const sameScene = i > 0 && shots[i - 1].scene && shots[i - 1].scene === s.scene && keys[i - 1];
-      if (sameScene) refs.push(fs.readFileSync(keys[i - 1]));
+      const anchor = firstOf[s.scene || `#${i}`];
+      const useAnchor = anchor !== i && keys[anchor];
+      if (useAnchor) refs.push(fs.readFileSync(keys[anchor]));
       const who = s.chars.map((n) => `${n}: ${castBy[n]?.look || castBy[n]?.desc || ''}`).join('; ');
       const prompt = `${A.en}. Vertical 9:16 frame from a short drama series "${f.title}".
 Scene: ${s.scene}. Action: ${s.action}. Camera: ${s.camera}. Mood: ${s.mood}.
 ${s.chars.length ? `Characters in frame: ${who}. The attached portrait photos show exactly how each character looks — keep the same face, hair, age and outfit style (same actor).` : 'No main characters in frame.'}
-${sameScene ? 'The last attached image is the previous shot of the same scene — keep location, lighting and costumes consistent.' : ''}
-${s.speaker ? `${s.speaker} is speaking, face clearly visible to camera, mouth slightly open.` : ''}
+${useAnchor ? 'The last attached image is another shot of the same scene — keep location, lighting and costumes consistent.' : ''}
+${s.speaker ? `${s.speaker} is speaking, face clearly visible and well lit, facing the camera.` : ''}
 Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
       let buf;
-      try { buf = await genImage({ model: tier.model, prompt, refs, ratio: '9:16', size: tier.size }); }
+      try { buf = await genImage({ model: tier.model, prompt, refs, ratio: '9:16', size: tier.size }); used.key++; }
       catch (e) { const err = new Error(`keyframe ${i + 1}: ${e.message}`); err.shot = i + 1; err.text = e.text; throw err; }
-      const k = T('.jpg'); await sharp(buf).resize(1080, 1920, { fit: 'cover' }).jpeg({ quality: 92 }).toFile(k); keys.push(k);
-    }
-    // 2) ขยับเป็นวิดีโอ + 3) เสียงพากย์ + 4) ขยับปาก — ทำพร้อมกัน 3 ช็อต
-    const clips = new Array(shots.length);
-    let done = 0, idx = 0;
-    await Promise.all(Array.from({ length: Math.min(3, shots.length) }, async () => {
-      while (idx < shots.length) {
-        const i = idx++; const s = shots[i];
+      const k = T('.jpg'); await sharp(buf).resize(1080, 1920, { fit: 'cover' }).jpeg({ quality: 92 }).toFile(k); keys[i] = k;
+      kd++; stage(`วาดฉาก ${kd}/${shots.length}`, 5 + Math.round((kd / shots.length) * 25));
+    };
+    const firsts = [...new Set(Object.values(firstOf))];
+    await pool(firsts, 5, (i) => drawKey(shots[i], i));
+    await pool(shots.map((_, i) => i).filter((i) => !keys[i]), 5, (i) => drawKey(shots[i], i));
+
+    // 2) ทุกช็อตพร้อมกัน: วิดีโอ AI หรือภาพนิ่งเคลื่อนกล้อง → เสียงตัวละคร → ขยับปาก → ช็อตสำเร็จ
+    const clips = new Array(shots.length); let done = 0;
+    await pool(shots.map((_, i) => i), 6, async (i) => {
+      const s = shots[i];
+      let v1 = T('.mp4');
+      if (plan[i] === 'motion') {
         const v0 = T('.mp4');
-        const o = await V.falRun(I2V[quality === 'pro' ? 'pro' : 'std'](), {
-          prompt: `${s.action}. Camera: ${s.camera}. ${s.speaker ? `${s.speaker} talks to the other person naturally, subtle lip movement.` : ''} Cinematic, consistent faces, smooth natural motion, ${s.mood} mood.`,
+        const o = await V.falRun(I2V[q](), {
+          prompt: `${s.action}. Camera: ${s.camera}. ${s.speaker ? `${s.speaker} talks naturally, subtle lip movement.` : ''} Cinematic, consistent faces, smooth natural motion, ${s.mood} mood.`,
           image_url: pubUrl(keys[i]), duration: '5', cfg_scale: 0.5,
           negative_prompt: 'text, subtitles, watermark, extra limbs, distorted face, morphing, blur, low quality',
         });
+        used.i2v++;
         await V.download(o.video.url, v0);
-        // วิดีโอ 720x1280 (ขนาดที่ LipSync รับ)
-        const v1 = T('.mp4'); await V.ff(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'veryfast', v1]);
-        let vid = v1, audio = null, aSec = 0, lineSec = 0;
-        if (s.speaker && s.line) {
-          const c = castBy[s.speaker];
-          const vo = await V.voiceGemini([s.line], c?.voice || (c?.gender === 'male' ? 'Puck' : 'Kore'), { tense: 'ตื่นเต้น', sad: 'อบอุ่น ใส่ใจ', sweet: 'อบอุ่น ใส่ใจ', funny: 'ตลก ขำๆ' }[s.mood] || 'เป็นกันเอง');
-          audio = T('.wav'); fs.writeFileSync(audio, Buffer.from(vo.audio_base64, 'base64'));
-          aSec = (await V.probe(audio)).sec; lineSec = V.speechEnd(vo.alignment) || aSec;
-          // ขยับปากเฉพาะเมื่อคนพูดอยู่ในภาพ
-          if (s.chars.includes(s.speaker)) {
-            try {
-              const mp3 = T('.mp3'); await V.ff(['-i', audio, '-af', 'apad=whole_dur=2', '-ac', '1', '-ar', '44100', '-b:a', '96k', mp3]);
-              const ls = await V.falRun(V.KLING_LIPSYNC_MODEL(), { video_url: pubUrl(v1), audio_url: pubUrl(mp3) });
-              const lv = T('.mp4'); await V.download(ls.video.url, lv); vid = lv;
-            } catch (e) { log('film lipsync skip', id, i + 1, e.message.slice(0, 160)); }
-          }
-        }
-        // ช็อตสุดท้าย: ยาวพอให้พูดจบ (ค้างเฟรมสุดท้ายถ้าเสียงยาวกว่า)
-        const vSec = (await V.probe(vid)).sec || SHOT_SEC;
-        const len = Math.max(Math.min(vSec, SHOT_SEC + 0.2), aSec + 0.35);
-        const out = T('.mp4');
-        const args = ['-i', vid, ...(audio ? ['-i', audio] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono']),
-          '-filter_complex', `[0:v]tpad=stop_mode=clone:stop_duration=6,scale=1080:1920:flags=lanczos,fps=30,format=yuv420p[v];[1:a]aresample=44100,aformat=channel_layouts=mono,apad[a]`,
-          '-map', '[v]', '-map', '[a]', '-t', len.toFixed(3), '-c:v', 'libx264', '-crf', '19', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '160k', out];
-        await V.ff(args, 300000);
-        clips[i] = { file: out, len, line: s.line, lineSec };
-        done++; stage(`ถ่ายทำช็อต ${done}/${shots.length}`, 30 + Math.round((done / shots.length) * 50));
+        await V.ff(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'veryfast', v1]);
+      } else {
+        // ภาพนิ่งเคลื่อนกล้องช้าๆ (ฟรี) — ซูมเข้า/ออก/แพนสลับกันให้ไม่ซ้ำ
+        const fr = SHOT_SEC * 30, mv = i % 3;
+        const z = mv === 1 ? `'max(1.12-0.0008*on,1)'` : `'min(1+0.0008*on,1.12)'`;
+        const x = mv === 2 ? `'(iw-iw/zoom)*on/${fr}'` : `'iw/2-(iw/zoom/2)'`;
+        await V.ff(['-loop', '1', '-i', keys[i], '-vf', `scale=1440:2560,zoompan=z=${z}:x=${x}:y='ih/2-(ih/zoom/2)':d=${fr}:s=720x1280:fps=30,format=yuv420p`, '-t', String(SHOT_SEC), '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', v1]);
       }
-    }));
-    // 5) ต่อทุกช็อต
+      let vid = v1, audio = null, aSec = 0, lineSec = 0;
+      if (s.speaker && s.line) {
+        const c = castBy[s.speaker];
+        const vo = await V.voiceGemini([s.line], c?.voice || (c?.gender === 'male' ? 'Puck' : 'Kore'), { tense: 'ตื่นเต้น', sad: 'อบอุ่น ใส่ใจ', sweet: 'อบอุ่น ใส่ใจ', funny: 'ตลก ขำๆ' }[s.mood] || 'เป็นกันเอง');
+        audio = T('.wav'); fs.writeFileSync(audio, Buffer.from(vo.audio_base64, 'base64'));
+        aSec = (await V.probe(audio)).sec; lineSec = V.speechEnd(vo.alignment) || aSec;
+        if (s.chars.includes(s.speaker)) {
+          try {
+            const mp3 = T('.mp3'); await V.ff(['-i', audio, '-af', 'apad=whole_dur=2', '-ac', '1', '-ar', '44100', '-b:a', '96k', mp3]);
+            const ls = await V.falRun(V.KLING_LIPSYNC_MODEL(), { video_url: pubUrl(v1), audio_url: pubUrl(mp3) });
+            used.lipSec += SHOT_SEC;
+            const lv = T('.mp4'); await V.download(ls.video.url, lv); vid = lv;
+          } catch (e) { log('film lipsync skip', id, i + 1, e.message.slice(0, 160)); if (/exhausted balance|locked/i.test(e.message)) throw e; }
+        }
+      }
+      const vSec = (await V.probe(vid)).sec || SHOT_SEC;
+      const len = Math.max(Math.min(vSec, SHOT_SEC + 0.2), aSec + 0.35);
+      const out = T('.mp4');
+      await V.ff(['-i', vid, ...(audio ? ['-i', audio] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono']),
+        '-filter_complex', '[0:v]tpad=stop_mode=clone:stop_duration=6,scale=1080:1920:flags=lanczos,fps=30,format=yuv420p[v];[1:a]aresample=44100,aformat=channel_layouts=mono,apad[a]',
+        '-map', '[v]', '-map', '[a]', '-t', len.toFixed(3), '-c:v', 'libx264', '-crf', '19', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '160k', out], 300000);
+      clips[i] = { file: out, len, line: s.line, lineSec };
+      done++; stage(`ถ่ายทำช็อต ${done}/${shots.length}`, 30 + Math.round((done / shots.length) * 50));
+    });
+    // 3) ต่อทุกช็อต
     const list = T('.txt'); fs.writeFileSync(list, clips.map((c) => `file '${c.file}'`).join('\n'));
     const full = path.join(WORK_DIR, `fl-${id}-full-${Math.random().toString(36).slice(2, 6)}.mp4`);
     await V.ff(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', full], 300000);
     const segments = []; let t = 0;
     for (const c of clips) { if (c.line) segments.push({ start: t + 0.05, end: t + Math.max(0.8, c.lineSec || c.len - 0.3), text: c.line }); t += c.len; }
-    return { file: full, segments, sec: t };
+    const costUsd = +(used.key * COST.key[q] + used.i2v * COST.i2v[q] + used.lipSec * COST.lipPerSec + 0.02).toFixed(2);
+    return { file: full, segments, sec: t, costUsd, used: { ...used, shots: shots.length, motion: plan.filter((m) => m === 'motion').length } };
   } finally { tmp.forEach((p) => fs.rmSync(p, { force: true })); }
 }
 
@@ -208,7 +247,8 @@ export function registerFilm(app, { q, auth, wrap, log }) {
     return out;
   };
   const view = (f) => ({ id: Number(f.id), title: f.title, genre: f.genre, art: f.art, lang: f.lang, logline: f.logline, premise: f.premise, epLen: f.ep_len, cast: f.cast || f.cast_list || [], bible: f.bible,
-    episodes: (f.episodes || []).map((e) => ({ n: e.n, title: e.title, summary: e.summary, cliff: e.cliff, hasScript: !!e.script, script: e.script, workId: e.workId || null })), createdAt: f.created_at });
+    episodes: (f.episodes || []).map((e) => ({ n: e.n, title: e.title, summary: e.summary, cliff: e.cliff, hasScript: !!e.script, script: e.script, workId: e.workId || null,
+      plan: e.script ? { std: planShots(e.script.shots, 'std'), pro: planShots(e.script.shots, 'pro') } : null, estUsd: e.script ? { std: estimateCost(e.script.shots, 'std'), pro: estimateCost(e.script.shots, 'pro') } : null })), createdAt: f.created_at });
   const get = async (uid, id) => (await q('SELECT * FROM films WHERE id=$1 AND user_id=$2', [Number(id) || 0, uid])).rows[0];
 
   app.get('/api/films', auth, wrap(async (req, res) => {

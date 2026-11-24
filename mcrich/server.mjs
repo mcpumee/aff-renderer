@@ -406,7 +406,7 @@ const sched = registerSchedule(app, { q, auth, wrap, log, PUBLIC_URL });
 const chat = registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL });
 sched.setNotify((uid, text) => chat.notifyLine(uid, text));
 const social = registerSocial(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC_URL, SECRET, makeToken, readToken, getCookie, setCookie, G_ID, G_SECRET, probe: probeVideo, notify: (uid, t) => chat.notifyLine(uid, t) });
-const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks: extras.hooks });
+const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl: social.pubUrl, hooks: extras.hooks });
 const auto = registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, videoPrice: VIDEO_PRICE, notify: (uid, t) => chat.notifyLine(uid, t) });
 const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNED });
 const viral = registerViral(app, { q, auth, wrap, log, DATA_DIR });

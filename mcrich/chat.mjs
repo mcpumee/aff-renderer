@@ -158,7 +158,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
     if (d.style === 'v_drama') return `${DRAMA_PRICE[4]}–${DRAMA_PRICE[6]} ดาว`;
     if (d.style === 'v_series') return '25–45 ดาว ต่อตอน';
     if (d.style === 'v_motion') return `${MOTION_PRICE.std} ดาว`;
-    if (d.style === 'v_avatar') return `${AVATAR_PRICE[15]}–${AVATAR_PRICE[60]} ดาว (ต้องมีอวตารที่บันทึกไว้)`;
+    if (d.style === 'v_avatar') return `${AVATAR_PRICE[15]}–${AVATAR_PRICE[60]} ดาว (มาตรฐาน · ต้องมีอวตารที่บันทึกไว้)`;
     if (d.style === 'v_self') return '6–12 ดาว';
     return `${VIDEO_PRICE[15]}–${VIDEO_PRICE[45]} ดาว`;
   };

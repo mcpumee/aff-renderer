@@ -501,8 +501,10 @@ Dramatic composition, expressive faces. No text, no letters, no subtitles, no wa
 // ---------- อวตารพูดได้ (ภาพอวตาร + เสียง AI → HeyGen ขยับปาก) ----------
 const HEYGEN = () => (process.env.HEYGEN_URL || 'https://api.heygen.com').replace(/\/+$/, '');
 const HEYGEN_KEY = () => process.env.HEYGEN_API_KEY || '';
-export const avatarReady = () => !!HEYGEN_KEY();
-export const AVATAR_PRICE = { 15: 45, 30: 75, 60: 140 };
+export const avatarReady = () => !!HEYGEN_KEY() || !!(process.env.FAL_KEY || '');
+// มาตรฐาน = Kling (ถูก) · พรีเมียม = HeyGen (ท่าทางเป็นธรรมชาติกว่า)
+export const AVATAR_PRICE = { 15: 19, 30: 29, 60: 49 };
+export const AVATAR_PRO_PRICE = { 15: 45, 30: 75, 60: 140 };
 export const AVATAR_DESIGN_PRICE = { std: 8 };
 export const AVATAR_LANGS = [
   { id: 'th', label: 'ไทย', name: 'Thai', cps: 9 }, { id: 'en', label: 'English', name: 'English', cps: 15 },
@@ -565,6 +567,93 @@ export async function heygenAvatar({ image, audio, outFile, motion, onStage }) {
     if (d.status === 'failed') throw new Error(`heygen_failed ${d.failure_message || ''}`);
   }
   throw new Error('heygen_timeout');
+}
+
+// ---------- อวตารมาตรฐาน (Kling ผ่าน fal.ai): วิดีโอฐานต่ออวตาร 1 ครั้ง + LipSync ทุกคลิป ----------
+const FAL_KEY = () => process.env.FAL_KEY || '';
+const FALQ = () => (process.env.FAL_QUEUE_URL || 'https://queue.fal.run').replace(/\/+$/, '');
+export const klingReady = () => !!FAL_KEY();
+export const heygenReady = () => !!HEYGEN_KEY();
+export const KLING_BASE_MODEL = () => process.env.KLING_BASE_MODEL || 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video';
+export const KLING_LIPSYNC_MODEL = () => process.env.KLING_LIPSYNC_MODEL || 'fal-ai/kling-video/lipsync/audio-to-video';
+async function falRun(model, input, { timeout = 15 * 60e3, onStatus } = {}) {
+  const H = { authorization: `Key ${FAL_KEY()}`, 'content-type': 'application/json' };
+  const r = await fetch(`${FALQ()}/${model}`, { method: 'POST', headers: H, body: JSON.stringify(input), signal: AbortSignal.timeout(120000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.request_id) throw new Error(`fal_submit ${r.status} ${JSON.stringify(j.detail || j).slice(0, 300)}`);
+  const st = j.status_url || `${FALQ()}/${model}/requests/${j.request_id}/status`;
+  const rs = j.response_url || `${FALQ()}/${model}/requests/${j.request_id}`;
+  const t0 = Date.now();
+  for (;;) {
+    if (Date.now() - t0 > timeout) throw new Error('fal_timeout');
+    await sleep(4000);
+    const s = await fetch(st, { headers: H, signal: AbortSignal.timeout(30000) }).then((x) => x.json()).catch(() => ({}));
+    onStatus?.(s.status);
+    if (s.status === 'COMPLETED') break;
+    if (s.status === 'FAILED' || s.status === 'ERROR') break;
+  }
+  const o = await fetch(rs, { headers: H, signal: AbortSignal.timeout(60000) });
+  const oj = await o.json().catch(() => ({}));
+  if (!o.ok || !oj.video?.url) throw new Error(`fal_result ${o.status} ${JSON.stringify(oj.detail || oj).slice(0, 300)}`);
+  return oj;
+}
+async function download(url, file) {
+  const r = await fetch(url, { signal: AbortSignal.timeout(5 * 60e3) });
+  if (!r.ok) throw new Error(`download ${r.status}`);
+  fs.writeFileSync(file, Buffer.from(await r.arrayBuffer()));
+  return file;
+}
+const ff = (args, t = 180000) => run('ffmpeg', ['-y', '-v', 'error', ...args], { timeout: t });
+/** วิดีโอฐาน 10 วิ: คนในภาพยืนนิ่ง หายใจ กะพริบตา ขยับหัวเล็กน้อย ปากปิด (ใช้ซ้ำทุกคลิปของอวตารนี้) */
+export async function klingBase({ imageFile, outFile, urlOf, tmpDir }) {
+  const tmpImg = path.join(tmpDir, `kimg-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.jpg`);
+  fs.copyFileSync(imageFile, tmpImg);
+  const raw = `${outFile}.raw.mp4`;
+  try {
+    const o = await falRun(KLING_BASE_MODEL(), {
+      prompt: 'The same person stays in place facing the camera, calm and friendly, natural breathing, gentle blinking, very subtle head movement and tiny natural shoulder movement, mouth closed and relaxed. Static camera, no zoom, no cut, same background, same lighting, same outfit.',
+      image_url: urlOf(tmpImg), duration: '10', cfg_scale: 0.5,
+      negative_prompt: 'talking, open mouth, speaking, laughing, big gestures, camera movement, zoom, cut, scene change, text, watermark, extra people, distorted face, blur',
+    });
+    await download(o.video.url, raw);
+    // LipSync ต้องการ 720p–1080p · กว้าง/สูง ≥ 720 → บังคับ 720x1280 30fps ไม่มีเสียง
+    await ff(['-i', raw, '-an', '-t', '10', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '19', '-preset', 'veryfast', outFile]);
+    return outFile;
+  } finally { fs.rmSync(tmpImg, { force: true }); fs.rmSync(raw, { force: true }); }
+}
+/** ขยับปากตามเสียง: ส่งทั้งไฟล์ (≤60 วิ) · ถ้าผลสั้นกว่าเสียง → ตัดเสียงเป็นท่อน ≤9.5 วิ แล้วต่อกัน · สุดท้ายใส่เสียงต้นฉบับทับ */
+export async function klingLipsync({ baseFile, audio, outFile, urlOf, tmpDir, onStage }) {
+  const id = `ks-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const tmp = []; const T = (ext) => { const f = path.join(tmpDir, `${id}-${tmp.length}${ext}`); tmp.push(f); return f; };
+  try {
+    const wav = T('.wav'); fs.writeFileSync(wav, audio);
+    const base = T('.mp4'); fs.copyFileSync(baseFile, base);
+    const sec = (await probe(wav)).sec;
+    const mp3Of = async (from, len) => { const m = T('.mp3'); await ff(['-ss', String(from), '-t', String(len), '-i', wav, '-af', 'apad=whole_dur=2', '-ac', '1', '-ar', '44100', '-b:a', '96k', m]); return m; };
+    let video = null;
+    if (sec <= 60) {
+      onStage?.('lipsync');
+      const o = await falRun(KLING_LIPSYNC_MODEL(), { video_url: urlOf(base), audio_url: urlOf(await mp3Of(0, sec)) });
+      const v = T('.mp4'); await download(o.video.url, v);
+      if ((await probe(v)).sec >= sec - 0.8) video = v;
+    }
+    if (!video) {
+      // ท่อนละ ≤ 9.5 วิ (วิดีโอฐานยาว 10 วิ)
+      const parts = [];
+      for (let s = 0, i = 0; s < sec - 0.05; s += 9.5, i++) {
+        const len = Math.min(9.5, sec - s);
+        onStage?.(`lipsync ${i + 1}`);
+        const o = await falRun(KLING_LIPSYNC_MODEL(), { video_url: urlOf(base), audio_url: urlOf(await mp3Of(s, len)) });
+        const v = T('.mp4'); await download(o.video.url, v);
+        const cut = T('.mp4'); await ff(['-i', v, '-t', len.toFixed(3), '-an', '-vf', 'scale=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '19', '-preset', 'veryfast', cut]);
+        parts.push(cut);
+      }
+      const list = T('.txt'); fs.writeFileSync(list, parts.map((p) => `file '${p}'`).join('\n'));
+      video = T('.mp4'); await ff(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', video]);
+    }
+    await ff(['-i', video, '-i', wav, '-map', '0:v:0', '-map', '1:a:0', '-vf', 'scale=1080:1920:flags=lanczos,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '20', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '160k', '-shortest', outFile], 300000);
+    return outFile;
+  } finally { tmp.forEach((f) => fs.rmSync(f, { force: true })); }
 }
 
 // ---------- คลิป AI ภาพเคลื่อนไหวจริง (Gemini Omni Flash · 9:16 · มีเสียงดนตรี/เอฟเฟกต์จากโมเดล) ----------

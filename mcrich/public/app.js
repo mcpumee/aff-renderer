@@ -666,7 +666,7 @@ async function adminPrices() {
     <section class="card"><b>คลิปทั่วไป (ดาว/คลิป)</b><div class="grid2">${Object.keys(p.video).map((k) => inp('v_' + k, p.video[k], df.video[k], `${k} วินาที`)).join('')}${inp('pv', p.premiumVoice, df.premiumVoice, 'บวกเสียงพรีเมียม')}</div></section>
     <section class="card"><b>ละครสั้น (ดาว/เรื่อง)</b><div class="grid2">${Object.keys(p.drama).map((k) => inp('d_' + k, p.drama[k], df.drama[k], `${k} ฉาก`)).join('')}</div></section>
     ${p.series ? `<section class="card"><b>ซีรีส์แนวตั้ง (ดาว/ตอน)</b><div class="grid2">${Object.keys(p.series).map((k) => inp('sr_' + k, p.series[k], df.series[k], `${k} ฉาก`)).join('')}</div></section>` : ''}
-    ${p.avatar ? `<section class="card"><b>วิดีโออวตาร (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน HeyGen ราว $2.3/นาที ≈ 85 บาท/นาที (+ ออกแบบภาพ ~2 บาท/ครั้ง)</span><div class="grid2">${Object.keys(p.avatar).map((k) => inp('av_' + k, p.avatar[k], df.avatar[k], `${k} วิ`)).join('')}${inp('avd_std', p.avatarDesign.std, df.avatarDesign.std, 'ออกแบบอวตาร/ครั้ง')}</div></section>` : ''}
+    ${p.avatar ? `<section class="card"><b>วิดีโออวตาร (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน: มาตรฐาน (Kling) ~$0.84/นาที ≈ 30 บาท + ท่าทางฐาน ~15 บาท/อวตาร (ครั้งเดียว) · พรีเมียม (HeyGen) ~$3/นาที ≈ 105 บาท · ออกแบบภาพ ~2 บาท/ครั้ง</span><div class="grid2">${Object.keys(p.avatar).map((k) => inp('av_' + k, p.avatar[k], df.avatar[k], `มาตรฐาน ${k} วิ`)).join('')}${Object.keys(p.avatarPro || {}).map((k) => inp('avp_' + k, p.avatarPro[k], df.avatarPro[k], `พรีเมียม ${k} วิ`)).join('')}${inp('avd_std', p.avatarDesign.std, df.avatarDesign.std, 'ออกแบบอวตาร/ครั้ง')}</div></section>` : ''}
     ${p.motion ? `<section class="card"><b>คลิป AI ภาพเคลื่อนไหวจริง (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน Omni Flash ราว $0.10/วิ (720p) ≈ 35 บาท/คลิป 10 วิ</span><div class="grid2">${inp('mo_std', p.motion.std, df.motion.std, '~10 วิ 720p')}</div></section>` : ''}
     <p class="muted" style="font-size:13px">มีผลทันทีกับงานใหม่ งานที่สั่งไปแล้วไม่เปลี่ยน · ราคาต้นทุน+80% คำนวณไว้แล้วในค่าเดิม</p>
     <div class="grid2"><button type="button" class="btn ghost" id="preset">คืนค่าเดิม</button><button type="button" class="btn" id="psave">บันทึกราคา</button></div>`;
@@ -674,7 +674,7 @@ async function adminPrices() {
   $('#psave').onclick = async () => {
     const body = { tiers: Object.fromEntries(Object.keys(p.tiers).map((k) => [k, val('t_' + k)])), video: Object.fromEntries(Object.keys(p.video).map((k) => [k, val('v_' + k)])),
       drama: Object.fromEntries(Object.keys(p.drama).map((k) => [k, val('d_' + k)])), premiumVoice: val('pv'),
-      ...(p.series ? { series: Object.fromEntries(Object.keys(p.series).map((k) => [k, val('sr_' + k)])) } : {}), ...(p.motion ? { motion: { std: val('mo_std') } } : {}), ...(p.avatar ? { avatar: Object.fromEntries(Object.keys(p.avatar).map((k) => [k, val('av_' + k)])), avatarDesign: { std: val('avd_std') } } : {}) };
+      ...(p.series ? { series: Object.fromEntries(Object.keys(p.series).map((k) => [k, val('sr_' + k)])) } : {}), ...(p.motion ? { motion: { std: val('mo_std') } } : {}), ...(p.avatar ? { avatar: Object.fromEntries(Object.keys(p.avatar).map((k) => [k, val('av_' + k)])), avatarPro: Object.fromEntries(Object.keys(p.avatarPro || {}).map((k) => [k, val('avp_' + k)])), avatarDesign: { std: val('avd_std') } } : {}) };
     try { await api('api/admin/prices', { method: 'PUT', body }); CAT = null; toast('บันทึกราคาแล้ว'); adminPrices(); } catch (e) { toast(e.message); }
   };
   $('#preset').onclick = async () => { if (!confirm('คืนราคาทั้งหมดเป็นค่าเดิม?')) return; await api('api/admin/prices', { method: 'PUT', body: { reset: true } }); CAT = null; toast('คืนค่าแล้ว'); adminPrices(); };
@@ -783,7 +783,7 @@ const TEXT_PRESETS = {
 };
 let SAMPLES = null; // ภาพตัวอย่างของแต่ละแนวงาน
 const STEPS = ['เป้าหมาย', 'แนวงาน', 'รายละเอียด', 'แคปชั่น', 'คุณภาพ', 'ทบทวน'];
-const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', seriesFrom: 0, seriesInfo: null, preset: 'spin', avatarId: 0, lang: 'th', scriptMode: 'ai', script: '', subs: true, info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
+const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', seriesFrom: 0, seriesInfo: null, preset: 'spin', avatarId: 0, quality: 'std', lang: 'th', scriptMode: 'ai', script: '', subs: true, info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
 const saveDraft = () => { try { sessionStorage.setItem('mr_draft', JSON.stringify(D)); } catch {} };
 function loadDraft() { try { const d = JSON.parse(sessionStorage.getItem('mr_draft') || 'null'); if (d && typeof d === 'object') return { ...newDraft(), ...d }; } catch {} return null; }
 
@@ -1001,13 +1001,18 @@ function drawStep() {
     const max = Math.round((A.langs.find((l) => l.id === D.lang)?.cps || 9) * D.length * 1.1);
     const vs = CAT.video.voices.filter((v) => !av || v.gender === av.gender);
     if (![15, 30, 60].includes(Number(D.length))) D.length = 30;
+    if (D.quality === 'pro' && !A.pro) D.quality = 'std';
+    if (D.quality !== 'pro' && !A.std) D.quality = 'pro';
+    const PR = D.quality === 'pro' ? A.proPrices : A.prices;
     stepShell(`<h1 style="font-size:22px">วิดีโออวตารพูดได้</h1>
       <p class="muted">อวตารหน้าเหมือนคนจริง ขยับปากตรงเสียง พูดได้ 4 ภาษา เก็บอวตารไว้ใช้ซ้ำได้ทุกงาน</p>
       <div class="row between"><h2>เลือกอวตาร</h2><a class="btn ghost sm" href="#avatars?from=create">+ ออกแบบใหม่</a></div>
       ${AVS.length ? `<div class="avgrid">${AVS.map((a) => `<button type="button" class="avcard" data-av="${a.id}" aria-pressed="${D.avatarId === a.id}"><img src="${a.img}" alt="" loading="lazy"><b>${esc(a.name)}</b></button>`).join('')}</div>`
         : '<section class="card"><b>ยังไม่มีอวตาร</b><span class="muted">ออกแบบหน้าตาเอง หรือใช้รูปตัวเอง ใช้เวลาไม่ถึงนาที</span><a class="btn" href="#avatars?from=create">ออกแบบอวตารตัวแรก</a></section>'}
       <section style="display:flex;flex-direction:column;gap:10px"><h2>ภาษาที่พูด</h2>${chipRow(A.langs, D.lang, 'lang', false)}</section>
-      <section style="display:flex;flex-direction:column;gap:10px"><h2>ความยาว</h2>${chipRow([15, 30, 60].map((n) => ({ id: String(n), label: `${n} วิ · ${A.prices[n]} ดาว` })), String(D.length), 'length', false)}</section>
+      ${A.std && A.pro ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>คุณภาพ</h2>${chipRow([{ id: 'std', label: `มาตรฐาน · เริ่ม ${A.prices[15]} ดาว` }, { id: 'pro', label: `พรีเมียม · เริ่ม ${A.proPrices[15]} ดาว` }], D.quality, 'quality', false)}
+        <span class="muted">${D.quality === 'pro' ? 'พรีเมียม: ขยับหัว หน้า มือตามจังหวะพูดทั้งคลิป เป็นธรรมชาติที่สุด' : 'มาตรฐาน: ขยับปากตรงเสียง ท่าทางเบาๆ คุ้มค่า เหมาะคลิป 15–30 วิ'}</span></section>` : ''}
+      <section style="display:flex;flex-direction:column;gap:10px"><h2>ความยาว</h2>${chipRow([15, 30, 60].map((n) => ({ id: String(n), label: `${n} วิ · ${PR[n]} ดาว` })), String(D.length), 'length', false)}</section>
       <section style="display:flex;flex-direction:column;gap:10px"><h2>บทพูด</h2>${chipRow([{ id: 'ai', label: 'ให้ AI เขียนบท' }, { id: 'own', label: 'ใช้บทของฉัน' }], D.scriptMode, 'scriptMode', false)}</section>
       <section class="card">${D.scriptMode === 'own'
         ? `<label class="f" for="script">บทพูด (${A.langs.find((l) => l.id === D.lang)?.label}) <span class="muted" id="cnt">${[...D.script].length}/${max}</span><textarea id="script" rows="6" maxlength="2000" placeholder="พิมพ์ทีละประโยค ขึ้นบรรทัดใหม่ได้">${esc(D.script)}</textarea></label>`
@@ -1020,7 +1025,7 @@ function drawStep() {
         ${D.subs ? chipRow(CAT.video.captionStyles, D.captionStyle, 'captionStyle', false) : ''}</section>
       <span class="muted">ภาษาจีนและมลายูเสียงอาจสำเนียงไม่เป๊ะ 100% ลองสั้นๆ 15 วิ ก่อนได้</span>`);
     const fields = ['product', 'details', 'price', 'script', 'subs'];
-    bindChips([], (k) => { readInputs(fields); if (k === 'length') D.length = Number(D.length); if (['lang', 'length', 'scriptMode'].includes(k)) drawStep(); });
+    bindChips([], (k) => { readInputs(fields); if (k === 'length') D.length = Number(D.length); if (['lang', 'length', 'scriptMode', 'quality'].includes(k)) drawStep(); });
     app.querySelectorAll('[data-av]').forEach((b) => b.onclick = () => { readInputs(fields); D.avatarId = Number(b.dataset.av); const a = AVS.find((x) => x.id === D.avatarId); if (a && D.voice && !CAT.video.voices.some((v) => v.id === D.voice && v.gender === a.gender)) D.voice = ''; drawStep(); });
     const sb = $('#subs'); if (sb) sb.onchange = () => { readInputs(fields); drawStep(); };
     const sc = $('#script'); if (sc) sc.oninput = () => { const n = [...sc.value].length; const c = $('#cnt'); c.textContent = `${n}/${max}`; c.style.color = n > max ? '#ff6b6b' : ''; };
@@ -1353,13 +1358,14 @@ function drawStep() {
       <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
     $('#next').onclick = () => { D.step = 5; drawStep(); };
   } else if (s === 4 && D.style === 'v_avatar') {
-    const A = CAT.video.avatar, total = A.prices[D.length] || A.prices[30];
+    const A = CAT.video.avatar, PR = D.quality === 'pro' && A.pro ? A.proPrices : A.prices, total = PR[D.length] || PR[30];
     stepShell(`<h1 style="font-size:22px">ราคา</h1>
       <div class="list kv"><div><span class="muted">อวตาร</span><span>${esc(AVS.find((a) => a.id === D.avatarId)?.name || '')}</span></div>
         <div><span class="muted">ภาษา</span><span>${esc(A.langs.find((l) => l.id === D.lang)?.label || '')}</span></div>
-        <div><span class="muted">ความยาว</span><span>~${D.length} วิ · 9:16 · 1080p</span></div></div>
+        <div><span class="muted">ความยาว</span><span>~${D.length} วิ · 9:16 · 1080p</span></div>
+        ${A.std && A.pro ? `<div><span class="muted">คุณภาพ</span><span>${D.quality === 'pro' ? 'พรีเมียม' : 'มาตรฐาน'}</span></div>` : ''}</div>
       <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">รวม</span><b class="num" style="font-size:28px">${ICON.star}${total} ดาว</b></div>
-        <span class="muted">อวตารขยับปาก หน้า และหัวตามเสียงจริง ใช้เวลา 3–10 นาที · ไม่สำเร็จคืนดาวอัตโนมัติ</span></section>
+        <span class="muted">อวตารขยับปากตามเสียงจริง ใช้เวลา 3–10 นาที (อวตารใหม่ครั้งแรกนานขึ้นอีกนิด) · ไม่สำเร็จคืนดาวอัตโนมัติ</span></section>
       <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
     $('#next').onclick = () => { D.step = 5; drawStep(); };
   } else if (s === 4 && D.style === 'v_motion') {
@@ -1456,7 +1462,7 @@ function uploadWithProgress(url, fd, onp) {
 }
 function styleNote(x) {
   const V2 = CAT.video;
-  return { v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.prices?.[15] || 45} ดาว · พูด ไทย/EN/中文/Melayu`,
+  return { v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.std === false ? V2.avatar?.proPrices?.[15] : V2.avatar?.prices?.[15]} ดาว · พูด ไทย/EN/中文/Melayu`,
     v_show: `เริ่ม ${V2.prices[15]} ดาว · 2–8 รูป`, v_tips: `เริ่ม ${V2.prices[30]} ดาว · 3 หรือ 5 ทิป`, v_shop: `เริ่ม ${V2.prices[15]} ดาว · รูปร้าน+ข้อมูล`,
     v_pr_announce: `เริ่ม ${V2.prices[15]} ดาว · เสียงทางการ`, v_pr_recap: `เริ่ม ${V2.prices[15]} ดาว · จากรูปกิจกรรม` }[x.id] || `เริ่ม ${V2.prices[15]} ดาว · 9:16`;
 }

@@ -259,5 +259,5 @@ export function registerSocial(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC
     q("UPDATE schedules SET status='scheduled' WHERE status='posting' AND target_id IS NOT NULL").catch(() => {});
     setInterval(() => tick().catch((e) => log('publish tick', e.message)), 30e3).unref();
   }
-  return { start, ready };
+  return { start, ready, pubUrl };
 }

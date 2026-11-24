@@ -121,10 +121,12 @@ if [ "${SET_MCRICH_VIRAL:-}" = "1" ] && [ -r /dev/tty ]; then
   askkey "   ScrapeCreators API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && SCKEY=$REPLY
 fi
 # ---- HeyGen (วิดีโออวตารพูดได้ · ขยับปากตรงเสียง · กด Enter ข้าม) ----
-HGKEY=$(envget HEYGEN_API_KEY)
+HGKEY=$(envget HEYGEN_API_KEY); FALKEY=$(envget FAL_KEY)
 if [ "${SET_MCRICH_AVATAR:-}" = "1" ] && [ -r /dev/tty ]; then
   echo ">> HeyGen API key (app.heygen.com > Settings > API · เติมเครดิต API ก่อน · กด Enter ข้าม)"
   askkey "   HeyGen API key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && HGKEY=$REPLY
+  echo ">> fal.ai API key สำหรับอวตารมาตรฐาน Kling (fal.ai > Dashboard > API Keys · กด Enter ข้าม)"
+  askkey "   fal.ai key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && FALKEY=$REPLY
 fi
 # ---- Meta (โพสต์ตรง Facebook Page / Instagram · กด Enter ข้าม) ----
 MAID=$(envget META_APP_ID); MASEC=$(envget META_APP_SECRET); MACFG=$(envget META_CONFIG_ID)
@@ -165,6 +167,7 @@ LINEOA_ID=${OAID}
 YOUTUBE_API_KEY=${YTKEY}
 SCRAPECREATORS_API_KEY=${SCKEY}
 HEYGEN_API_KEY=${HGKEY}
+FAL_KEY=${FALKEY}
 META_APP_ID=${MAID}
 META_APP_SECRET=${MASEC}
 META_CONFIG_ID=${MACFG}

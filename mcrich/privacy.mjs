@@ -85,7 +85,7 @@ export function registerPrivacy(app, { q, pool, auth, wrap, log, DATA_DIR, PUBLI
       const bal = (await c.query('SELECT COALESCE(sum(delta),0)::int s FROM star_ledger WHERE user_id=$1', [uid])).rows[0].s;
       if (bal > 0) await c.query("INSERT INTO star_ledger(user_id,delta,kind,note) VALUES($1,$2,'closed','ปิดบัญชี')", [uid, -bal]);
       // อวตาร (รูปหน้า) ลบไฟล์ด้วย
-      for (const r of (await c.query('SELECT file FROM avatars WHERE user_id=$1', [uid])).rows) fs.rm(path.join(DATA_DIR, 'avatars', path.basename(r.file)), { force: true }, () => {});
+      for (const r of (await c.query('SELECT file, motion_file FROM avatars WHERE user_id=$1', [uid])).rows) for (const f of [r.file, r.motion_file].filter(Boolean)) fs.rm(path.join(DATA_DIR, 'avatars', path.basename(f)), { force: true }, () => {});
       for (const t of ['identities', 'profiles', 'free_quota', 'drive_accounts', 'schedules', 'social_accounts', 'avatars', 'push_subs', 'chat_messages', 'auto_plans', 'links', 'works']) {
         await c.query(`DELETE FROM ${t} WHERE user_id=$1`, [uid]);
       }

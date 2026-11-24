@@ -228,7 +228,7 @@ async function finish(buf, { logo }) {
   return { out, w: W, h: H };
 }
 
-export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, hooks = {} }) {
+export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl, hooks = {} }) {
   const WORK_DIR = path.join(DATA_DIR, 'works');
   const REF_DIR = path.join(DATA_DIR, 'refs');
   const LOGO_DIR = path.join(DATA_DIR, 'logos');
@@ -322,16 +322,18 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (style.id === 'v_avatar') {
       const lang = V.AVATAR_LANGS.some((l) => l.id === b.lang) ? b.lang : 'th';
       const length = V.AVATAR_PRICE[Number(b.length)] ? Number(b.length) : 30;
+      // มาตรฐาน (Kling) หรือ พรีเมียม (HeyGen) ตามที่ระบบพร้อม
+      const quality = (b.quality === 'pro' && V.heygenReady()) || !V.klingReady() ? 'pro' : 'std';
       const own = b.scriptMode === 'own';
       const script = own ? V.splitScript(clean(b.script, 2000)) : [];
-      Object.assign(p, { avatarId: Math.max(0, Number(b.avatarId) || 0), lang, length, scriptMode: own ? 'own' : 'ai', script, subs: b.subs !== false,
+      Object.assign(p, { avatarId: Math.max(0, Number(b.avatarId) || 0), lang, length, quality, scriptMode: own ? 'own' : 'ai', script, subs: b.subs !== false,
         captionStyle: V.CAPTION_STYLES.some((c) => c.id === b.captionStyle) ? b.captionStyle : 'pop', voice: V.VOICES.some((v) => v.id === b.voice) ? b.voice : '', dialogue: false, premium: false });
       if (!p.avatarId) return { error: 'เลือกอวตารก่อน' };
       if (own && !script.length) return { error: 'พิมพ์บทพูดก่อน' };
       if (own && script.join('').length > V.avatarMaxChars(lang, length)) return { error: `บทยาวเกิน ${length} วินาที (สูงสุดประมาณ ${V.avatarMaxChars(lang, length)} ตัวอักษร) · เลือกความยาวมากขึ้นหรือตัดบท` };
       if (!own && !p.product && !p.details) return { error: 'ใส่หัวข้อหรือสินค้าที่ให้อวตารพูดก่อน' };
       const cA = checkContent([p.product, p.details, p.price, script.join(' ')].join(' '));
-      const cost = V.AVATAR_PRICE[length];
+      const cost = (quality === 'pro' ? V.AVATAR_PRO_PRICE : V.AVATAR_PRICE)[length];
       return { video: true, style, tier: { id: 'avatar', free: false, stars: cost }, versions: 1, p, cost, ...cA };
     }
     if (style.id === 'v_motion') {
@@ -406,7 +408,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
         genres: V.GENRES, art: V.ART.map(({ id, label }) => ({ id, label })), dramaPrices: V.DRAMA_PRICE, seriesGenres: V.SERIES_GENRES, seriesPrices: V.SERIES_PRICE, seriesLen: V.SERIES_LEN,
         motionPresets: V.MOTION_PRESETS.map(({ id, label, desc }) => ({ id, label, desc })), motionPrice: V.MOTION_PRICE.std,
-        avatar: { ready: V.avatarReady(), prices: V.AVATAR_PRICE, langs: V.AVATAR_LANGS.map(({ id, label, cps }) => ({ id, label, cps })), designPrice: V.AVATAR_DESIGN_PRICE.std },
+        avatar: { ready: V.avatarReady(), std: V.klingReady(), pro: V.heygenReady(), prices: V.AVATAR_PRICE, proPrices: V.AVATAR_PRO_PRICE, langs: V.AVATAR_LANGS.map(({ id, label, cps }) => ({ id, label, cps })), designPrice: V.AVATAR_DESIGN_PRICE.std },
         captionStyles: V.CAPTION_STYLES, selfMaxSec: V.SELF_MAX_SEC, selfPrices: { subs: [V.selfPrice(60, 'subs'), V.selfPrice(120, 'subs'), V.selfPrice(180, 'subs')], voiceExtra: 5 },
         voices: V.VOICES.map(({ id, label, gender }) => ({ id, label, gender })),
         premiumVoices: V.premiumReady() ? V.EL_VOICES.map(({ id, label, gender }) => ({ id, label, gender })) : [],
@@ -1097,8 +1099,9 @@ Lighting: soft even key light, natural skin texture with pores, sharp focus on t
     res.json(avView(r));
   }));
   app.delete('/api/avatars/:id', auth, wrap(async (req, res) => {
-    const a = (await q('DELETE FROM avatars WHERE id=$1 AND user_id=$2 RETURNING file', [Number(req.params.id) || 0, req.uid])).rows[0];
+    const a = (await q('DELETE FROM avatars WHERE id=$1 AND user_id=$2 RETURNING file, motion_file', [Number(req.params.id) || 0, req.uid])).rows[0];
     if (a) fs.rm(path.join(AV_DIR, path.basename(a.file)), () => {});
+    if (a?.motion_file) fs.rm(path.join(AV_DIR, path.basename(a.motion_file)), () => {});
     res.json({ ok: true });
   }));
   // ลบภาพตัวเลือกที่ไม่ได้บันทึก (เก่ากว่า 1 วัน)
@@ -1131,8 +1134,22 @@ Lighting: soft even key light, natural skin texture with pores, sharp focus on t
     const raw = path.join(WORK_DIR, `${base}-raw.mp4`);
     const img = await sharp(avFile).rotate().jpeg({ quality: 92 }).toBuffer();
     let pct = 25; const tk = setInterval(() => { pct = Math.min(p.subs ? 78 : 92, pct + 1); stage('อวตารกำลังพูด (สร้างวิดีโอ)', pct); }, 8000);
-    try { stage('อวตารกำลังพูด (สร้างวิดีโอ)', 25); await V.heygenAvatar({ image: img, audio, outFile: raw }); }
-    catch (e) { log('avatar heygen fail', w.id, e.message.slice(0, 300)); fs.rm(raw, { force: true }, () => {}); return fail(/moderation|policy|face|celebr/i.test(e.message) ? 'ระบบอวตารไม่รับภาพหรือเนื้อหานี้ ลองอวตารอื่น · คืนดาวแล้ว' : 'สร้างวิดีโออวตารไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว'); }
+    const useKling = p.quality !== 'pro' && V.klingReady() && pubUrl;
+    try {
+      stage('อวตารกำลังพูด (สร้างวิดีโอ)', 25);
+      if (useKling) {
+        // วิดีโอฐานของอวตาร: สร้างครั้งแรกครั้งเดียว แล้วใช้ซ้ำ
+        let base = av.motion_file && path.join(AV_DIR, path.basename(av.motion_file));
+        if (!base || !fs.existsSync(base)) {
+          stage('เตรียมท่าทางอวตาร (ครั้งแรกครั้งเดียว)', 22);
+          const name = `m${av.id}-${rand(4).toLowerCase()}.mp4`;
+          base = await V.klingBase({ imageFile: avFile, outFile: path.join(AV_DIR, name), urlOf: pubUrl, tmpDir: WORK_DIR });
+          await q('UPDATE avatars SET motion_file=$2 WHERE id=$1', [av.id, name]);
+        }
+        await V.klingLipsync({ baseFile: base, audio, outFile: raw, urlOf: pubUrl, tmpDir: WORK_DIR });
+      } else await V.heygenAvatar({ image: img, audio, outFile: raw });
+    }
+    catch (e) { log(`avatar ${useKling ? 'kling' : 'heygen'} fail`, w.id, e.message.slice(0, 300)); fs.rm(raw, { force: true }, () => {}); return fail(/moderation|policy|face|celebr/i.test(e.message) ? 'ระบบอวตารไม่รับภาพหรือเนื้อหานี้ ลองอวตารอื่น · คืนดาวแล้ว' : 'สร้างวิดีโออวตารไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว'); }
     finally { clearInterval(tk); }
     let final = path.join(WORK_DIR, `${base}.mp4`);
     if (p.subs) {
@@ -1155,7 +1172,7 @@ Lighting: soft even key light, natural skin texture with pores, sharp focus on t
     catch { ({ captions, tags } = await finalizeCaptions(w, p, { facebook: lines.join(' '), instagram: lines.join(' '), tiktok: lines[0], shopee: lines.join(' '), hashtags: [] })); }
     const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
     await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
-      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: lines, avatarName: av.name, seconds: Math.round(sec) })]);
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: lines, avatarName: av.name, seconds: Math.round(sec), engine: useKling ? 'kling' : 'heygen' })]);
     PROG.delete(w.id);
     if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
     log('avatar done', w.id, `${Math.round(sec)}s`, `${((Date.now() - t0) / 1000).toFixed(1)}s`);

@@ -761,6 +761,7 @@ let VFILE = null;    // คลิปที่ถ่ายเอง
 let ITEMF = [];      // รูปสินค้าแต่ละอันดับ (Top N)
 // แนวข้อความตามประเภทงาน: [ข้อความหลัก, ข้อความรอง]
 const TEXT_PRESETS = {
+  model_show: [['ลุคนี้ต้องมี'], ['ใส่แล้วปัง', 'มั่นใจทุกลุค'], ['คอลเลกชันใหม่'], ['ใส่สบาย สวยทุกวัน']],
   agent_plan: [['คุ้มครองครบ จบในแผนเดียว'], ['ป่วยเมื่อไร ไม่ต้องกังวลค่ารักษา'], ['วางแผนวันนี้ อุ่นใจวันหน้า'], ['ปรึกษาฟรี', 'ไม่มีค่าใช้จ่าย']],
   agent_listing: [['ขายด่วน! บ้านพร้อมอยู่'], ['ให้เช่า พร้อมเข้าอยู่'], ['ทำเลดี ใกล้ทุกอย่าง'], ['ราคาดี ต่อรองได้']],
   agent_tips: [['รู้ก่อนทำประกัน'], ['4 เรื่องต้องรู้'], ['เช็กลิสต์ก่อนซื้อบ้าน'], ['เข้าใจง่ายใน 1 นาที']],
@@ -783,7 +784,7 @@ const TEXT_PRESETS = {
 };
 let SAMPLES = null; // ภาพตัวอย่างของแต่ละแนวงาน
 const STEPS = ['เป้าหมาย', 'แนวงาน', 'รายละเอียด', 'แคปชั่น', 'คุณภาพ', 'ทบทวน'];
-const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', seriesFrom: 0, seriesInfo: null, preset: 'spin', avatarId: 0, quality: 'std', lang: 'th', scriptMode: 'ai', script: '', subs: true, info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
+const newDraft = () => ({ step: 0, goal: (ME.interests?.goals || []).includes('Affiliate') ? 'aff' : 'sell', link: '', kind: 'image', style: '', product: '', price: '', headline: '', details: '', concepts: [], ratio: '', useLogo: !!ME.brand?.logo, showShop: true, tone: '', hashtags: [...(ME.hashtags || [])], extraTags: '', tier: 'std', versions: 1, fromWork: 0, length: 30, voice: '', premiumVoice: false, formula: '', variant: 'random', music: 'auto', selfMode: 'subs', videoSec: 0, captionStyle: 'pop', hookText: '', keepAudio: true, genre: 'inlaw', art: 'cartoon3d', scenes: 4, plot: '', seriesFrom: 0, seriesInfo: null, preset: 'spin', modelWho: 'female', modelLook: 'clean', avatarId: 0, quality: 'std', lang: 'th', scriptMode: 'ai', script: '', subs: true, info: {}, count: 3, items: [{ name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }, { name: '', price: '', note: '', link: '' }] });
 const saveDraft = () => { try { sessionStorage.setItem('mr_draft', JSON.stringify(D)); } catch {} };
 function loadDraft() { try { const d = JSON.parse(sessionStorage.getItem('mr_draft') || 'null'); if (d && typeof d === 'object') return { ...newDraft(), ...d }; } catch {} return null; }
 
@@ -1274,6 +1275,9 @@ function drawStep() {
         <div id="warn"></div>
       </section>
       ${st.pr ? `<section class="card"><b>ข้อมูลบนภาพ</b>${infoFields(['org', 'date', 'place', 'contact'])}</section>` : ''}
+      ${st.id === 'model_show' ? `<section class="card"><b>นางแบบ / นายแบบ</b>${chipRow(CAT.modelWho, D.modelWho, 'modelWho', false)}
+        <b>ลุค</b>${chipRow(CAT.modelLooks, D.modelLook, 'modelLook', false)}
+        <span class="muted">${D.modelLook === 'glam' ? 'เซ็กซี่ระดับแคตตาล็อกชุดว่ายน้ำ/ชุดชั้นใน ไม่โป๊ ไม่ส่อเพศ · TikTok/Facebook/Shopee อาจจำกัดการมองเห็นโพสต์ที่เซ็กซี่มาก ถ้าใช้ยิงแอด เลือก "สุภาพ" จะผ่านง่ายกว่า' : 'เหมาะทุกแพลตฟอร์ม และยิงแอดได้'} · นางแบบ/นายแบบเป็นบุคคลสมมติ (ผู้ใหญ่) สร้างโดย AI</span></section>` : ''}
       ${ag ? `<section class="card"><b>ข้อมูลตัวแทนบนภาพ (ไม่บังคับ)</b>${infoFields(st.id === 'agent_listing' ? ['place', 'contact', 'license'] : ['org', 'contact', 'license'])}</section>` : ''}
       <section class="card"><b>${st.pr ? 'รูปประกอบ (ไม่บังคับ)' : ag ? ({ agent_listing: 'รูปทรัพย์จริง (แนะนำ)', agent_profile: 'รูปตัวคุณ (แนะนำ)' }[st.id] || 'รูปประกอบ (ไม่บังคับ)') : 'ภาพสินค้าจริง (ไม่บังคับ แต่แนะนำ)'}</b><span class="muted">${st.pr ? 'เช่น รูปสถานที่ บุคคล โลโก้งาน ใส่ได้ 3 รูป' : ag ? 'รูปที่ใส่ตรงนี้ AI จะใช้เป็นของจริง (บ้าน รถ หน้าคุณ) ไม่แต่งใหม่ · โปสเตอร์ที่ให้ AI สรุป ใส่ในกล่องด้านบนแทน' : 'ใส่ได้ 3 รูป AI จะใช้สินค้าจริงของคุณ ไม่แต่งสินค้าใหม่'}</span>
         <div class="refs">${REFS.map((f, i) => `<button type="button" class="ref" data-rm="${i}" aria-label="ลบรูปที่ ${i + 1}"><img src="${URL.createObjectURL(f)}" alt=""><span>✕</span></button>`).join('')}
@@ -1286,7 +1290,7 @@ function drawStep() {
           <input id="useLogo" type="checkbox" class="sw-in" ${D.useLogo && ME.brand?.logo ? 'checked' : ''} ${ME.brand?.logo ? '' : 'disabled'}></label>
         ${st.text && ME.brand?.shopName ? `<label class="row between" for="showShop"><span><b>ใส่ชื่อร้านบนภาพ</b><br><span class="muted">${esc(ME.brand.shopName)}</span></span><input id="showShop" type="checkbox" class="sw-in" ${D.showShop ? 'checked' : ''}></label>` : ''}
       </section>`);
-    bindChips(['concepts'], (k) => { if (k === 'concepts' && D.concepts.length > 5) { D.concepts.pop(); drawStep(); toast('เลือกได้สูงสุด 5'); } });
+    bindChips(['concepts'], (k) => { if (k === 'concepts' && D.concepts.length > 5) { D.concepts.pop(); drawStep(); toast('เลือกได้สูงสุด 5'); } if (k === 'modelLook') { readInputs(['product', 'headline', 'price', 'details', 'useLogo', 'showShop']); drawStep(); } });
     const fields = ['product', 'headline', 'price', 'details', 'useLogo', 'showShop'];
     bindDigest(fields);
     app.querySelectorAll('[data-preset]').forEach((b) => b.onclick = () => {
@@ -1526,7 +1530,7 @@ async function reviewStep() {
     ${qt.blocked ? `<p role="alert" class="card" style="background:var(--bad-bg);color:var(--bad)">${esc(qt.blocked)}</p>` : ''}
     ${qt.warnings.length ? `<p role="alert" class="card" style="background:var(--warn-bg);color:var(--warn)">ระวังผิดกฎ อย./โฆษณาเกินจริง: ${esc(qt.warnings.join(', '))} · AI จะเลี่ยงคำเหล่านี้ในแคปชั่น แนะนำแก้ข้อความบนภาพ</p>` : ''}
     <div class="list kv">
-      ${row('เป้าหมาย', goal.label)}${D.goal === 'agent' || st.agent ? row('สายงาน', CAT.agentTypes.find((x) => x.id === (D.agentType || 'insurance'))?.label) : ''}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
+      ${row('เป้าหมาย', goal.label)}${D.style === 'model_show' ? row('นางแบบ/นายแบบ', `${CAT.modelWho.find((x) => x.id === D.modelWho)?.label} · ${CAT.modelLooks.find((x) => x.id === D.modelLook)?.label}`) : ''}${D.goal === 'agent' || st.agent ? row('สายงาน', CAT.agentTypes.find((x) => x.id === (D.agentType || 'insurance'))?.label) : ''}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
       ${row('คอนเซปต์', D.concepts.join(', '))}${vid ? '' : row('ขนาด', D.ratio) + row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
       ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
       ${INFO_IDS.includes(D.style) ? row('รูป', REFS.length ? `${REFS.length} รูป` : (D.style === 'v_pr_announce' ? 'AI วาดพื้นหลังให้ (+5 ดาว)' : '')) + (D.style === 'v_tips' ? row('จำนวนทิป', `${D.count} ทิป`) : '') + Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน/ร้าน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ', hours: 'เวลาเปิด' }[k] || k, v)).join('') + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + (D.style === 'v_tips' ? '' : row('ความยาว', `${D.length} วินาที`)) : ''}

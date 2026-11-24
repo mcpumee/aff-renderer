@@ -665,6 +665,7 @@ export const MOTION_PRESETS = [
   { id: 'splash', label: 'สาดน้ำ / ผลไม้', desc: 'น้ำกระเซ็น วัตถุดิบลอย สดชื่น', en: 'slow-motion splash of water and fresh ingredients bursting around the product, high-speed commercial shot' },
   { id: 'food', label: 'อาหารน่ากิน', desc: 'ควันลอย ซอสราด เห็นเนื้อสัมผัส', en: 'appetizing food commercial: steam rising, sauce pouring, macro close-up of texture, warm light' },
   { id: 'life', label: 'มีคนใช้จริง', desc: 'คนไทยใช้สินค้าในชีวิตประจำวัน', en: 'a friendly Thai adult naturally using the product in a bright everyday lifestyle setting, authentic candid moment' },
+  { id: 'model', label: 'นางแบบ/นายแบบโชว์สินค้า', desc: 'เดินแบบ โพสท่า ใส่หรือถือสินค้า สไตล์แฟชั่น', en: 'an attractive, confident adult fashion model (fictional, late 20s) presenting the product in a stylish fashion-campaign shot: slow catwalk or turning pose, wearing it if it is clothing or an accessory, glamorous but tasteful (no nudity, no explicit or sexual movements), magazine lighting' },
   { id: 'unbox', label: 'แกะกล่องเปิดตัว', desc: 'มือแกะกล่อง เจอสินค้าด้านใน', en: 'hands opening a gift box and revealing the product inside, satisfying reveal moment' },
   { id: 'magic', label: 'เอฟเฟกต์ว้าว', desc: 'ประกายแสง อนุภาค เปิดตัวสินค้า', en: 'magical product reveal with glowing particles, sparkles and light trails swirling around the product' },
   { id: 'scene', label: 'ฉากหนังสั้นตามไอเดีย', desc: 'บรรยายฉากที่อยากได้เอง', en: 'cinematic short film shot following the idea' },

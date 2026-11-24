@@ -32,6 +32,7 @@ const STYLE_DEMO = {
   pr_congrats: { product: 'ความสำเร็จของทีม', headline: 'ขอแสดงความยินดี', info: ORG },
   pr_hiring: { product: 'รับสมัครพนักงานขาย', headline: 'รับสมัครงาน', price: 'หลายตำแหน่ง', info: ORG },
   pr_festival: { product: 'วันขึ้นปีใหม่', headline: 'สวัสดีปีใหม่', info: ORG },
+  model_show: { product: 'ชุดว่ายน้ำวันพีซสีขาว', headline: 'คอลเลกชันซัมเมอร์', modelWho: 'female', modelLook: 'clean' },
   agent_plan: { product: 'ประกันสุขภาพเหมาจ่าย', headline: 'คุ้มครองค่ารักษาเหมาจ่าย', price: 'ปรึกษาฟรี', agentType: 'insurance', details: 'ค่าห้อง ค่าผ่าตัด ผู้ป่วยใน' },
   agent_listing: { product: 'บ้านเดี่ยว 2 ชั้น 3 ห้องนอน', headline: 'ขายบ้านพร้อมอยู่', price: '2.59 ล้าน', agentType: 'property', info: { place: 'ใกล้ถนนใหญ่ หาดใหญ่' } },
   agent_tips: { product: 'เลือกประกันสุขภาพยังไงไม่พลาด', headline: '4 เรื่องต้องรู้ก่อนทำประกันสุขภาพ', agentType: 'insurance' },

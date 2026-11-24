@@ -59,6 +59,8 @@ export const STYLES = [
     prompt: 'A mouth-watering promotional food/menu poster. Hero shot of the product, appetizing lighting, clear menu-style layout with the headline and price as bold readable typography, space for the shop name.' },
   { id: 'product_luxury', label: 'ภาพสินค้าพื้นหรู', emoji: '💎', color: '#3B4A8C', ratio: '4:5',
     prompt: 'Premium commercial product photography. The product placed on an elegant pedestal or marble surface, soft studio lighting, subtle reflections, luxury magazine advertising look, generous negative space.' },
+  { id: 'model_show', label: 'นางแบบ / นายแบบโชว์สินค้า', emoji: '💃', color: '#B0306A', ratio: '4:5', text: true,
+    prompt: 'Professional fashion / commercial photoshoot of a strikingly attractive, confident adult model presenting the product (wearing it if it is clothing, swimwear, lingerie, sportswear or an accessory; holding or using it otherwise). Magazine-quality lighting, flattering pose, polished styling, premium e-commerce campaign look.' },
   { id: 'product_life', label: 'สินค้าในชีวิตจริง', emoji: '🏡', color: '#7B4A24', ratio: '4:5',
     prompt: 'Authentic lifestyle photo showing the product being used naturally in a real Thai home or daily-life setting, warm natural light, candid feel like a real customer photo, looks like a genuine social media post.' },
   { id: 'sale_banner', label: 'ป้ายลดราคา / โปรแรง', emoji: '🔥', color: '#B33A1E', ratio: '1:1', text: true,
@@ -114,6 +116,13 @@ const CLAIMS = [
   [/ไม่มีผลข้างเคียง|ปลอดภัยที่สุด|ดีที่สุดในโลก|อันดับ\s*1\s*ของโลก/, 'คำเกินจริง'],
   [/อย\.?\s*รับรอง(ว่า)?รักษา/, 'อ้าง อย. เกินจริง'],
 ];
+// งานนางแบบ/นายแบบ: กันเนื้อหาโจ่งแจ้งและเกี่ยวกับเด็ก
+export function guardModel(text) {
+  const t = String(text || '');
+  if (/โป๊|เปลือย|นู้ด|โชว์นม|โชว์หัว|ล่อนจ้อน|ไม่ใส่อะไร|เย็ด|ร่วมเพศ|เซ็กส์|xxx|porn|nude|naked|topless|nsfw|onlyfans|18\+/i.test(t)) return 'แนวนี้ทำได้ถึงระดับแฟชั่นเซ็กซี่แบบแคตตาล็อกเท่านั้น ไม่รับเนื้อหาโป๊หรือส่อเพศ';
+  if (/เด็ก|นักเรียน|ชุดนักเรียน|ม\.ต้น|ม\.ปลาย|ประถม|วัยรุ่น|อายุ\s*1[0-7]|loli|teen|schoolgirl|minor/i.test(t)) return 'แนวนางแบบ/นายแบบใช้ได้กับผู้ใหญ่เท่านั้น';
+  return '';
+}
 export function checkContent(text) {
   const t = String(text || '');
   for (const [re, why] of BLOCK) if (re.test(t)) return { blocked: why, warnings: [] };
@@ -170,10 +179,21 @@ async function genCaptions(prompt) {
 
 // ---------- คำสั่ง ----------
 const clean = (v, n = 200) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+// นางแบบ/นายแบบ: ลุคสุภาพ หรือ เซ็กซี่แฟชั่น (ระดับแคตตาล็อกชุดว่ายน้ำ/ชุดชั้นใน) · ห้ามโป๊ ห้ามท่าทางทางเพศ · ผู้ใหญ่สมมติเท่านั้น
+export const MODEL_LOOKS = [{ id: 'clean', label: 'สุภาพ มืออาชีพ' }, { id: 'glam', label: 'แฟชั่นเซ็กซี่ (แบบแคตตาล็อก)' }];
+export const MODEL_WHO = [{ id: 'female', label: 'นางแบบ' }, { id: 'male', label: 'นายแบบ' }, { id: 'couple', label: 'คู่ชาย-หญิง' }];
+const modelLine = (p) => {
+  const who = { female: 'a beautiful adult Thai/Asian female model in her late 20s', male: 'a handsome, fit adult Thai/Asian male model in his late 20s', couple: 'an attractive adult couple (a woman and a man, both in their late 20s)' }[p.modelWho] || 'a beautiful adult model in her late 20s';
+  const look = p.modelLook === 'glam'
+    ? 'Look: glamorous and sensual high-fashion style like a premium swimwear or lingerie brand catalog — confident gaze, body-confident pose, the outfit shown clearly. Strictly tasteful: no nudity, no see-through intimate areas, no sexual acts or explicit poses, nothing pornographic.'
+    : 'Look: clean, elegant and professional, friendly confident expression, modest styling appropriate for any audience.';
+  return `Model: ${who}, clearly an adult, fictional person (not a celebrity or real individual). ${look}`;
+};
 function buildPrompt(p, style, brand, hasRefs, version) {
   const goal = GOALS.find((g) => g.id === p.goal);
   const lines = [
     style.prompt,
+    style.id === 'model_show' && modelLine(p),
     `Purpose: ${goal?.hint || ''} (${goal?.label || ''}). Audience: Thai social media users.`,
     p.product && `Product / subject: ${p.product}.`,
     p.details && `Details from the seller: ${p.details}.`,
@@ -268,8 +288,11 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       useLogo: !!b.useLogo && !!brand.logo, showShop: b.showShop !== false && !style.pr,
       info: cleanInfo(b.info),
       agentType: AGENT_TYPES.some((a) => a.id === b.agentType) ? b.agentType : 'insurance',
+      modelLook: MODEL_LOOKS.some((x) => x.id === b.modelLook) ? b.modelLook : 'clean',
+      modelWho: MODEL_WHO.some((x) => x.id === b.modelWho) ? b.modelWho : 'female',
     };
     if (style.agent) p.goal = 'agent';
+    if (style.id === 'model_show') { const g = guardModel([p.product, p.details, p.headline].join(' ')); if (g) return { error: g }; }
     if (!p.product && !p.details && !p.headline) return { error: 'ใส่ชื่อสินค้าหรือรายละเอียดอย่างน้อย 1 อย่าง' };
     const c = checkContent([p.product, p.details, p.headline, p.price, ...Object.values(p.info)].join(' '));
     return { style, tier, versions, p, cost: tier.stars * versions, ...c };
@@ -344,6 +367,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       if (!p.product && !p.plot) return { error: 'ใส่ชื่อสินค้าหรือไอเดียฉากก่อน' };
       if (p.preset === 'scene' && !p.plot) return { error: 'บรรยายฉากที่อยากได้ก่อน' };
       p.length = 10;
+      if (p.preset === 'model' || /เซ็กซี่|sexy|ชุดว่ายน้ำ|ชุดชั้นใน|บิกินี่|bikini|lingerie/i.test([p.product, p.details, p.plot].join(' '))) { const g = guardModel([p.product, p.details, p.plot].join(' ')); if (g) return { error: g }; }
       const cM = checkContent([p.product, p.details, p.plot].join(' '));
       const cost = V.MOTION_PRICE.std;
       return { video: true, style, tier: { id: 'motion', free: false, stars: cost }, versions: 1, p, cost, ...cM };
@@ -400,7 +424,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   app.get('/api/create/catalog', auth, wrap(async (req, res) => {
     const m = await me(req.uid);
     res.json({
-      ready: ready(), goals: GOALS, agentTypes: AGENT_TYPES.map(({ id, label }) => ({ id, label })), ratios: RATIOS, tones: TONES, concepts: CONCEPTS,
+      ready: ready(), goals: GOALS, agentTypes: AGENT_TYPES.map(({ id, label }) => ({ id, label })), ratios: RATIOS, tones: TONES, concepts: CONCEPTS, modelLooks: MODEL_LOOKS, modelWho: MODEL_WHO,
       styles: STYLES.map(({ id, label, emoji, color, ratio, text, pr, agent }) => ({ id, label, emoji, color, ratio, text: !!text, pr: !!pr, agent: !!agent, rec: recTier(id) })),
       tiers: TIERS.map(({ id, label, note, stars, free, size }) => ({ id, label, note, stars, free: !!free, size })),
       stars: m.stars, free: m.freeImages, keepDays: KEEP_DAYS,

@@ -6,6 +6,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import * as V from './video.mjs';
 import * as LR from './linkread.mjs';
+import * as FM from './film.mjs';
 import crypto from 'node:crypto';
 const rand = (n) => crypto.randomBytes(n).toString('hex').toUpperCase();
 
@@ -169,13 +170,13 @@ function findImages(o, out = []) {
   else for (const v of Object.values(o)) if (v && typeof v === 'object') findImages(v, out);
   return out;
 }
-function findText(o) {
+export function findText(o) {
   if (!o || typeof o !== 'object') return '';
   if (Array.isArray(o)) return o.map(findText).join('');
   if (typeof o.text === 'string' && (o.type === 'text' || !o.type)) return o.text;
   return Object.values(o).filter((v) => v && typeof v === 'object').map(findText).join('');
 }
-async function gpost(url, body, timeoutMs) {
+export async function gpost(url, body, timeoutMs) {
   let last;
   for (let i = 0; i < 2; i++) {
     const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
@@ -188,7 +189,7 @@ async function gpost(url, body, timeoutMs) {
   }
   throw last;
 }
-async function genImage({ model, prompt, refs, ratio, size }) {
+export async function genImage({ model, prompt, refs, ratio, size }) {
   const input = [{ type: 'text', text: prompt }, ...refs.map((b) => ({ type: 'image', mime_type: 'image/jpeg', data: b.toString('base64') }))];
   const response_format = { type: 'image', mime_type: 'image/jpeg', aspect_ratio: ratio };
   if (!/lite/.test(model)) response_format.image_size = size;
@@ -280,7 +281,7 @@ async function finish(buf, { logo }) {
   return { out, w: W, h: H };
 }
 
-export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl, hooks = {} }) {
+export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl, films, hooks = {} }) {
   const WORK_DIR = path.join(DATA_DIR, 'works');
   const REF_DIR = path.join(DATA_DIR, 'refs');
   const LOGO_DIR = path.join(DATA_DIR, 'logos');
@@ -374,6 +375,14 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       const cost = V.VIDEO_PRICE[p.length] + (premium ? V.PREMIUM_VOICE_EXTRA : 0) + (p.genBg ? 5 : 0);
       return { video: true, style, tier: { id: 'info', free: false, stars: cost }, versions: 1, p, cost, ...cI };
     }
+    if (style.id === 'v_film') {
+      const quality = b.quality === 'pro' ? 'pro' : 'std';
+      const epLen = FM.FILM_LENS.includes(Number(b.epLen)) ? Number(b.epLen) : 60;
+      Object.assign(p, { filmId: Math.max(0, Number(b.filmId) || 0), ep: Math.max(1, Number(b.ep) || 1), quality, epLen, dialogue: false, premium: false });
+      if (!p.filmId) return { error: 'เลือกโปรเจกต์หนังก่อน' };
+      const cost = FM.filmCost(quality, epLen);
+      return { video: true, style, tier: { id: 'film', free: false, stars: cost }, versions: 1, p, cost, blocked: '', warnings: [] };
+    }
     if (style.id === 'v_avatar') {
       const lang = V.AVATAR_LANGS.some((l) => l.id === b.lang) ? b.lang : 'th';
       const length = V.AVATAR_PRICE[Number(b.length)] ? Number(b.length) : 30;
@@ -461,12 +470,13 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       tiers: TIERS.map(({ id, label, note, stars, free, size }) => ({ id, label, note, stars, free: !!free, size })),
       stars: m.stars, free: m.freeImages, keepDays: KEEP_DAYS,
       video: {
-        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal, variants, pr, agent }) => ({ id, label, emoji, color, reveal, variants, pr: !!pr, agent: !!agent })),
+        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal, variants, pr, agent, film }) => ({ id, label, emoji, color, reveal, variants, pr: !!pr, agent: !!agent, film: !!film })),
         formulas: V.FORMULAS.map(({ id, label, desc, rec, dialogue }) => ({ id, label, desc, rec, dialogue: !!dialogue })),
         music: V.MUSIC,
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
         genres: V.GENRES, art: V.ART.map(({ id, label }) => ({ id, label })), dramaPrices: V.DRAMA_PRICE, seriesGenres: V.SERIES_GENRES, seriesPrices: V.SERIES_PRICE, seriesLen: V.SERIES_LEN,
         motionPresets: V.MOTION_PRESETS.map(({ id, label, desc }) => ({ id, label, desc })), motionPrice: V.MOTION_PRICE.std,
+        film: { ready: FM.filmReady(), prices: FM.FILM_PRICE },
         avatar: { ready: V.avatarReady(), std: V.klingReady(), pro: V.heygenReady(), prices: V.AVATAR_PRICE, proPrices: V.AVATAR_PRO_PRICE, langs: V.AVATAR_LANGS.map(({ id, label, cps }) => ({ id, label, cps })), designPrice: V.AVATAR_DESIGN_PRICE.std },
         captionStyles: V.CAPTION_STYLES, selfMaxSec: V.SELF_MAX_SEC, selfPrices: { subs: [V.selfPrice(60, 'subs'), V.selfPrice(120, 'subs'), V.selfPrice(180, 'subs')], voiceExtra: 5 },
         voices: V.VOICES.map(({ id, label, gender }) => ({ id, label, gender })),
@@ -538,6 +548,16 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     }
 
     if (n.style.id === 'v_top' && n.p.nProducts !== n.p.items.length) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปให้ครบทุกสินค้าในอันดับ' }); }
+    if (n.style.id === 'v_film') {
+      const drop = () => refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {}));
+      if (!FM.filmReady()) { drop(); return res.status(503).json({ error: 'ระบบหนังสั้นกำลังตั้งค่า' }); }
+      const f = films && await films.get(req.uid, n.p.filmId);
+      const ep = f?.episodes.find((e) => e.n === n.p.ep);
+      if (!f || !ep) { drop(); return res.status(400).json({ error: 'ไม่พบโปรเจกต์หรือตอนนี้' }); }
+      if (!ep.script?.shots?.length) { drop(); return res.status(400).json({ error: 'ตอนนี้ยังไม่มีสคริปต์ เขียนสคริปต์ก่อน' }); }
+      if (f.ep_len !== n.p.epLen) { drop(); return res.status(400).json({ error: 'ราคาไม่ตรงกับความยาวตอน รีเฟรชหน้าแล้วลองใหม่' }); }
+      n.p.product = `${f.title} ตอนที่ ${ep.n}`;
+    }
     if (n.style.id === 'v_avatar') {
       if (!V.avatarReady()) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(503).json({ error: 'ระบบอวตารกำลังตั้งค่า' }); }
       const av = (await q('SELECT id FROM avatars WHERE id=$1 AND user_id=$2', [n.p.avatarId, req.uid])).rows[0];
@@ -546,7 +566,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (n.style.id === 'v_drama' && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ละครต้องมีรูปสินค้า 1 รูป' }); }
     if (['v_shop', 'v_pr_recap', 'v_agent_listing'].includes(n.style.id) && n.p.nProducts < 1) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3–8 รูป)' }); }
     if (n.style.id !== 'v_show' && n.style.id !== 'v_top' && !V.INFO_STYLES.includes(n.style.id) && (req.files?.refs || []).length > 3) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'รูปสินค้าได้สูงสุด 3 รูป' }); }
-    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar'].includes(n.style.id) && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
+    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar', 'v_film'].includes(n.style.id) && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -588,7 +608,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       fs.copyFileSync(f, path.join(REF_DIR, name)); refs.push(name);
     }
     n.p.nProducts = refs.length;
-    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar'].includes(n.style.id)) return { error: 'ต้องมีรูปสินค้า' };
+    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar', 'v_film'].includes(n.style.id)) return { error: 'ต้องมีรูปสินค้า' };
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -1105,7 +1125,9 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
     if (!KEY()) return res.status(503).json({ error: 'ระบบสร้างภาพกำลังตั้งค่า' });
     const b = req.body || {};
     const pick = (k, d) => (AV_OPT[k][b[k]] ? b[k] : d);
-    const sp = { gender: pick('gender', 'female'), age: pick('age', '30'), look: pick('look', 'thai'), hair: pick('hair', 'long'), outfit: pick('outfit', 'smart'), bg: pick('bg', 'studio'), mood: pick('mood', 'smile'), extra: clean(b.extra, 200) };
+    const ART = { real: '', anime: 'Japanese anime character portrait illustration, clean line art, cel shading. ', '3d': 'High-end 3D animated film character render, stylized but detailed. ', paint: 'Cinematic digital painting portrait. ' };
+    const art = ART[b.art] !== undefined ? b.art : 'real';
+    const sp = { gender: pick('gender', 'female'), age: pick('age', '30'), look: pick('look', 'thai'), hair: pick('hair', 'long'), outfit: pick('outfit', 'smart'), bg: pick('bg', 'studio'), mood: pick('mood', 'smile'), extra: clean(b.extra, 200), art };
     const cX = checkContent({ extra: sp.extra });
     if (cX.error) return res.status(400).json({ error: cX.error });
     const cost = V.AVATAR_DESIGN_PRICE.std;
@@ -1120,10 +1142,10 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
       await c.query('COMMIT');
     } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
     const g = AV_OPT.gender[sp.gender], ageTxt = AV_OPT.age[sp.age].replace('her/his', sp.gender === 'male' ? 'his' : 'her');
-    const prompt = `Ultra-realistic professional portrait photograph of a single adult ${AV_OPT.look[sp.look]} ${g} ${ageTxt}, ${AV_OPT.hair[sp.hair]}, wearing ${AV_OPT.outfit[sp.outfit]}, ${AV_OPT.mood[sp.mood]}, looking straight into the camera with mouth gently closed.
+    const prompt = `${ART[art]}${art === 'real' ? 'Ultra-realistic professional portrait photograph' : 'Character portrait'} of a single adult ${AV_OPT.look[sp.look]} ${g} ${ageTxt}, ${AV_OPT.hair[sp.hair]}, wearing ${AV_OPT.outfit[sp.outfit]}, ${AV_OPT.mood[sp.mood]}, looking straight into the camera with mouth gently closed.
 Framing: vertical 9:16, head and upper body centered, shoulders visible, face large and clear, eye level, camera about 1 meter away.
 Background: ${AV_OPT.bg[sp.bg]}.${sp.extra ? `\nExtra details: ${sp.extra}` : ''}
-Lighting: soft even key light, natural skin texture with pores, sharp focus on the eyes, shot on a full-frame camera, 50mm lens. Fictional person, not a celebrity. No text, no logo, no watermark, no hands covering the face, no sunglasses.`;
+${art === 'real' ? 'Lighting: soft even key light, natural skin texture with pores, sharp focus on the eyes, shot on a full-frame camera, 50mm lens.' : 'Lighting: soft even studio light, clear readable face, consistent character design.'} Fictional person, not a celebrity. No text, no logo, no watermark, no hands covering the face, no sunglasses.`;
     const model = MODEL_OVERRIDE || TIERS[1].model;
     const out = await Promise.all([0, 1].map(async (i) => {
       try {
@@ -1188,6 +1210,58 @@ Lighting: soft even key light, natural skin texture with pores, sharp focus on t
   }));
   // ลบภาพตัวเลือกที่ไม่ได้บันทึก (เก่ากว่า 1 วัน)
   setInterval(() => { try { for (const f of fs.readdirSync(AV_DIR)) if (f.startsWith('c') && Date.now() - fs.statSync(path.join(AV_DIR, f)).mtimeMs > 864e5) fs.rm(path.join(AV_DIR, f), () => {}); } catch { /* */ } }, 3600e3).unref();
+
+  // ---------- หนังสั้นแนวตั้ง (1 ตอน) ----------
+  async function processFilm(w) {
+    const p = w.params;
+    const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    const fail = (msg) => { PROG.delete(w.id); return refund(w, msg); };
+    const f = films && await films.get(w.user_id, p.filmId);
+    const ep = f?.episodes.find((e) => e.n === p.ep);
+    if (!f || !ep?.script?.shots?.length) return fail('ไม่พบสคริปต์ตอนนี้ · คืนดาวแล้ว');
+    const t0 = Date.now();
+    // รูปนักแสดง (ต้นแบบหน้าตา)
+    const castImgs = {};
+    for (const c of f.cast) {
+      const a = (await q('SELECT file FROM avatars WHERE id=$1 AND user_id=$2', [c.avatarId, w.user_id])).rows[0];
+      const fp = a && path.join(DATA_DIR, 'avatars', path.basename(a.file));
+      if (fp && fs.existsSync(fp)) castImgs[c.name] = await sharp(fp).rotate().resize({ width: 768, height: 1365, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer();
+    }
+    let r;
+    try { r = await FM.renderEpisode({ f, ep, quality: p.quality, castImgs, WORK_DIR, pubUrl, log, stage, id: w.id }); }
+    catch (e) {
+      log('film fail', w.id, e.message.slice(0, 400));
+      await q("UPDATE works SET params = params || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ failDetail: e.message.slice(0, 500) })]).catch(() => {});
+      if (e.shot && (e.message.includes('no_image') || /safety|policy|blocked|prohibit|400/i.test(e.message))) {
+        const s = ep.script.shots[e.shot - 1] || {};
+        const why = await explainRefusal({ fields: { plot: `${s.scene} ${s.action}`, script: s.line }, refs: s.chars.map((n) => castImgs[n]).filter(Boolean).slice(0, 2), what: 'film frame image', aiText: e.text || e.message });
+        return fail(`AI ไม่สร้างภาพช็อตที่ ${e.shot}${why ? ` · ${why.replace('รูปที่แนบ', 'รูปนักแสดง')}` : ' ลองแก้ฉาก/บทของช็อตนี้'} · คืนดาวแล้ว`);
+      }
+      return fail(/safety|policy|nsfw|content/i.test(e.message) ? 'AI ไม่รับบางฉากในตอนนี้ ลองปรับฉากที่รุนแรง/วาบหวิว · คืนดาวแล้ว' : 'สร้างตอนนี้ไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว');
+    }
+    const base = `${w.user_id}-${w.id}-f-${rand(6).toLowerCase()}`;
+    const final = path.join(WORK_DIR, `${base}.mp4`);
+    const music = { horror: 'suspense', mystery: 'suspense', noir: 'suspense', revenge: 'hype', action: 'hype', hidden: 'luxury', ceo: 'luxury', romance: 'chill', family: 'chill', comedy: 'fun', office: 'fun' }[f.genre] || 'suspense';
+    const last = ep.n >= f.episodes.length;
+    try {
+      stage('ใส่ซับ ดนตรี และการ์ดตอนต่อไป', 85);
+      const out = await V.render({ type: 'self', videoUrl: V.fileUrl(r.file), segments: r.segments, origVolume: 1, captionStyle: 'box', music, musicVolume: 0.1,
+        hookText: `EP.${ep.n} ${ep.script.hook ? ep.script.hook.split('\n')[0] : ep.title}`.slice(0, 50), cta: last ? 'จบบริบูรณ์ 🎬' : `ติดตาม EP.${ep.n + 1}\nกดติดตามไว้เลย`, metadata: { mcrich: w.id } },
+      (s) => stage(s.status === 'queued' ? 'รอคิวตัดต่อ' : 'กำลังตัดต่อ', 85 + Math.round((s.progress || 0) * 0.1)));
+      V.moveFile(out.mp4, final); if (out.jpg) fs.rm(out.jpg, () => {});
+    } catch (e) { log('film assemble subs fail (ส่งแบบไม่มีซับ)', w.id, e.message); V.moveFile(r.file, final); }
+    fs.rm(r.file, { force: true }, () => {});
+    let thumb = '';
+    try { await V.videoThumb(final, path.join(WORK_DIR, `${base}.jpg`)); await sharp(path.join(WORK_DIR, `${base}.jpg`)).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); fs.rm(path.join(WORK_DIR, `${base}.jpg`), () => {}); thumb = `${base}.webp`; } catch (e) { log('film thumb', w.id, e.message); }
+    const { captions, tags } = await finalizeCaptions(w, { ...p, hashtags: [] }, { ...ep.script.captions, hashtags: ep.script.hashtags || [] });
+    const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
+    await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ seconds: Math.round(r.sec), filmTitle: f.title })]);
+    ep.workId = Number(w.id); await films.save(f).catch(() => {});
+    PROG.delete(w.id);
+    if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
+    log('film done', w.id, `EP${ep.n}`, `${Math.round(r.sec)}s`, `${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  }
 
   async function processAvatar(w) {
     const p = w.params;
@@ -1479,6 +1553,7 @@ Lighting: soft even key light, natural skin texture with pores, sharp focus on t
     if (w.style === 'v_series') return processSeries(w);
     if (w.style === 'v_motion') return processMotion(w);
     if (w.style === 'v_avatar') return processAvatar(w);
+    if (w.style === 'v_film') return processFilm(w);
     if (V.INFO_STYLES.includes(w.style)) return processInfo(w);
     if (w.kind === 'video') return processVideo(w);
     const style = STYLES.find((s) => s.id === w.style);

@@ -12,6 +12,7 @@ import { registerCreate } from './create.mjs';
 import { registerExtras } from './extras.mjs';
 import { registerSchedule } from './schedule.mjs';
 import { registerSocial } from './social.mjs';
+import { registerFilm } from './film.mjs';
 import { probe as probeVideo } from './video.mjs';
 import { registerChat } from './chat.mjs';
 import { registerAuto } from './auto.mjs';
@@ -166,7 +167,7 @@ async function mergeUsers(c, from, into) {
   // โบนัสสมัคร/ชวนเพื่อนที่ซ้ำกันเก็บไว้ชุดเดียว (ของบัญชีหลัก)
   await c.query(`DELETE FROM star_ledger f WHERE f.user_id=$1 AND (f.kind='signup_bonus' AND EXISTS (SELECT 1 FROM star_ledger t WHERE t.user_id=$2 AND t.kind='signup_bonus')
     OR f.kind IN ('referral','refund') AND EXISTS (SELECT 1 FROM star_ledger t WHERE t.user_id=$2 AND t.kind=f.kind AND t.ref=f.ref))`, [from, into]);
-  for (const t of ['identities', 'star_ledger', 'topups', 'works', 'links', 'schedules', 'push_subs', 'chat_messages', 'auto_plans', 'audit_log', 'avatars']) {
+  for (const t of ['identities', 'star_ledger', 'topups', 'works', 'links', 'schedules', 'push_subs', 'chat_messages', 'auto_plans', 'audit_log', 'avatars', 'films']) {
     await c.query(`UPDATE ${t} SET user_id=$2 WHERE user_id=$1`, [from, into]);
   }
   await c.query('UPDATE users SET referred_by=$2 WHERE referred_by=$1 AND id<>$2', [from, into]);
@@ -406,7 +407,8 @@ const sched = registerSchedule(app, { q, auth, wrap, log, PUBLIC_URL });
 const chat = registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL });
 sched.setNotify((uid, text) => chat.notifyLine(uid, text));
 const social = registerSocial(app, { q, auth, wrap, log, DATA_DIR, rand, PUBLIC_URL, SECRET, makeToken, readToken, getCookie, setCookie, G_ID, G_SECRET, probe: probeVideo, notify: (uid, t) => chat.notifyLine(uid, t) });
-const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl: social.pubUrl, hooks: extras.hooks });
+const films = registerFilm(app, { q, auth, wrap, log });
+const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl: social.pubUrl, films, hooks: extras.hooks });
 const auto = registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, videoPrice: VIDEO_PRICE, notify: (uid, t) => chat.notifyLine(uid, t) });
 const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNED });
 const viral = registerViral(app, { q, auth, wrap, log, DATA_DIR });

@@ -377,7 +377,7 @@ function drawAvatars(qs) {
   const from = new URLSearchParams(qs || '').get('from');
   const r = AVOPT;
   AVD = AVD || { gender: 'female', age: '30', look: 'thai', hair: 'long', outfit: 'smart', bg: 'studio', mood: 'smile', extra: '', cands: null, spec: null, tab: AVS.length ? 'list' : 'design' };
-  const back = from === 'create' ? 'create' : 'profile';
+  const back = from === 'create' ? 'create' : from === 'film' ? 'film?new=1' : 'profile';
   const tabs = `<div class="chips"><button type="button" class="chip" data-tab="list" aria-pressed="${AVD.tab === 'list'}">อวตารของฉัน (${AVS.length})</button><button type="button" class="chip" data-tab="design" aria-pressed="${AVD.tab === 'design'}">ออกแบบใหม่</button><button type="button" class="chip" data-tab="upload" aria-pressed="${AVD.tab === 'upload'}">ใช้รูปตัวเอง</button></div>`;
   let body = '';
   if (AVD.tab === 'list') {
@@ -393,6 +393,7 @@ function drawAvatars(qs) {
   } else if (AVD.tab === 'design') {
     const grp = (k, t) => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${t}</h2><div class="chips">${(r.options[k] || []).map((v) => `<button type="button" class="chip" data-ak="${k}" data-v="${v}" aria-pressed="${AVD[k] === v}">${esc(AV_LABEL[k][v] || v)}</button>`).join('')}</div></section>`;
     body = `${r.ready ? '' : '<p class="muted">ระบบวิดีโออวตารกำลังตั้งค่า ออกแบบเก็บไว้ก่อนได้</p>'}
+      <section style="display:flex;flex-direction:column;gap:8px"><h2>สไตล์ภาพ</h2><div class="chips">${[['real', 'เหมือนจริง'], ['anime', 'อนิเมะ'], ['3d', 'การ์ตูน 3D'], ['paint', 'ภาพวาด']].map(([k, l]) => `<button type="button" class="chip" data-ak="art" data-v="${k}" aria-pressed="${(AVD.art || 'real') === k}">${l}</button>`).join('')}</div>${from === 'film' ? '<span class="muted">ตัวละครหนัง: เลือกสไตล์ให้ตรงกับสไตล์ภาพของเรื่อง · ใส่ชุด/ลักษณะเฉพาะในรายละเอียดเพิ่ม เช่น ชุดเจ้าสาว, ชุดนักธุรกิจหรู</span>' : ''}</section>
       ${grp('gender', 'เพศ')}${grp('age', 'อายุ')}${grp('look', 'หน้าตา')}${grp('hair', 'ทรงผม')}${grp('outfit', 'ชุด')}${grp('bg', 'ฉากหลัง')}${grp('mood', 'สีหน้า')}
       <label class="f" for="extra">รายละเอียดเพิ่ม (ไม่บังคับ)<input id="extra" type="text" maxlength="200" placeholder="เช่น ใส่แว่นกรอบบาง ต่างหูมุก" value="${esc(AVD.extra)}"></label>
       <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">ออกแบบ 1 ครั้ง ได้ 2 แบบให้เลือก</span><b class="num" style="font-size:22px">${ICON.star}${r.designPrice} ดาว</b></div>
@@ -428,7 +429,7 @@ function drawAvatars(qs) {
   const rd = $('#redo'); if (rd) rd.onclick = () => { AVD.cands = null; drawAvatars(qs); };
   const sv = $('#save'); if (sv) sv.onclick = async () => {
     sv.disabled = true;
-    try { const a = await api('api/avatars', { method: 'POST', body: { cand: AVD.cands[AVD.pick || 0].name, name: $('#avname').value, spec: AVD.spec } }); AVD.cands = null; AVD.tab = 'list'; AVD.name = ''; if (D && D.style === 'v_avatar') D.avatarId = a.id; toast('บันทึกอวตารแล้ว'); if (from === 'create') return go('create'); avatarsView(qs); }
+    try { const a = await api('api/avatars', { method: 'POST', body: { cand: AVD.cands[AVD.pick || 0].name, name: $('#avname').value, spec: AVD.spec } }); AVD.cands = null; AVD.tab = 'list'; AVD.name = ''; if (D && D.style === 'v_avatar') D.avatarId = a.id; toast('บันทึกอวตารแล้ว'); if (from === 'create') return go('create'); if (from === 'film') { if (FD && a?.id && FD.cast.length < 6) FD.cast.push({ avatarId: a.id, name: a.name, role: '', desc: '', voice: a.voice }); AVS_LOADED = false; return go('film?new=1'); } avatarsView(qs); }
     catch (e) { toast(e.message); sv.disabled = false; }
   };
   let UPF = null;
@@ -437,7 +438,7 @@ function drawAvatars(qs) {
     if (!UPF) return toast('เลือกรูปก่อน'); if (!$('#consent').checked) return toast('ติ๊กยืนยันสิทธิ์ในรูปก่อน');
     const fd = new FormData(); fd.append('photo', UPF); fd.append('name', $('#upname').value); fd.append('gender', AVD.ug === 'male' ? 'male' : 'female'); fd.append('consent', 'yes');
     ug.disabled = true;
-    try { const a = await api('api/avatars/upload', { method: 'POST', body: fd }); AVD.tab = 'list'; if (D && D.style === 'v_avatar') D.avatarId = a.id; toast('บันทึกอวตารแล้ว'); if (from === 'create') return go('create'); avatarsView(qs); }
+    try { const a = await api('api/avatars/upload', { method: 'POST', body: fd }); AVD.tab = 'list'; if (D && D.style === 'v_avatar') D.avatarId = a.id; toast('บันทึกอวตารแล้ว'); if (from === 'create') return go('create'); if (from === 'film') { if (FD && a?.id && FD.cast.length < 6) FD.cast.push({ avatarId: a.id, name: a.name, role: '', desc: '', voice: a.voice }); AVS_LOADED = false; return go('film?new=1'); } avatarsView(qs); }
     catch (e) { toast(e.message); ug.disabled = false; }
   };
 }
@@ -666,6 +667,7 @@ async function adminPrices() {
     <section class="card"><b>คลิปทั่วไป (ดาว/คลิป)</b><div class="grid2">${Object.keys(p.video).map((k) => inp('v_' + k, p.video[k], df.video[k], `${k} วินาที`)).join('')}${inp('pv', p.premiumVoice, df.premiumVoice, 'บวกเสียงพรีเมียม')}</div></section>
     <section class="card"><b>ละครสั้น (ดาว/เรื่อง)</b><div class="grid2">${Object.keys(p.drama).map((k) => inp('d_' + k, p.drama[k], df.drama[k], `${k} ฉาก`)).join('')}</div></section>
     ${p.series ? `<section class="card"><b>ซีรีส์แนวตั้ง (ดาว/ตอน)</b><div class="grid2">${Object.keys(p.series).map((k) => inp('sr_' + k, p.series[k], df.series[k], `${k} ฉาก`)).join('')}</div></section>` : ''}
+    ${p.filmStd ? `<section class="card"><b>หนังสั้นแนวตั้ง (ดาว/ตอน)</b><span class="muted" style="font-size:12px">ต้นทุนโดยประมาณต่อตอน 60 วิ: มาตรฐาน ~$3.4 ≈ 120 บาท · คุณภาพสูง ~$6.3 ≈ 220 บาท (ภาพ + Kling + ขยับปาก)</span><div class="grid2">${Object.keys(p.filmStd).map((k) => inp('fs_' + k, p.filmStd[k], df.filmStd[k], `มาตรฐาน ${k} วิ`)).join('')}${Object.keys(p.filmPro).map((k) => inp('fp_' + k, p.filmPro[k], df.filmPro[k], `คุณภาพสูง ${k} วิ`)).join('')}</div></section>` : ''}
     ${p.avatar ? `<section class="card"><b>วิดีโออวตาร (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน: มาตรฐาน (Kling) ~$0.84/นาที ≈ 30 บาท + ท่าทางฐาน ~15 บาท/อวตาร (ครั้งเดียว) · พรีเมียม (HeyGen) ~$3/นาที ≈ 105 บาท · ออกแบบภาพ ~2 บาท/ครั้ง</span><div class="grid2">${Object.keys(p.avatar).map((k) => inp('av_' + k, p.avatar[k], df.avatar[k], `มาตรฐาน ${k} วิ`)).join('')}${Object.keys(p.avatarPro || {}).map((k) => inp('avp_' + k, p.avatarPro[k], df.avatarPro[k], `พรีเมียม ${k} วิ`)).join('')}${inp('avd_std', p.avatarDesign.std, df.avatarDesign.std, 'ออกแบบอวตาร/ครั้ง')}</div></section>` : ''}
     ${p.motion ? `<section class="card"><b>คลิป AI ภาพเคลื่อนไหวจริง (ดาว/คลิป)</b><span class="muted" style="font-size:12px">ต้นทุน Omni Flash ราว $0.10/วิ (720p) ≈ 35 บาท/คลิป 10 วิ</span><div class="grid2">${inp('mo_std', p.motion.std, df.motion.std, '~10 วิ 720p')}</div></section>` : ''}
     <p class="muted" style="font-size:13px">มีผลทันทีกับงานใหม่ งานที่สั่งไปแล้วไม่เปลี่ยน · ราคาต้นทุน+80% คำนวณไว้แล้วในค่าเดิม</p>
@@ -674,7 +676,7 @@ async function adminPrices() {
   $('#psave').onclick = async () => {
     const body = { tiers: Object.fromEntries(Object.keys(p.tiers).map((k) => [k, val('t_' + k)])), video: Object.fromEntries(Object.keys(p.video).map((k) => [k, val('v_' + k)])),
       drama: Object.fromEntries(Object.keys(p.drama).map((k) => [k, val('d_' + k)])), premiumVoice: val('pv'),
-      ...(p.series ? { series: Object.fromEntries(Object.keys(p.series).map((k) => [k, val('sr_' + k)])) } : {}), ...(p.motion ? { motion: { std: val('mo_std') } } : {}), ...(p.avatar ? { avatar: Object.fromEntries(Object.keys(p.avatar).map((k) => [k, val('av_' + k)])), avatarPro: Object.fromEntries(Object.keys(p.avatarPro || {}).map((k) => [k, val('avp_' + k)])), avatarDesign: { std: val('avd_std') } } : {}) };
+      ...(p.series ? { series: Object.fromEntries(Object.keys(p.series).map((k) => [k, val('sr_' + k)])) } : {}), ...(p.motion ? { motion: { std: val('mo_std') } } : {}), ...(p.avatar ? { avatar: Object.fromEntries(Object.keys(p.avatar).map((k) => [k, val('av_' + k)])), avatarPro: Object.fromEntries(Object.keys(p.avatarPro || {}).map((k) => [k, val('avp_' + k)])), avatarDesign: { std: val('avd_std') } } : {}), ...(p.filmStd ? { filmStd: Object.fromEntries(Object.keys(p.filmStd).map((k) => [k, val('fs_' + k)])), filmPro: Object.fromEntries(Object.keys(p.filmPro).map((k) => [k, val('fp_' + k)])) } : {}) };
     try { await api('api/admin/prices', { method: 'PUT', body }); CAT = null; toast('บันทึกราคาแล้ว'); adminPrices(); } catch (e) { toast(e.message); }
   };
   $('#preset').onclick = async () => { if (!confirm('คืนราคาทั้งหมดเป็นค่าเดิม?')) return; await api('api/admin/prices', { method: 'PUT', body: { reset: true } }); CAT = null; toast('คืนค่าแล้ว'); adminPrices(); };
@@ -954,7 +956,7 @@ function drawStep() {
       else if (D.style === 'v_drama' && !CAT.video.genres.some((g) => g.id === D.genre)) { D.genre = 'inlaw'; if (D.scenes === 8) D.scenes = 6; }
       drawStep();
     });
-    $('#next').onclick = () => { D.step = 2; drawStep(); };
+    $('#next').onclick = () => { if (D.style === 'v_film') return go('film'); D.step = 2; drawStep(); };
   } else if (s === 2 && INFO_IDS.includes(D.style)) {
     const id = D.style;
     const cs = CAT.video.captionStyles;
@@ -1758,6 +1760,145 @@ function subsEditor(w, qs) {
 const PLAT_S = [['tiktok', 'TikTok'], ['facebook', 'Facebook'], ['instagram', 'Instagram'], ['youtube', 'YouTube'], ['line', 'LINE'], ['shopee', 'Shopee'], ['lazada', 'Lazada']];
 const localDT = (d) => { const x = new Date(d.getTime() - d.getTimezoneOffset() * 60e3); return x.toISOString().slice(0, 16); };
 const fmtWhen = (d) => new Date(d).toLocaleString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+// ---------- สตูดิโอหนังสั้นแนวตั้ง ----------
+let FILMCAT = null, FD = null;
+const fchips = (items, sel, key, multi) => `<div class="chips">${items.map((v) => { const id = String(typeof v === 'object' ? v.id : v); const on = multi ? (sel || []).map(String).includes(id) : String(sel) === id; return `<button type="button" class="chip" data-fk="${key}" data-v="${esc(id)}" aria-pressed="${on}">${esc(typeof v === 'object' ? v.label : v)}</button>`; }).join('')}</div>`;
+function bindF(obj, redraw) {
+  app.querySelectorAll('.chip[data-fk]').forEach((b) => b.onclick = () => { const k = b.dataset.fk; obj[k] = isNaN(Number(b.dataset.v)) || k === 'genre' || k === 'art' || k === 'lang' ? b.dataset.v : Number(b.dataset.v); redraw(); });
+}
+async function filmView(qs) {
+  const sp = new URLSearchParams(qs || '');
+  FILMCAT = FILMCAT || await api('api/films');
+  if (sp.get('new')) return filmNew();
+  if (sp.get('id') && sp.get('ep')) return filmEp(Number(sp.get('id')), Number(sp.get('ep')));
+  if (sp.get('id')) return filmProject(Number(sp.get('id')));
+  const d = await api('api/films'); FILMCAT = d;
+  app.innerHTML = `${topbar('สตูดิโอหนังสั้น', 'home')}<main>
+    <section class="hero"><b style="font-size:20px">🎬 หนังสั้นแนวตั้ง เป็นตอน</b><span class="muted">สร้างเรื่อง เลือกนักแสดง ให้ AI เสนอพล็อตและบทพูด แล้วถ่ายทำทีละตอน ภาพเคลื่อนไหวจริง ปากขยับตามเสียง มีซับและดนตรี พร้อมลง TikTok / Reels</span>
+      <a class="btn" href="#film?new=1">+ สร้างหนังเรื่องใหม่</a>${d.ready ? '' : '<span class="badge b-warn">ระบบถ่ายทำกำลังตั้งค่า (เขียนเรื่องได้แล้ว)</span>'}</section>
+    ${d.items.length ? `<div class="list">${d.items.map((f) => `<a href="#film?id=${f.id}"><span><b>${esc(f.title)}</b><br><span class="muted">${esc(d.genres.find((g) => g.id === f.genre)?.label || '')} · ${f.episodes.length} ตอน · ถ่ายแล้ว ${f.episodes.filter((e) => e.workId).length}</span></span><span aria-hidden="true">›</span></a>`).join('')}</div>` : '<p class="muted">ยังไม่มีเรื่อง เริ่มเรื่องแรกได้เลย</p>'}
+  </main>${nav('create')}`;
+}
+async function filmNew() {
+  const C = FILMCAT;
+  if (!AVS_LOADED) await loadAvatars();
+  FD = FD || { genre: 'revenge', art: 'cine', lang: 'th', episodes: 5, epLen: 60, cast: [], premise: '', ideas: null, pick: -1, title: '', logline: '' };
+  const castRows = FD.cast.map((c, i) => { const a = AVS.find((x) => x.id === c.avatarId); return `<div class="card" style="gap:8px"><div class="row" style="gap:10px;align-items:center">
+      <img src="${a?.img || ''}" alt="" style="width:56px;height:76px;object-fit:cover;border-radius:10px"><div style="flex:1;display:flex;flex-direction:column;gap:6px">
+      <input type="text" data-cn="${i}" maxlength="30" value="${esc(c.name)}" placeholder="ชื่อตัวละคร" aria-label="ชื่อตัวละคร">
+      <input type="text" data-cr="${i}" maxlength="40" value="${esc(c.role || '')}" placeholder="บทบาท เช่น นางเอก, ประธานบริษัท, ตัวร้าย" aria-label="บทบาท"></div>
+      <button type="button" class="btn ghost sm" data-cx="${i}" aria-label="เอาออก">✕</button></div>
+      <input type="text" data-cd="${i}" maxlength="200" value="${esc(c.desc || '')}" placeholder="นิสัย/ปมของตัวละคร (ไม่บังคับ)" aria-label="นิสัยตัวละคร">
+      <label class="f">เสียงพากย์<select data-cv="${i}">${C.voices.filter((v) => !a || v.gender === a.gender).map((v) => `<option value="${v.id}" ${v.id === (c.voice || a?.voice) ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label></div>`; }).join('');
+  const picks = AVS.filter((a) => !FD.cast.some((c) => c.avatarId === a.id));
+  app.innerHTML = `${topbar('สร้างหนังเรื่องใหม่', 'film')}<main>
+    <section style="display:flex;flex-direction:column;gap:10px"><h2>1. แนวเรื่อง</h2>${fchips(C.genres, FD.genre, 'genre')}</section>
+    <section style="display:flex;flex-direction:column;gap:10px"><h2>สไตล์ภาพ</h2>${fchips(C.arts, FD.art, 'art')}</section>
+    <section style="display:flex;flex-direction:column;gap:10px"><h2>ภาษาที่ตัวละครพูด</h2>${fchips(C.langs, FD.lang, 'lang')}</section>
+    <section style="display:flex;flex-direction:column;gap:10px"><h2>จำนวนตอน · ความยาวต่อตอน</h2>${fchips([1, 3, 5, 10, 20].map((n) => ({ id: n, label: `${n} ตอน` })), FD.episodes, 'episodes')}${fchips(C.lens.map((n) => ({ id: n, label: `${n} วิ · เริ่ม ${C.prices.std[n]} ดาว/ตอน` })), FD.epLen, 'epLen')}</section>
+    <section style="display:flex;flex-direction:column;gap:10px"><h2>2. นักแสดง (${FD.cast.length}/6)</h2>
+      <span class="muted">เลือกจากอวตารที่บันทึกไว้ (หน้าเหมือนเดิมทุกตอน) หรือสร้างตัวละครใหม่</span>
+      ${castRows}
+      ${picks.length && FD.cast.length < 6 ? `<div class="avgrid">${picks.map((a) => `<button type="button" class="avcard" data-addc="${a.id}"><img src="${a.img}" alt="" loading="lazy"><b>+ ${esc(a.name)}</b></button>`).join('')}</div>` : ''}
+      <a class="btn dark" href="#avatars?from=film">+ สร้างตัวละครใหม่ (ออกแบบหน้าตา)</a></section>
+    <section style="display:flex;flex-direction:column;gap:10px"><h2>3. พล็อต</h2>
+      <label class="f" for="premise">ไอเดียเรื่อง (ไม่บังคับ)<textarea id="premise" rows="3" maxlength="1500" placeholder="เช่น สาวเสิร์ฟถูกแฟนทิ้งกลางงานแต่ง แต่จริงๆ เธอคือทายาทเศรษฐีพันล้าน">${esc(FD.premise)}</textarea></label>
+      <button type="button" class="btn dark" id="ideas">✨ ให้ AI เสนอพล็อต 3 แบบ (ฟรี)</button>
+      ${FD.ideas ? FD.ideas.map((x, i) => `<button type="button" class="card" data-idea="${i}" style="text-align:left;${FD.pick === i ? 'border-color:var(--lime-text);background:var(--acc-card)' : ''}"><b>${esc(x.title)}</b><span>${esc(x.logline)}</span><span class="muted">ฮุค: ${esc(x.hook)}</span><span class="muted">หักมุม: ${esc(x.twist)}</span></button>`).join('') : ''}
+      <label class="f" for="ftitle">ชื่อเรื่อง<input id="ftitle" type="text" maxlength="60" value="${esc(FD.title)}"></label>
+      <label class="f" for="flog">เรื่องย่อ<textarea id="flog" rows="3" maxlength="600">${esc(FD.logline)}</textarea></label></section>
+    <button type="button" class="btn" id="fcreate">สร้างโปรเจกต์ + ให้ AI วางโครงทุกตอน (ฟรี)</button>
+    <p class="muted">เขียนเรื่องและสคริปต์ฟรี · เสียดาวตอนกด "ถ่ายทำ" แต่ละตอนเท่านั้น</p>
+  </main>${nav('create')}`;
+  const keep = () => {
+    FD.premise = $('#premise').value; FD.title = $('#ftitle').value; FD.logline = $('#flog').value;
+    app.querySelectorAll('[data-cn]').forEach((e) => { FD.cast[e.dataset.cn].name = e.value; });
+    app.querySelectorAll('[data-cr]').forEach((e) => { FD.cast[e.dataset.cr].role = e.value; });
+    app.querySelectorAll('[data-cd]').forEach((e) => { FD.cast[e.dataset.cd].desc = e.value; });
+    app.querySelectorAll('[data-cv]').forEach((e) => { FD.cast[e.dataset.cv].voice = e.value; });
+  };
+  bindF(FD, () => { keep(); filmNew(); });
+  app.querySelectorAll('[data-addc]').forEach((b) => b.onclick = () => { keep(); const a = AVS.find((x) => x.id === Number(b.dataset.addc)); FD.cast.push({ avatarId: a.id, name: a.name, role: '', desc: '', voice: a.voice }); filmNew(); });
+  app.querySelectorAll('[data-cx]').forEach((b) => b.onclick = () => { keep(); FD.cast.splice(Number(b.dataset.cx), 1); filmNew(); });
+  app.querySelectorAll('[data-idea]').forEach((b) => b.onclick = () => { keep(); const x = FD.ideas[Number(b.dataset.idea)]; FD.pick = Number(b.dataset.idea); FD.title = x.title; FD.logline = `${x.logline} ${x.twist ? `(หักมุม: ${x.twist})` : ''}`.trim(); filmNew(); });
+  $('#ideas').onclick = async (e) => {
+    keep(); const bt = e.currentTarget; bt.disabled = true; bt.textContent = 'AI กำลังคิดพล็อต… (10–30 วิ)';
+    try { const r = await api('api/films/ideas', { method: 'POST', body: FD }); FD.ideas = r.ideas; FD.pick = -1; filmNew(); }
+    catch (er) { toast(er.message); bt.disabled = false; bt.textContent = '✨ ให้ AI เสนอพล็อต 3 แบบ (ฟรี)'; }
+  };
+  $('#fcreate').onclick = async (e) => {
+    keep();
+    if (!FD.cast.length) return toast('เลือกนักแสดงอย่างน้อย 1 คน');
+    if (!FD.title.trim() || !FD.logline.trim()) return toast('ใส่ชื่อเรื่องและเรื่องย่อ หรือกดให้ AI เสนอพล็อต');
+    const bt = e.currentTarget; bt.disabled = true; bt.textContent = `AI กำลังวางโครง ${FD.episodes} ตอน… (20–60 วิ)`;
+    try { const f = await api('api/films', { method: 'POST', body: FD }); FD = null; go(`film?id=${f.id}`); }
+    catch (er) { toast(er.message); bt.disabled = false; bt.textContent = 'สร้างโปรเจกต์ + ให้ AI วางโครงทุกตอน (ฟรี)'; }
+  };
+}
+async function filmProject(id) {
+  const f = await api(`api/films/${id}`); const C = FILMCAT;
+  const price = (q) => C.prices[q][f.epLen];
+  app.innerHTML = `${topbar(f.title, 'film')}<main>
+    <section class="card"><b>${esc(f.title)}</b><span>${esc(f.logline)}</span><span class="muted">${esc(C.genres.find((g) => g.id === f.genre)?.label || '')} · ${esc(C.arts.find((a) => a.id === f.art)?.label || '')} · ${f.epLen} วิ/ตอน · ${f.episodes.length} ตอน</span>
+      <div class="row" style="gap:8px;flex-wrap:wrap">${f.cast.map((c) => `<span class="chip" aria-pressed="false">${esc(c.name)}${c.role ? ` · ${esc(c.role)}` : ''}</span>`).join('')}</div></section>
+    <div class="list">${f.episodes.map((e) => `<div style="flex-direction:column;align-items:stretch;gap:6px"><span><b>EP.${e.n} ${esc(e.title)}</b><br><span class="muted">${esc(e.summary)}</span>${e.cliff ? `<br><span class="muted">ค้าง: ${esc(e.cliff)}</span>` : ''}</span>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        ${e.workId ? `<a class="btn sm" href="#work?id=${e.workId}">▶ ดูตอนนี้</a>` : ''}
+        <a class="btn ${e.hasScript ? 'dark' : ''} sm" href="#film?id=${f.id}&ep=${e.n}">${e.hasScript ? 'สคริปต์ / ถ่ายทำ' : 'เขียนสคริปต์ (ฟรี)'}</a></div></div>`).join('')}</div>
+    <button type="button" class="btn ghost" id="addep">+ เพิ่มตอน</button>
+    <p class="muted">ราคาถ่ายทำต่อตอน: มาตรฐาน ${price('std')} ดาว · คุณภาพสูง ${price('pro')} ดาว</p>
+    <button type="button" class="btn ghost sm" id="delf">ลบเรื่องนี้</button>
+  </main>${nav('create')}`;
+  $('#addep').onclick = async () => { try { await api(`api/films/${id}`, { method: 'PATCH', body: { addEpisode: { title: '' } } }); filmProject(id); } catch (e) { toast(e.message); } };
+  $('#delf').onclick = async (e) => { const b = e.currentTarget; if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'แตะอีกครั้งเพื่อลบ (ตอนที่ถ่ายแล้วยังอยู่ในผลงาน)'; return; } await api(`api/films/${id}`, { method: 'DELETE' }); go('film'); };
+}
+let FQ = 'std';
+async function filmEp(id, n) {
+  let f = await api(`api/films/${id}`); const C = FILMCAT;
+  let ep = f.episodes.find((e) => e.n === n);
+  if (!ep) return go(`film?id=${id}`);
+  const names = f.cast.map((c) => c.name);
+  const draw = () => {
+    const sc = ep.script;
+    app.innerHTML = `${topbar(`EP.${ep.n} ${ep.title}`, `film?id=${id}`)}<main>
+      <section class="card"><b>EP.${ep.n} ${esc(ep.title)}</b><span class="muted">${esc(ep.summary)}</span></section>
+      ${!sc ? `<button type="button" class="btn" id="wscript">✨ ให้ AI เขียนสคริปต์ตอนนี้ (ฟรี)</button><p class="muted">AI จะแบ่งเป็นช็อตละ 5 วินาที พร้อมบทพูดของแต่ละตัวละครที่ยาวพอดีเวลา แก้ได้ทุกช็อตก่อนถ่ายทำ</p>`
+        : `${sc.shots.map((s, i) => `<section class="card" style="gap:6px"><b>ช็อต ${i + 1} · 5 วิ</b>
+          <label class="f">ฉาก / สิ่งที่เกิดขึ้น (AI ใช้สร้างภาพ)<textarea data-sa="${i}" rows="2" maxlength="400">${esc(s.action)}</textarea></label>
+          <label class="f">สถานที่ / แสง<input type="text" data-ss="${i}" maxlength="300" value="${esc(s.scene)}"></label>
+          <span class="muted">ในภาพ:</span><div class="chips">${names.map((nm) => `<button type="button" class="chip" data-sc="${i}" data-v="${esc(nm)}" aria-pressed="${s.chars.includes(nm)}">${esc(nm)}</button>`).join('')}</div>
+          <label class="f">คนพูด<select data-sp="${i}"><option value="">(ไม่มีบทพูด)</option>${names.map((nm) => `<option ${s.speaker === nm ? 'selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>
+          <label class="f">บทพูด<input type="text" data-sl="${i}" maxlength="120" value="${esc(s.line)}" placeholder="ประโยคสั้นๆ พูดจบใน 5 วิ"></label>
+          <button type="button" class="btn ghost sm" data-del="${i}">ลบช็อตนี้</button></section>`).join('')}
+        <button type="button" class="btn ghost" id="addshot">+ เพิ่มช็อต</button>
+        <div class="grid2"><button type="button" class="btn dark" id="rescript">เขียนใหม่ทั้งตอน</button><button type="button" class="btn dark" id="savescript">บันทึกสคริปต์</button></div>
+        <section class="hero"><b>ถ่ายทำตอนนี้</b>${fchips([{ id: 'std', label: `มาตรฐาน · ${C.prices.std[f.epLen]} ดาว` }, { id: 'pro', label: `คุณภาพสูง · ${C.prices.pro[f.epLen]} ดาว` }], FQ, 'q')}
+          <span class="muted">${FQ === 'pro' ? 'คุณภาพสูง: ภาพคมระดับโปร การเคลื่อนไหวลื่นและสมจริงกว่า เหมาะเอาไปทำรายได้' : 'มาตรฐาน: คุ้มค่า เหมาะทดลองเรื่องใหม่'} · ใช้เวลาประมาณ 10–25 นาที · ไม่สำเร็จคืนดาวอัตโนมัติ</span>
+          <button type="button" class="btn" id="shoot" ${C.ready ? '' : 'disabled'}>🎬 ถ่ายทำ EP.${ep.n} · ${C.prices[FQ][f.epLen]} ดาว</button>${C.ready ? '' : '<span class="badge b-warn">ระบบถ่ายทำกำลังตั้งค่า</span>'}</section>`}
+    </main>${nav('create')}`;
+    const keep = () => { if (!ep.script) return; ep.script.shots.forEach((s, i) => { s.action = $(`[data-sa="${i}"]`).value; s.scene = $(`[data-ss="${i}"]`).value; s.speaker = $(`[data-sp="${i}"]`).value; s.line = $(`[data-sl="${i}"]`).value; }); };
+    const ws = $('#wscript'); if (ws) ws.onclick = async () => { ws.disabled = true; ws.textContent = 'AI กำลังเขียนสคริปต์… (20–60 วิ)'; try { f = await api(`api/films/${id}/episodes/${n}/script`, { method: 'POST' }); ep = f.episodes.find((e) => e.n === n); draw(); } catch (e) { toast(e.message); ws.disabled = false; ws.textContent = '✨ ให้ AI เขียนสคริปต์ตอนนี้ (ฟรี)'; } };
+    if (!ep.script) return;
+    bindF({ set q(v) { FQ = v; } }, () => { keep(); draw(); });
+    app.querySelectorAll('[data-sc]').forEach((b) => b.onclick = () => { keep(); const s = ep.script.shots[Number(b.dataset.sc)]; const nm = b.dataset.v; s.chars = s.chars.includes(nm) ? s.chars.filter((x) => x !== nm) : [...s.chars, nm].slice(0, 3); draw(); });
+    app.querySelectorAll('[data-del]').forEach((b) => b.onclick = () => { keep(); ep.script.shots.splice(Number(b.dataset.del), 1); draw(); });
+    $('#addshot').onclick = () => { keep(); ep.script.shots.push({ scene: ep.script.shots.at(-1)?.scene || '', action: '', camera: 'medium shot', chars: [], speaker: '', line: '', mood: 'tense' }); draw(); };
+    const save = async () => { keep(); f = await api(`api/films/${id}/episodes/${n}/script`, { method: 'PUT', body: { shots: ep.script.shots } }); ep = f.episodes.find((e) => e.n === n); };
+    $('#savescript').onclick = async () => { try { await save(); toast('บันทึกแล้ว'); draw(); } catch (e) { toast(e.message); } };
+    $('#rescript').onclick = async (e) => { const b = e.currentTarget; if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'แตะอีกครั้ง (บทที่แก้ไว้จะหาย)'; return; } b.disabled = true; b.textContent = 'AI กำลังเขียน…'; try { f = await api(`api/films/${id}/episodes/${n}/script`, { method: 'POST' }); ep = f.episodes.find((x) => x.n === n); draw(); } catch (er) { toast(er.message); b.disabled = false; } };
+    $('#shoot').onclick = async (e) => {
+      const b = e.currentTarget; b.disabled = true;
+      try {
+        await save();
+        const fd = new FormData(); fd.append('data', JSON.stringify({ kind: 'video', goal: 'content', style: 'v_film', filmId: id, ep: n, quality: FQ, epLen: f.epLen }));
+        const r = await api('api/works', { method: 'POST', body: fd });
+        if (r.me) ME = r.me; CAT = null;
+        toast('เริ่มถ่ายทำแล้ว เสร็จแล้วแจ้งเตือน'); go(`work?id=${r.id}`);
+      } catch (er) { toast(er.message); b.disabled = false; }
+    };
+  };
+  draw();
+}
 // ---------- โพสต์ตรง ----------
 const SOC_ICON = { youtube: '▶️', fbpage: '📘', igbiz: '📸' };
 async function socialView(qs) {
@@ -2259,6 +2400,7 @@ async function route() {
     case 'brand': return brandView();
     case 'avatars': return avatarsView(qs).catch((e) => toast(e.message));
     case 'social': return socialView(qs).catch((e) => toast(e.message));
+    case 'film': return filmView(qs).catch((e) => toast(e.message));
     case 'tags': return tagsView();
     case 'stars': return starsView().catch((e) => toast(e.message));
     case 'topup': return topupView().catch((e) => toast(e.message));

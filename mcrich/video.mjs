@@ -43,6 +43,7 @@ export const VIDEO_STYLES = [
   { id: 'v_agent_listing', label: 'พาชมทรัพย์ ขาย / เช่า', emoji: '🏠', color: '#2F6B4A', reveal: 'info', open: '', hook: '', variants: [], agent: true },
   { id: 'v_pr_announce', label: 'ประกาศ / แจ้งข่าวองค์กร', emoji: '📢', color: '#1F4E79', reveal: 'info', open: '', hook: '', variants: [], pr: true },
   { id: 'v_pr_recap', label: 'สรุปกิจกรรม / ข่าวองค์กร', emoji: '📰', color: '#24476B', reveal: 'info', open: '', hook: '', variants: [], pr: true },
+  { id: 'v_film', label: 'หนังสั้นแนวตั้ง (เป็นตอน)', emoji: '🎬', color: '#8C1F2F', reveal: 'film', open: '', hook: '', variants: [], film: true },
   { id: 'v_avatar', label: 'อวตารพูดได้ (คนเหมือนจริง)', emoji: '🧑‍💼', color: '#5B3A8C', reveal: 'avatar', open: '', hook: '', variants: [] },
   { id: 'v_motion', label: 'คลิป AI ภาพเคลื่อนไหวจริง', emoji: '🎥', color: '#0F5257', reveal: 'motion', open: '', hook: '', variants: [] },
   { id: 'v_series', label: 'ซีรีส์แนวตั้ง (เล่าเรื่อง ไม่ขายของ)', emoji: '🔮', color: '#3B2A7A', reveal: 'drama', open: '', hook: '', variants: [] },
@@ -613,7 +614,7 @@ export const klingReady = () => !!FAL_KEY();
 export const heygenReady = () => !!HEYGEN_KEY();
 export const KLING_BASE_MODEL = () => process.env.KLING_BASE_MODEL || 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video';
 export const KLING_LIPSYNC_MODEL = () => process.env.KLING_LIPSYNC_MODEL || 'fal-ai/kling-video/lipsync/audio-to-video';
-async function falRun(model, input, { timeout = 15 * 60e3, onStatus } = {}) {
+export async function falRun(model, input, { timeout = 15 * 60e3, onStatus } = {}) {
   const H = { authorization: `Key ${FAL_KEY()}`, 'content-type': 'application/json' };
   const r = await fetch(`${FALQ()}/${model}`, { method: 'POST', headers: H, body: JSON.stringify(input), signal: AbortSignal.timeout(120000) });
   const j = await r.json().catch(() => ({}));
@@ -634,13 +635,13 @@ async function falRun(model, input, { timeout = 15 * 60e3, onStatus } = {}) {
   if (!o.ok || !oj.video?.url) throw new Error(`fal_result ${o.status} ${JSON.stringify(oj.detail || oj).slice(0, 300)}`);
   return oj;
 }
-async function download(url, file) {
+export async function download(url, file) {
   const r = await fetch(url, { signal: AbortSignal.timeout(5 * 60e3) });
   if (!r.ok) throw new Error(`download ${r.status}`);
   fs.writeFileSync(file, Buffer.from(await r.arrayBuffer()));
   return file;
 }
-const ff = (args, t = 180000) => run('ffmpeg', ['-y', '-v', 'error', ...args], { timeout: t });
+export const ff = (args, t = 180000) => run('ffmpeg', ['-y', '-v', 'error', ...args], { timeout: t });
 /** วิดีโอฐาน 10 วิ: คนในภาพยืนนิ่ง หายใจ กะพริบตา ขยับหัวเล็กน้อย ปากปิด (ใช้ซ้ำทุกคลิปของอวตารนี้) */
 export async function klingBase({ imageFile, outFile, urlOf, tmpDir }) {
   const tmpImg = path.join(tmpDir, `kimg-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.jpg`);

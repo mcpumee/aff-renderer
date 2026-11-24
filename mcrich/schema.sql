@@ -313,3 +313,22 @@ ALTER TABLE schedules ADD COLUMN IF NOT EXISTS result JSONB;
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS error TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE avatars ADD COLUMN IF NOT EXISTS motion_file TEXT NOT NULL DEFAULT '';
+
+-- หนังสั้นแนวตั้ง (โปรเจกต์เป็นตอน)
+CREATE TABLE IF NOT EXISTS films (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title      TEXT NOT NULL,
+  genre      TEXT NOT NULL DEFAULT '',
+  art        TEXT NOT NULL DEFAULT 'cine',
+  lang       TEXT NOT NULL DEFAULT 'th',
+  logline    TEXT NOT NULL DEFAULT '',
+  premise    TEXT NOT NULL DEFAULT '',
+  ep_len     INT NOT NULL DEFAULT 60,
+  cast_list  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  bible      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  episodes   JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS films_user ON films(user_id, id DESC);

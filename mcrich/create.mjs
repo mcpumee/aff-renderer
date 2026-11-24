@@ -385,7 +385,10 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         captionStyle: V.CAPTION_STYLES.some((c) => c.id === b.captionStyle) ? b.captionStyle : 'pop', voice: V.VOICES.some((v) => v.id === b.voice) ? b.voice : '', dialogue: false, premium: false });
       if (!p.avatarId) return { error: 'เลือกอวตารก่อน' };
       if (own && !script.length) return { error: 'พิมพ์บทพูดก่อน' };
-      if (own && script.join('').length > V.avatarMaxChars(lang, length)) return { error: `บทยาวเกิน ${length} วินาที (สูงสุดประมาณ ${V.avatarMaxChars(lang, length)} ตัวอักษร) · เลือกความยาวมากขึ้นหรือตัดบท` };
+      // นับตามภาษาที่พิมพ์มา (ถ้าคนละภาษากับที่เลือก ระบบจะแปลและย่อให้)
+      const srcLang = own ? V.detectLang(script.join(' ')) : lang;
+      const lim = Math.round(V.avatarMaxChars(srcLang, length) * (srcLang === lang ? 1.15 : 1.6));
+      if (own && script.join('').length > lim) return { error: `บทยาวเกิน ${length} วินาที (สูงสุดประมาณ ${lim} ตัวอักษร) · เลือกความยาวมากขึ้นหรือตัดบท` };
       if (!own && !p.product && !p.details) return { error: 'ใส่หัวข้อหรือสินค้าที่ให้อวตารพูดก่อน' };
       const cA = checkContent({ product: p.product, details: p.details, price: p.price, script });
       const cost = (quality === 'pro' ? V.AVATAR_PRO_PRICE : V.AVATAR_PRICE)[length];
@@ -717,6 +720,25 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     return { captions, tags };
   }
 
+  // ---------- ให้เสียงพากย์พอดีกับความยาวคลิป (ไม่ตัดจบกลางคำ) ----------
+  // พากย์ → วัดเวลา → ถ้ายาว/สั้นเกิน ให้ AI ปรับบทให้พอดีแล้วพากย์ใหม่ 1 รอบ (เลือกผลที่ใกล้เป้าที่สุด)
+  async function voiceFit(lines, target, doVoice, { lang = 'th', keepCount = false, maxSec = 0, noExpand = false, id = '' } = {}) {
+    let best = { lines, voice: await doVoice(lines) };
+    best.sec = V.speechEnd(best.voice.alignment);
+    const tooLong = (x) => (maxSec ? x > maxSec : x > target * 1.15 + 1.5);
+    if (target && (tooLong(best.sec) || (!noExpand && best.sec < target * 0.7))) {
+      try {
+        const goal = maxSec ? Math.min(target, maxSec * 0.92) : target;
+        const l2 = await V.adaptLines(lines, { lang, targetSec: goal, curSec: best.sec, keepCount });
+        const v2 = await doVoice(l2); const s2 = V.speechEnd(v2.alignment);
+        const better = maxSec ? (!tooLong(s2) && (tooLong(best.sec) || Math.abs(s2 - goal) < Math.abs(best.sec - goal))) : Math.abs(s2 - goal) < Math.abs(best.sec - goal);
+        log('voice fit', id, `${best.sec.toFixed(1)}s → ${s2.toFixed(1)}s (เป้า ${goal}s)`);
+        if (better) best = { lines: l2, voice: v2, sec: s2 };
+      } catch (e) { log('voice fit fail', id, e.message); }
+    }
+    return best;
+  }
+
   // ---------- คลิปวิดีโอ ----------
   const CTA = { aff: 'กดตะกร้าได้เลย 👇', sell: 'ทักแชทสั่งเลย 👇', promo: 'แวะมาที่ร้านเลย 📍', content: 'กดติดตามไว้เลย ❤️', pr: 'ติดตามข่าวสาร\nจากเรา', agent: 'ทักปรึกษาฟรี 💬' };
   async function processVideo(w) {
@@ -733,8 +755,9 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       stage('AI กำลังเขียนบท', 5);
       script = await V.writeScript(p, style, brand, GOALS.find((g) => g.id === p.goal)?.label || '');
       stage('กำลังพากย์เสียง', 20);
-      voice = p.premium ? await V.voiceEleven(script.lines, p.voice)
-        : await V.voiceGemini(script.lines, p.voice, p.tone, script.speakers, p.dialogue ? V.partnerVoice(p.voice) : '');
+      const fit = await voiceFit(script.lines, Number(p.length) || 30, (ls) => (p.premium ? V.voiceEleven(ls, p.voice)
+        : V.voiceGemini(ls, p.voice, p.tone, script.speakers, p.dialogue ? V.partnerVoice(p.voice) : '')), { keepCount: true, id: w.id });
+      script.lines = fit.lines; voice = fit.voice;
     } catch (e) {
       log('video prep fail', w.id, e.message);
       PROG.delete(w.id);
@@ -843,9 +866,11 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
           } catch (e) { log('info bg fail', w.id, e.message); }
         }
       }
-      const lines = d.slides.flatMap((sl) => sl.lines);
+      let lines = d.slides.flatMap((sl) => sl.lines);
       stage('กำลังพากย์เสียง', 25);
-      voice = p.premium ? await V.voiceEleven(lines, p.voice) : await V.voiceGemini(lines, p.voice, p.tone);
+      const fit = await voiceFit(lines, Number(p.length) || 30, (ls) => (p.premium ? V.voiceEleven(ls, p.voice) : V.voiceGemini(ls, p.voice, p.tone)), { keepCount: true, id: w.id });
+      voice = fit.voice;
+      if (fit.lines !== lines) { lines = fit.lines; let k = 0; for (const sl of d.slides) sl.lines = sl.lines.map(() => lines[k++]); }
       d.lines = lines;
     } catch (e) { log('info prep fail', w.id, e.message); tmpFiles.forEach((f) => fs.rm(f, () => {})); return fail('AI เขียนบท/พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
     const starts = V.lineStarts(voice.alignment, d.lines);
@@ -1175,18 +1200,30 @@ Lighting: soft even key light, natural skin texture with pores, sharp focus on t
     let lines, capSrc;
     try {
       stage('AI กำลังเขียนบทพูด', 5);
-      if (p.scriptMode === 'own') { lines = p.script; capSrc = null; }
-      else { const s = await V.writeAvatarScript(p); lines = s.lines; capSrc = s.captions; }
+      if (p.scriptMode === 'own') {
+        lines = p.script; capSrc = null;
+        // พิมพ์มาเป็นภาษาอื่น → แปลเป็นภาษาที่เลือก (และย่อให้พอดีเวลาถ้ายาวเกิน)
+        const src = V.detectLang(lines.join(' '));
+        const L = V.AVATAR_LANGS.find((x) => x.id === src) || V.AVATAR_LANGS[0];
+        const estSec = lines.join('').length / L.cps;
+        if (src !== p.lang) {
+          stage('กำลังแปลบทพูด', 8);
+          lines = await V.adaptLines(lines, { lang: p.lang, targetSec: estSec > p.length * 1.1 ? p.length : 0 });
+          await q("UPDATE works SET params = params || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ translatedFrom: src })]).catch(() => {});
+        }
+      } else { const s = await V.writeAvatarScript(p); lines = s.lines; capSrc = s.captions; }
     } catch (e) { log('avatar script fail', w.id, e.message); return fail('AI เขียนบทไม่สำเร็จ ลองใหม่อีกครั้ง · คืนดาวแล้ว'); }
     let voice;
     try {
       stage('กำลังพากย์เสียง', 15);
       const vid = p.voice || av.voice || V.VOICES.find((v) => v.gender === av.gender)?.id || 'Kore';
-      voice = await V.voiceGemini(lines, vid, p.tone || 'เป็นกันเอง');
+      // ให้พูดจบพอดีความยาวที่เลือก (บทของผู้ใช้: ย่อเฉพาะเมื่อยาวเกินจริงๆ)
+      const fit = await voiceFit(lines, p.length, (ls) => V.voiceGemini(ls, vid, p.tone || 'เป็นกันเอง'), { lang: p.lang, id: w.id, maxSec: p.scriptMode === 'own' ? p.length * 1.2 + 2 : 0, noExpand: p.scriptMode === 'own' });
+      voice = fit.voice; lines = fit.lines;
     } catch (e) { log('avatar voice fail', w.id, e.message); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
     const audio = Buffer.from(voice.audio_base64, 'base64');
     const sec = V.speechEnd(voice.alignment);
-    if (sec > p.length * 1.35 + 3) return fail(`บทยาวเกินความยาวที่เลือก (${Math.round(sec)} วิ) · คืนดาวแล้ว`);
+    if (sec > p.length * 1.5 + 3) return fail(`บทยาวเกินความยาวที่เลือกมาก (${Math.round(sec)} วิ) เลือกความยาวมากขึ้นหรือตัดบท · คืนดาวแล้ว`);
     const base = `${w.user_id}-${w.id}-a-${rand(6).toLowerCase()}`;
     const raw = path.join(WORK_DIR, `${base}-raw.mp4`);
     const img = await sharp(avFile).rotate().jpeg({ quality: 92 }).toBuffer();
@@ -1398,7 +1435,9 @@ Lighting: soft even key light, natural skin texture with pores, sharp focus on t
         stage('AI กำลังเขียนบท', 10);
         script = await V.writeScript({ ...p, length: Math.max(10, Math.round(p.videoSec * 0.85)) }, style, brand, GOALS.find((g) => g.id === p.goal)?.label || '');
         stage('กำลังพากย์เสียง', 25);
-        voice = p.premium ? await V.voiceEleven(script.lines, p.voice) : await V.voiceGemini(script.lines, p.voice, p.tone, script.speakers, p.dialogue ? V.partnerVoice(p.voice) : '');
+        // พากย์ทับคลิปที่ถ่ายเอง: ต้องพูดจบก่อนคลิปหมด
+        const fit = await voiceFit(script.lines, Math.max(8, p.videoSec * 0.85), (ls) => (p.premium ? V.voiceEleven(ls, p.voice) : V.voiceGemini(ls, p.voice, p.tone, script.speakers, p.dialogue ? V.partnerVoice(p.voice) : '')), { keepCount: true, maxSec: Math.max(6, p.videoSec - 0.6), id: w.id });
+        script.lines = fit.lines; voice = fit.voice;
       } else {
         stage('เขียนแคปชั่น', 10);
         script = { captions: await genCaptions(captionPrompt({ ...p, details: [p.details, (p.segments || []).map((g) => g.text).join(' ')].filter(Boolean).join(' / ').slice(0, 600) }, { label: 'คลิปรีวิวที่ถ่ายเอง' }, brand)).catch(() => ({})) };

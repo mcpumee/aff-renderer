@@ -999,7 +999,11 @@ function drawStep() {
     if (!AVS_LOADED) { loadAvatars().then(drawStep).catch((e) => toast(e.message)); app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main><p class="muted">กำลังโหลดอวตาร…</p></main>`; return; }
     if (!A.ready) { stepShell('<div class="soon card"><span class="badge b-warn">กำลังตั้งค่า</span><h2>ระบบอวตารกำลังเปิด</h2><p class="muted">ออกแบบอวตารเก็บไว้ก่อนได้เลย พร้อมเมื่อไรใช้ได้ทันที</p><a class="btn" href="#avatars">ออกแบบอวตาร</a></div>', { disabled: true }); return; }
     const av = AVS.find((a) => a.id === D.avatarId) || null;
-    const max = Math.round((A.langs.find((l) => l.id === D.lang)?.cps || 9) * D.length * 1.1);
+    // นับความยาวตามภาษาที่พิมพ์ (พิมพ์คนละภาษากับที่เลือก ระบบแปลให้)
+    const detL = (t) => { const th = (t.match(/[\u0E00-\u0E7F]/g) || []).length, zh = (t.match(/[\u4E00-\u9FFF]/g) || []).length, la = (t.match(/[A-Za-z]/g) || []).length; return th >= zh && th >= la && th ? 'th' : zh >= la && zh ? 'zh' : /\b(dan|yang|untuk|anda|kami|ini|dengan|tidak|boleh|harga)\b/i.test(t) ? 'ms' : la ? 'en' : D.lang; };
+    const maxFor = (t) => { const sl = t.trim() ? detL(t) : D.lang; return { sl, max: Math.round((A.langs.find((l) => l.id === sl)?.cps || 9) * D.length * 1.1 * (sl === D.lang ? 1.15 : 1.6)) }; };
+    const max = maxFor(D.script || '').max;
+    const trNote = (t) => { const sl = t.trim() ? detL(t) : D.lang; return sl !== D.lang ? `พิมพ์เป็น${A.langs.find((l) => l.id === sl)?.label || sl} · ระบบจะแปลเป็น${A.langs.find((l) => l.id === D.lang)?.label}ให้อัตโนมัติ` : ''; };
     const vs = CAT.video.voices.filter((v) => !av || v.gender === av.gender);
     if (![15, 30, 60].includes(Number(D.length))) D.length = 30;
     if (D.quality === 'pro' && !A.pro) D.quality = 'std';
@@ -1016,7 +1020,7 @@ function drawStep() {
       <section style="display:flex;flex-direction:column;gap:10px"><h2>ความยาว</h2>${chipRow([15, 30, 60].map((n) => ({ id: String(n), label: `${n} วิ · ${PR[n]} ดาว` })), String(D.length), 'length', false)}</section>
       <section style="display:flex;flex-direction:column;gap:10px"><h2>บทพูด</h2>${chipRow([{ id: 'ai', label: 'ให้ AI เขียนบท' }, { id: 'own', label: 'ใช้บทของฉัน' }], D.scriptMode, 'scriptMode', false)}</section>
       <section class="card">${D.scriptMode === 'own'
-        ? `<label class="f" for="script">บทพูด (${A.langs.find((l) => l.id === D.lang)?.label}) <span class="muted" id="cnt">${[...D.script].length}/${max}</span><textarea id="script" rows="6" maxlength="2000" placeholder="พิมพ์ทีละประโยค ขึ้นบรรทัดใหม่ได้">${esc(D.script)}</textarea></label>`
+        ? `<label class="f" for="script">บทพูด (${A.langs.find((l) => l.id === D.lang)?.label}) <span class="muted" id="cnt">${[...D.script].length}/${max}</span><textarea id="script" rows="6" maxlength="2000" placeholder="พิมพ์ทีละประโยค ขึ้นบรรทัดใหม่ได้ (พิมพ์ภาษาไหนก็ได้ ระบบพูดเป็นภาษาที่เลือก)">${esc(D.script)}</textarea></label><span class="muted" id="trn">${esc(trNote(D.script || ''))}</span>`
         : `<label class="f" for="product">หัวข้อ / สินค้า<input id="product" type="text" maxlength="120" placeholder="เช่น รีวิวเซรั่มวิตซี, แนะนำคอร์สเรียนภาษา" value="${esc(D.product)}"></label>
            <label class="f" for="details">ประเด็นที่อยากให้พูด (ไม่บังคับ)<textarea id="details" rows="3" maxlength="600" placeholder="เช่น ลดราคาถึงสิ้นเดือน ส่งฟรี">${esc(D.details)}</textarea></label>
            <label class="f" for="price">ราคา / โปร (ไม่บังคับ)<input id="price" type="text" maxlength="60" value="${esc(D.price)}"></label>
@@ -1029,11 +1033,11 @@ function drawStep() {
     bindChips([], (k) => { readInputs(fields); if (k === 'length') D.length = Number(D.length); if (['lang', 'length', 'scriptMode', 'quality'].includes(k)) drawStep(); });
     app.querySelectorAll('[data-av]').forEach((b) => b.onclick = () => { readInputs(fields); D.avatarId = Number(b.dataset.av); const a = AVS.find((x) => x.id === D.avatarId); if (a && D.voice && !CAT.video.voices.some((v) => v.id === D.voice && v.gender === a.gender)) D.voice = ''; drawStep(); });
     const sb = $('#subs'); if (sb) sb.onchange = () => { readInputs(fields); drawStep(); };
-    const sc = $('#script'); if (sc) sc.oninput = () => { const n = [...sc.value].length; const c = $('#cnt'); c.textContent = `${n}/${max}`; c.style.color = n > max ? '#ff6b6b' : ''; };
+    const sc = $('#script'); if (sc) sc.oninput = () => { const n = [...sc.value].length, m = maxFor(sc.value).max; const c = $('#cnt'); c.textContent = `${n}/${m}`; c.style.color = n > m ? 'var(--bad)' : ''; $('#trn').textContent = trNote(sc.value); };
     $('#next').onclick = () => {
       readInputs(fields);
       if (!D.avatarId || !av) return toast('เลือกอวตารก่อน');
-      if (D.scriptMode === 'own') { if (!D.script.trim()) return toast('พิมพ์บทพูดก่อน'); if ([...D.script.replace(/\s+/g, '')].length > max) return toast(`บทยาวเกิน ${D.length} วิ · เลือกความยาวมากขึ้นหรือตัดบท`); }
+      if (D.scriptMode === 'own') { if (!D.script.trim()) return toast('พิมพ์บทพูดก่อน'); if ([...D.script.replace(/\s+/g, '')].length > maxFor(D.script).max) return toast(`บทยาวเกิน ${D.length} วิ · เลือกความยาวมากขึ้นหรือตัดบท`); }
       else if (!D.product.trim()) return toast('ใส่หัวข้อหรือสินค้าก่อน');
       D.step = 3; drawStep();
     };
@@ -2055,7 +2059,7 @@ async function chatView(qs) {
     const last = items[items.length - 1];
     const cs = chips || (last?.role === 'model' ? last.chips || [] : []);
     $('#chips').innerHTML = items.length && !busy ? cs.map((c) => `<button type="button" class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join('') : '';
-    $('#cq').textContent = CHAT.ready ? `วันนี้คุยได้อีก ${CHAT.quota.left}/${CHAT.quota.max} ข้อความ` : 'ผู้ช่วย AI กำลังตั้งค่า';
+    $('#cq').textContent = !CHAT.ready ? 'ผู้ช่วย AI กำลังตั้งค่า' : CHAT.quota?.unlimited ? 'คุยกับริชได้ไม่จำกัด' : `วันนี้คุยได้อีก ${CHAT.quota.left}/${CHAT.quota.max} ข้อความ`;
     $('#cnote').textContent = matchMedia('(pointer:fine)').matches ? 'Shift+Enter ขึ้นบรรทัดใหม่' : '';
     app.querySelectorAll('[data-chip]').forEach((b) => b.onclick = () => send(b.dataset.chip));
     app.querySelectorAll('[data-draft]').forEach((b) => b.onclick = async () => {

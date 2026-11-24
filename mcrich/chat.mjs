@@ -27,7 +27,9 @@ const CHAT_SCHEMA = {
     chips: { type: 'ARRAY', items: { type: 'STRING' } },
   },
 };
-const FREE_PER_DAY = Number(process.env.MCRICH_CHAT_FREE || 30);
+// 0 = ไม่จำกัดจำนวนข้อความต่อวัน (กันสแปมด้วยอัตราต่อนาทีแทน)
+const FREE_PER_DAY = Number(process.env.MCRICH_CHAT_FREE || 0);
+const PER_MIN = Number(process.env.MCRICH_CHAT_PER_MIN || 15);
 
 const styleList = () => [
   ...STYLES.map((s) => `${s.id} = ภาพ: ${s.label}`),
@@ -60,8 +62,10 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
   const oaReady = () => !!(OA_SECRET() && OA_TOKEN());
 
   async function quota(uid) {
+    const burst = (await q("SELECT count(*)::int n FROM chat_messages WHERE user_id=$1 AND role='user' AND created_at > now() - interval '1 minute'", [uid])).rows[0].n;
+    if (!FREE_PER_DAY) return { used: 0, left: burst >= PER_MIN ? 0 : 9999, max: 0, unlimited: true, burst: burst >= PER_MIN };
     const n = (await q("SELECT count(*)::int n FROM chat_messages WHERE user_id=$1 AND role='user' AND created_at > date_trunc('day', now() AT TIME ZONE 'Asia/Bangkok') AT TIME ZONE 'Asia/Bangkok'", [uid])).rows[0].n;
-    return { used: n, left: Math.max(0, FREE_PER_DAY - n), max: FREE_PER_DAY };
+    return { used: n, left: burst >= PER_MIN ? 0 : Math.max(0, FREE_PER_DAY - n), max: FREE_PER_DAY, burst: burst >= PER_MIN };
   }
 
   /** ถามน้องริช: เก็บประวัติ + เรียก Gemini → {reply, draft, chips} */
@@ -126,7 +130,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
     }
     if (!KEY()) return res.status(503).json({ error: 'ผู้ช่วย AI กำลังตั้งค่า' });
     const qu = await quota(req.uid);
-    if (qu.left <= 0) return res.status(429).json({ error: `วันนี้คุยครบ ${qu.max} ข้อความแล้ว พรุ่งนี้มาคุยกันใหม่นะ` });
+    if (qu.left <= 0) return res.status(429).json({ error: qu.burst ? 'พิมพ์เร็วไปนิด รอสักครู่แล้วส่งใหม่นะ' : `วันนี้คุยครบ ${qu.max} ข้อความแล้ว พรุ่งนี้มาคุยกันใหม่นะ` });
     const out = await ask(req.uid, text, 'web');
     res.json({ ...out, quota: await quota(req.uid) });
   }));
@@ -241,7 +245,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
           continue;
         }
         const qu = await quota(uid);
-        if (qu.left <= 0) { await lineCall('/v2/bot/message/reply', { replyToken: ev.replyToken, messages: [textMsg(`วันนี้คุยครบ ${qu.max} ข้อความแล้วค่ะ พรุ่งนี้มาคุยกันใหม่นะ 🙏`)] }); continue; }
+        if (qu.left <= 0) { await lineCall('/v2/bot/message/reply', { replyToken: ev.replyToken, messages: [textMsg(qu.burst ? 'พิมพ์เร็วไปนิดค่ะ รอสักครู่แล้วส่งใหม่นะ 🙏' : `วันนี้คุยครบ ${qu.max} ข้อความแล้วค่ะ พรุ่งนี้มาคุยกันใหม่นะ 🙏`)] }); continue; }
         await loading(lineId);
         const out = await ask(uid, text, 'line');
         const msgs = [{ ...textMsg(out.reply), ...(out.draft ? {} : quick(out.chips)) }];

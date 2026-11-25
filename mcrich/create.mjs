@@ -5,6 +5,7 @@ import path from 'node:path';
 import multer from 'multer';
 import sharp from 'sharp';
 import * as V from './video.mjs';
+import { withCost } from './costs.mjs';
 import * as LR from './linkread.mjs';
 import * as FM from './film.mjs';
 import crypto from 'node:crypto';
@@ -1616,7 +1617,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
       const w = (await q(`UPDATE works SET status='working' WHERE id = (SELECT id FROM works WHERE status='queued' ${videoRunning ? "AND kind <> 'video'" : ''} ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *`)).rows[0];
       if (!w) return;
       running++; if (w.kind === 'video') videoRunning++;
-      process1(w).catch(async (e) => { log('work error', w.id, e.stack || e.message); PROG.delete(w.id); await refund(w, 'ระบบขัดข้อง · คืนดาวแล้ว').catch(() => {}); })
+      withCost({ workId: w.id, userId: w.user_id, src: `work ${w.kind}:${w.style}` }, () => process1(w)).catch(async (e) => { log('work error', w.id, e.stack || e.message); PROG.delete(w.id); await refund(w, 'ระบบขัดข้อง · คืนดาวแล้ว').catch(() => {}); })
         .finally(() => { running--; if (w.kind === 'video') videoRunning--; kick().catch(() => {}); });
     }
   }

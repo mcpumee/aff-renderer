@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STYLES, GOALS, aiWhy } from './create.mjs';
+import { withCost, thinkLow } from './costs.mjs';
 import { VIDEO_STYLES, VIDEO_PRICE, DRAMA_PRICE, MOTION_PRICE, AVATAR_PRICE } from './video.mjs';
 
 const API = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
@@ -70,6 +71,9 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
 
   /** ถามน้องริช: เก็บประวัติ + เรียก Gemini → {reply, draft, chips} */
   async function ask(uid, text, channel) {
+    return withCost({ userId: Number(uid), src: `chat ${channel || 'web'}` }, () => ask0(uid, text, channel));
+  }
+  async function ask0(uid, text, channel) {
     const m = await me(uid);
     const works = (await q('SELECT title, kind, status FROM works WHERE user_id=$1 ORDER BY created_at DESC LIMIT 5', [uid])).rows;
     const hist = (await q("SELECT role, content FROM chat_messages WHERE user_id=$1 AND created_at > now() - interval '2 days' ORDER BY id DESC LIMIT 10", [uid])).rows.reverse()
@@ -85,7 +89,8 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
       for (const [mi, model] of models.entries()) {
         for (let t = 0; t < 2 && !j; t++) {
           try {
-            const gc = { responseMimeType: 'application/json', temperature: 0.9, ...(t === 0 || lastErr?.status !== 400 ? { responseSchema: CHAT_SCHEMA } : {}) };
+            const plain = t > 0 && lastErr?.status === 400; // 400 → ลองแบบเรียบง่าย (ไม่บังคับ schema/ระดับการคิด)
+            const gc = { responseMimeType: 'application/json', temperature: 0.9, ...(plain ? {} : { responseSchema: CHAT_SCHEMA, ...thinkLow(model) }) };
             const r = await fetch(`${API()}/v1beta/models/${model}:generateContent`, {
               method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() },
               body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: gc }),

@@ -590,7 +590,7 @@ function successView(r) {
 
 // ---------- แอดมิน ----------
 // ---------- หลังบ้านแอดมิน ----------
-const ADMIN_TABS = [['dash', 'ภาพรวม'], ['topups', 'เติมดาว'], ['users', 'ผู้ใช้'], ['works', 'ผลงาน'], ['prices', 'ราคา'], ['viral', 'ไวรัล'], ['trends', 'แนวงานฮิต'], ['legal', 'ผู้ให้บริการ']];
+const ADMIN_TABS = [['dash', 'ภาพรวม'], ['costs', 'ต้นทุน-กำไร'], ['topups', 'เติมดาว'], ['users', 'ผู้ใช้'], ['works', 'ผลงาน'], ['prices', 'ราคา'], ['viral', 'ไวรัล'], ['trends', 'แนวงานฮิต'], ['legal', 'ผู้ให้บริการ']];
 async function adminView(qs) {
   const params = new URLSearchParams(qs || '');
   const tab = ADMIN_TABS.some(([k]) => k === params.get('t')) ? params.get('t') : 'dash';
@@ -600,6 +600,7 @@ async function adminView(qs) {
   if (tab === 'users') return params.get('u') ? adminUser(params.get('u')) : adminUsers(params.get('q') || '', params.get('sort') || 'new');
   if (tab === 'works') return adminWorks(params.get('s') || 'failed');
   if (tab === 'prices') return adminPrices();
+  if (tab === 'costs') return adminCosts(Number(params.get('d')) || 30);
   if (tab === 'trends') return adminTrends();
   if (tab === 'legal') return adminLegal();
   if (tab === 'viral') return adminViral();
@@ -675,6 +676,63 @@ async function adminWorks(st) {
       <span class="muted">${new Date(w.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}${w.done_at ? ' → ' + new Date(w.done_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
       ${w.error ? `<br><span style="color:var(--bad);font-size:14px;overflow-wrap:anywhere">${esc(w.error)}</span>` : ''}${w.fail_detail ? `<br><span class="muted" style="font-size:12px;overflow-wrap:anywhere">สาเหตุจากระบบ: ${esc(w.fail_detail)}</span>` : ''}${w.cost_usd ? `<br><span class="muted" style="font-size:12px">ต้นทุน AI โดยประมาณ $${esc(w.cost_usd)} (~${Math.round(Number(w.cost_usd) * 35)} บาท)</span>` : ''}</a>`).join('') || '<div class="muted">ไม่มีรายการ</div>'}</div>`;
 }
+const thb = (n, d = 0) => `฿${Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: d, maximumFractionDigits: d })}`;
+const pct = (x) => (x == null ? '–' : `${Math.round(x * 100)}%`);
+const tbl = (head, rows) => `<div style="overflow-x:auto"><table class="tbl"><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('') || `<tr><td colspan="${head.length}" class="muted">ยังไม่มีข้อมูล</td></tr>`}</tbody></table></div>`;
+async function adminCosts(days) {
+  const d = await api(`api/admin/costs?days=${days}`);
+  if (!CAT) CAT = await api('api/create/catalog').catch(() => null);
+  const T = { gemini: 'Gemini', fal: 'fal', heygen: 'HeyGen', elevenlabs: 'ElevenLabs', hostinger: 'Hostinger', domain: 'โดเมน', other: 'อื่นๆ' };
+  const mx = Math.max(1, ...d.daily.map((x) => Math.max(x.stars * d.thbPerStar, x.usd * d.fx)));
+  const aiTot = Math.max(1e-9, d.cost.aiThb);
+  $('main').innerHTML = `
+    <div class="chips">${[7, 30, 90].map((n) => `<a class="chip" href="#admin?t=costs&d=${n}" aria-pressed="${n === days}">${n} วัน</a>`).join('')}</div>
+    <span class="muted" style="font-size:13px">${d.meterSince ? `เริ่มวัดต้นทุนจริงทุกครั้งที่เรียก AI ตั้งแต่ ${new Date(d.meterSince).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}` : 'ยังไม่มีการเรียก AI ที่วัดได้ — ตัวเลขต้นทุนจะเริ่มขึ้นหลังอัปเดตนี้'} · 1 ดาว ≈ ${thb(d.thbPerStar, 2)} (ราคาขายเฉลี่ยรวมโบนัส) · $1 = ${d.fx} บาท</span>
+    <div class="grid2">
+      ${kpi('รายได้ (มูลค่าดาวที่ลูกค้าใช้)', thb(d.revenue.earned), `${num(d.revenue.starsSpent)} ดาว`)}
+      ${kpi('ต้นทุน AI ที่วัดได้', thb(d.cost.aiThb, 2), `${num(d.cost.calls)} ครั้ง`)}
+      ${kpi('กำไรขั้นต้น', thb(d.revenue.earned - d.cost.aiThb), `อัตรากำไร ${pct(d.profit.margin)}`)}
+      ${kpi('ค่าใช้จ่ายประจำ (VPS ฯลฯ)', thb(d.cost.fixedThb), 'จากที่บันทึกด้านล่าง')}
+      ${kpi('กำไรสุทธิ', thb(d.profit.earned), 'รายได้ − AI − ค่าประจำ')}
+      ${kpi('เงินเข้า (เติมดาว)', thb(d.revenue.cashIn), `${num(d.revenue.topups)} ครั้ง · ${num(d.revenue.starsSold)} ดาว`)}
+      ${kpi('ดาวแจกฟรี', num(d.revenue.starsGiven), 'โบนัส/แนะนำเพื่อน/แอดมิน')}
+      ${kpi('ดาวค้างในบัญชีลูกค้า', num(d.revenue.starsOutstanding), `≈ ${thb(d.revenue.starsOutstanding * d.thbPerStar)} ที่ต้องให้บริการ`)}
+    </div>
+    ${d.cost.failedWorks ? `<div class="card" style="padding:10px 12px"><b>งานล้มที่เสียค่า AI ไปแล้ว: ${thb(d.cost.failedThb, 2)}</b><span class="muted" style="font-size:13px">${d.cost.failedWorks} งาน (คืนดาวลูกค้าแล้ว แต่ผู้ให้บริการคิดเงินเรา)</span></div>` : ''}
+    <h2>รายวัน (เขียว = รายได้ · แดง = ต้นทุน AI)</h2>
+    <div class="card" style="padding:10px;gap:4px">${d.daily.slice(-31).map((x) => `<div style="display:grid;grid-template-columns:44px 1fr 92px;gap:6px;align-items:center;font-size:12px"><span class="muted">${x.d}</span>
+      <span style="display:grid;gap:2px"><i style="display:block;height:6px;border-radius:3px;background:var(--ok,#5cb85c);width:${(x.stars * d.thbPerStar / mx) * 100}%"></i><i style="display:block;height:6px;border-radius:3px;background:var(--bad);width:${(x.usd * d.fx / mx) * 100}%"></i></span>
+      <span class="num" style="text-align:right">${thb(x.stars * d.thbPerStar)} / ${thb(x.usd * d.fx, 1)}</span></div>`).join('')}</div>
+    <h2>ต้นทุนแยกเครื่องมือ</h2>
+    ${tbl(['เครื่องมือ', 'ต้นทุน', 'สัดส่วน', 'ครั้ง'], d.byProvider.map((r) => `<tr><td>${esc(r.label)}</td><td class="num">${thb(r.thb, 2)}</td><td>${pct(r.thb / aiTot)}</td><td class="num">${num(r.n)}</td></tr>`))}
+    <h2>ต้นทุนแยกที่มา</h2>
+    ${tbl(['ที่มา', 'ต้นทุน', 'สัดส่วน'], d.bySrc.map((r) => `<tr><td>${esc(r.cat)}</td><td class="num">${thb(r.thb, 2)}</td><td>${pct(r.thb / aiTot)}</td></tr>`))}
+    <h2>โมเดลที่ใช้เงินมากสุด</h2>
+    ${tbl(['โมเดล', 'ใช้', 'ต้นทุน'], d.byModel.map((r) => `<tr><td>${esc(r.model)}<br><span class="muted" style="font-size:11px">${esc(r.provider)} · ${esc(r.op)}</span></td><td class="num">${num(Math.round(r.units))} ${esc(r.unit)}</td><td class="num">${thb(r.thb, 2)}</td></tr>`))}
+    <h2>ต่อแนวงาน: ดาวที่เก็บ vs ต้นทุนจริง vs ประมาณการเดิม</h2>
+    ${tbl(['แนวงาน', 'งาน', 'ดาวเฉลี่ย', 'ต้นทุนจริง/งาน', 'ประมาณการเดิม', 'กำไร'], d.styles.map((r) => `<tr><td>${esc(styleName(r.style) || r.style)}<br><span class="muted" style="font-size:11px">${esc(r.kind)} · ${esc(r.tier || '')}</span></td><td class="num">${r.n}${r.measured < r.n ? `<br><span class="muted" style="font-size:11px">วัดแล้ว ${r.measured}</span>` : ''}</td><td class="num">${r.avgStars.toFixed(0)}</td><td class="num">${r.avgThb == null ? '–' : thb(r.avgThb, 2)}</td><td class="num">${r.estThb == null ? '–' : thb(r.estThb, 2)}</td><td style="color:${r.margin != null && r.margin < 0.3 ? 'var(--bad)' : 'inherit'}">${pct(r.margin)}</td></tr>`))}
+    <h2>เงินที่จ่ายจริง vs ที่ระบบวัดได้ (ทั้งหมด)</h2>
+    <span class="muted" style="font-size:13px">ส่วนต่าง = ค่าใช้จ่ายก่อนเริ่มวัด หรือราคาในตารางไม่ตรงบิล (ปรับได้ที่ "ตารางราคา") · Gemini บัญชีบิลเดียวกันใช้ร่วมกับ n8n</span>
+    ${tbl(['เครื่องมือ', 'จ่ายจริง', 'วัดได้', `ใน ${days} วัน`], d.tools.filter((t) => t.paidAll || t.meterAll).map((t) => `<tr><td>${esc(t.label)}</td><td class="num">${thb(t.paidAll)}</td><td class="num">${t.meterAll == null ? '–' : thb(t.meterAll, 2)}</td><td class="num">${thb(t.paidRange)}</td></tr>`))}
+    <h2>บันทึกเงินที่จ่ายให้เครื่องมือ</h2>
+    <form id="payf" class="card" style="gap:8px">
+      <div class="grid2"><label>วันที่<input type="date" name="paidOn" value="${new Date().toISOString().slice(0, 10)}"></label>
+      <label>เครื่องมือ<select name="tool">${Object.entries(T).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+      <label>จำนวน<input name="amount" inputmode="decimal" placeholder="600"></label>
+      <label>สกุล<select name="currency"><option>THB</option><option>USD</option></select></label></div>
+      <label>ประเภท<select name="kind"><option value="credit">เติมเครดิต (จ่ายตามใช้)</option><option value="fixed">ค่าบริการประจำ (VPS/แพ็กเกจรายเดือน)</option></select></label>
+      <label>หมายเหตุ<input name="note" maxlength="120" placeholder="เช่น เติม AI Studio"></label>
+      <button class="btn">บันทึก</button></form>
+    <div class="list">${d.payments.map((p) => `<div><span><b>${esc(T[p.tool] || p.tool)} · ${p.currency === 'USD' ? `$${p.amount}` : thb(p.amount, 2)}</b><br><span class="muted">${new Date(p.paid_on).toLocaleDateString('th-TH')} · ${p.kind === 'fixed' ? 'ค่าประจำ' : 'เติมเครดิต'}${p.note ? ` · ${esc(p.note)}` : ''}</span></span><button type="button" class="btn ghost sm" data-pdel="${p.id}">ลบ</button></div>`).join('')}</div>
+    <h2>ตารางราคา (USD) ที่ใช้คำนวณ</h2>
+    <span class="muted" style="font-size:13px">ปรับให้ตรงบิลจริงได้ · ข้อความ: ต่อ 1 ล้าน token · ภาพ: ต่อภาพ · fal: ต่อวินาที · omniClip: ต่อคลิป</span>
+    <textarea id="prj" rows="10" style="font-family:monospace;font-size:12px">${esc(JSON.stringify((await api('api/admin/costs/prices')).prices, null, 1))}</textarea>
+    <div class="grid2"><button type="button" class="btn dark" id="prsave">บันทึกราคา</button><button type="button" class="btn ghost" id="prreset">คืนค่าเริ่มต้น</button></div>`;
+  $('#payf').onsubmit = async (e) => { e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); try { await api('api/admin/costs/payments', { method: 'POST', body: f }); toast('บันทึกแล้ว'); adminCosts(days); } catch (x) { toast(x.message); } };
+  app.querySelectorAll('[data-pdel]').forEach((b) => b.onclick = async () => { await api(`api/admin/costs/payments/${b.dataset.pdel}`, { method: 'DELETE' }); adminCosts(days); });
+  $('#prsave').onclick = async () => { let o; try { o = JSON.parse($('#prj').value); } catch { return toast('รูปแบบไม่ถูกต้อง'); } try { await api('api/admin/costs/prices', { method: 'PUT', body: o }); toast('บันทึกราคาแล้ว'); } catch (x) { toast(x.message); } };
+  $('#prreset').onclick = async () => { const { defaults } = await api('api/admin/costs/prices'); $('#prj').value = JSON.stringify(defaults, null, 1); toast('กด "บันทึกราคา" เพื่อยืนยัน'); };
+}
 async function adminPrices() {
   const d = await api('api/admin/prices');
   const p = d.prices, df = d.defaults;
@@ -716,13 +774,15 @@ async function adminTrends() {
   const ss = await api('api/admin/style-samples').catch(() => ({ items: [] }));
   const ST = { done: '✓', render: 'กำลังสร้าง…', photo: 'สร้างรูปสินค้า…', queued: 'รอคิว', failed: '✗ ไม่สำเร็จ', none: 'รอสร้างอัตโนมัติ', trend: 'ใช้ตัวอย่างจากการ์ดแนวงานฮิต', manual: 'รออัปโหลด / เลือกจากผลงาน' };
   $('main').innerHTML = `<p class="muted">การ์ดเทรนด์หน้าแรก เรียงตามลำดับ แสดงตามความสนใจของลูกค้า</p>${row(null)}${d.items.map(row).join('')}
-    <h2>ตัวอย่างทุกแนวงาน (ขั้นเลือกแนวงาน)</h2><span class="muted" style="font-size:13px">ระบบสร้างให้อัตโนมัติทีละแบบ ไม่ตัดดาว · หนังสั้น/อวตาร/ใส่ซับคลิป ใช้ของจริง: อัปโหลดคลิป หรือใส่เลขผลงานที่ทำได้ดี</span>
+    <h2>ตัวอย่างทุกแนวงาน (ขั้นเลือกแนวงาน)</h2>
+    <label class="card" style="flex-direction:row;align-items:center;gap:10px;padding:10px 12px"><input type="checkbox" id="ssauto" ${ss.auto ? 'checked' : ''} style="width:22px;height:22px"><span><b>สร้างตัวอย่างอัตโนมัติ</b><br><span class="muted" style="font-size:12px">ปิดไว้ = ไม่ใช้เครดิต AI เพิ่ม · ยังกด "สร้างใหม่" ทีละแนวได้</span></span></label><span class="muted" style="font-size:13px">ระบบสร้างให้อัตโนมัติทีละแบบ ไม่ตัดดาว · หนังสั้น/อวตาร/ใส่ซับคลิป ใช้ของจริง: อัปโหลดคลิป หรือใส่เลขผลงานที่ทำได้ดี</span>
     ${[['image', 'แนวงานภาพ'], ['video', 'แนวคลิป']].map(([k, t]) => `<h2 style="font-size:16px">${t}</h2><div class="grid3">${ss.items.filter((x) => x.kind === k).map((x) => `<div class="card" style="padding:8px;gap:6px">${x.src ? `<img src="${x.src}" alt="" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:10px">` : x.play ? `<video src="${x.play}#t=0.6" muted playsinline preload="metadata" style="width:100%;aspect-ratio:4/5;object-fit:cover;border-radius:10px;background:#000"></video>` : '<div style="aspect-ratio:4/5;border-radius:10px;background:var(--s2)"></div>'}
       <span style="font-size:12px">${esc(x.label || x.style)}</span><span class="muted" style="font-size:11px">${ST[x.status] || x.status}${x.error ? ` ${esc(x.error)}` : ''}</span>
       ${x.manual ? '' : `<button type="button" class="btn dark sm" data-ssr="${esc(x.style)}" style="min-height:32px">สร้างใหม่</button>`}
       <label class="btn ghost sm" style="min-height:32px">อัปโหลด<input type="file" accept="${k === 'video' ? 'video/*' : 'image/*'}" data-ssu="${esc(x.style)}" hidden></label>
       <button type="button" class="btn ghost sm" data-ssw="${esc(x.style)}" style="min-height:32px">จากผลงาน #</button></div>`).join('')}</div>`).join('')}`;
   app.querySelectorAll('[data-ssr]').forEach((b) => b.onclick = async () => { try { await api(`api/admin/style-samples/${b.dataset.ssr}`, { method: 'POST', body: {} }); toast('เข้าคิวแล้ว'); adminTrends(); } catch (e) { toast(e.message); } });
+  if ($('#ssauto')) $('#ssauto').onchange = (e) => api('api/admin/style-samples/auto', { method: 'PUT', body: { on: e.target.checked } }).then(() => toast(e.target.checked ? 'เปิดสร้างอัตโนมัติ' : 'ปิดสร้างอัตโนมัติแล้ว')).catch((x) => toast(x.message));
   app.querySelectorAll('[data-ssu]').forEach((i) => i.onchange = async () => { const f = i.files[0]; if (!f) return; const fd = new FormData(); fd.append('file', f); toast('กำลังอัปโหลด…'); try { await api(`api/admin/style-samples/${i.dataset.ssu}/upload`, { method: 'POST', body: fd }); toast('ตั้งเป็นตัวอย่างแล้ว'); adminTrends(); } catch (e) { toast(e.message); } });
   app.querySelectorAll('[data-ssw]').forEach((b) => b.onclick = async () => { const id = prompt('เลขผลงาน (ดูได้จากลิงก์ #work?id=...)'); if (!id) return; try { await api(`api/admin/style-samples/${b.dataset.ssw}/from-work`, { method: 'POST', body: { workId: Number(id) } }); toast('ตั้งเป็นตัวอย่างแล้ว'); adminTrends(); } catch (e) { toast(e.message); } });
   app.querySelectorAll('[data-id]').forEach((card) => {

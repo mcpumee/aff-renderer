@@ -5,6 +5,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { STYLES } from './create.mjs';
 import { VIDEO_STYLES } from './video.mjs';
+import { withCost, thinkLow } from './costs.mjs';
 
 const GEM = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
 const GKEY = () => process.env.GEMINI_API_KEY || '';
@@ -333,11 +334,13 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
 รายการ:
 ${list}
 ตอบเป็น JSON array ตามลำดับ i`;
-    const r = await fetch(`${GEM()}/v1beta/models/${MODEL}:generateContent`, {
+    const call = (gc) => fetch(`${GEM()}/v1beta/models/${MODEL}:generateContent`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': GKEY() },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.7 } }),
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.7, ...gc } }),
       signal: AbortSignal.timeout(90000),
     });
+    let r = await call(thinkLow(MODEL));
+    if (r.status === 400) r = await call({}); // รุ่นที่ไม่รองรับการตั้งระดับการคิด
     const j = await r.json();
     if (!r.ok) throw new Error(`gemini ${r.status} ${j.error?.message || ''}`);
     const raw = (j.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || '').join('');
@@ -527,8 +530,10 @@ ${list}
   app.post('/api/admin/viral/refresh', auth, admin, wrap(async (_req, res) => { const out = await refresh(); cache.at = 0; res.json(out); }));
 
   function start() {
-    setTimeout(() => refresh().catch(() => {}), 20e3).unref();
-    setInterval(() => refresh().catch(() => {}), 2 * 3600e3).unref();
+    // ทุก 6 ชม. (เดิม 2 ชม.) — ตั้งเองได้ MCRICH_TREND_HOURS
+    const bg = () => withCost({ src: 'background trends' }, () => refresh()).catch(() => {});
+    setTimeout(bg, 20e3).unref();
+    setInterval(bg, (Number(process.env.MCRICH_TREND_HOURS) || 6) * 3600e3).unref();
   }
   return { start, refresh };
 }

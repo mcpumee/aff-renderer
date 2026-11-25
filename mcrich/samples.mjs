@@ -158,8 +158,10 @@ export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
     // คลิปที่มีตัวอย่างจากการ์ดแนวงานฮิตแล้ว ไม่ต้องสร้างซ้ำ (แอดมินกดสร้างใหม่ได้)
     const trendVid = new Set((await q("SELECT style FROM trends WHERE active AND sample->>'file' IS NOT NULL")).rows.map((r) => r.style));
     const pick = (st) => all.map((x) => rows[x.id] && { ...rows[x.id], kind: x.kind }).find((r) => r && st.includes(r.status));
+    // ปิดสร้างอัตโนมัติได้ในหลังบ้าน (ยังทำงานที่แอดมินกด "สร้างใหม่" เอง)
+    const auto = (await q("SELECT value FROM app_settings WHERE key='auto_samples'")).rows[0]?.value !== false;
     const cur = pick(['render', 'photo']) || pick(['queued'])
-      || ((x) => x && { style: x.id, kind: x.kind, status: 'new' })(all.find((x) => !rows[x.id] && !(x.kind === 'video' && trendVid.has(x.id))));
+      || (auto ? ((x) => x && { style: x.id, kind: x.kind, status: 'new' })(all.find((x) => !rows[x.id] && !(x.kind === 'video' && trendVid.has(x.id)))) : null);
     if (!cur) return false;
     const set = (o) => q(`INSERT INTO style_samples(style,file,poster,kind,status,work_id,photo_work,error,at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now())
       ON CONFLICT (style) DO UPDATE SET file=EXCLUDED.file, poster=EXCLUDED.poster, kind=EXCLUDED.kind, status=EXCLUDED.status, work_id=EXCLUDED.work_id, photo_work=EXCLUDED.photo_work, error=EXCLUDED.error, at=now()`,
@@ -235,10 +237,15 @@ export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
     if (!f || !fs.existsSync(f)) return res.status(404).end();
     res.setHeader('cache-control', 'private, max-age=86400'); res.sendFile(f);
   }));
+  app.put('/api/admin/style-samples/auto', auth, admin, wrap(async (req, res) => {
+    await q("INSERT INTO app_settings(key,value) VALUES('auto_samples',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", [JSON.stringify(!!req.body?.on)]);
+    res.json({ ok: true, on: !!req.body?.on });
+  }));
   app.get('/api/admin/style-samples', auth, admin, wrap(async (_req, res) => {
     const rows = Object.fromEntries((await q('SELECT * FROM style_samples')).rows.map((r) => [r.style, r]));
     const trendVid = new Set((await q("SELECT style FROM trends WHERE active AND sample->>'file' IS NOT NULL")).rows.map((r) => r.style));
-    res.json({ items: ALL().map((x) => {
+    const auto = (await q("SELECT value FROM app_settings WHERE key='auto_samples'")).rows[0]?.value !== false;
+    res.json({ auto, items: ALL().map((x) => {
       const r = rows[x.id]; const v = r ? new Date(r.at).getTime() : 0;
       return { style: x.id, label: x.label, kind: x.kind, manual: !!x.manual, status: r?.status || (x.kind === 'video' && trendVid.has(x.id) ? 'trend' : x.manual ? 'manual' : 'none'), error: r?.error || '',
         src: r?.file ? (x.kind === 'video' ? (r.poster ? `api/style-samples/${x.id}?poster=1&v=${v}` : '') : `api/style-samples/${x.id}?v=${v}`) : '', play: r?.file && x.kind === 'video' ? `api/style-samples/${x.id}?v=${v}` : '' };

@@ -335,3 +335,32 @@ CREATE TABLE IF NOT EXISTS films (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS films_user ON films(user_id, id DESC);
+
+-- ต้นทุน AI ทุกครั้งที่เรียกใช้ (วัดจากคำตอบของผู้ให้บริการ)
+CREATE TABLE IF NOT EXISTS ai_costs (
+  id       BIGSERIAL PRIMARY KEY,
+  at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  provider TEXT NOT NULL,              -- gemini | fal | heygen | elevenlabs
+  model    TEXT NOT NULL DEFAULT '',
+  op       TEXT NOT NULL DEFAULT '',   -- text | image | tts | video
+  units    NUMERIC NOT NULL DEFAULT 0,
+  unit     TEXT NOT NULL DEFAULT '',
+  usd      NUMERIC(12,6) NOT NULL DEFAULT 0,
+  work_id  BIGINT,
+  user_id  BIGINT,
+  src      TEXT NOT NULL DEFAULT '',
+  meta     JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS ai_costs_at ON ai_costs(at);
+CREATE INDEX IF NOT EXISTS ai_costs_work ON ai_costs(work_id) WHERE work_id IS NOT NULL;
+-- เงินที่จ่ายจริงให้เครื่องมือต่างๆ (เติมเครดิต/ค่าบริการรายเดือน) — แอดมินบันทึกเอง
+CREATE TABLE IF NOT EXISTS cost_payments (
+  id         BIGSERIAL PRIMARY KEY,
+  paid_on    DATE NOT NULL DEFAULT CURRENT_DATE,
+  tool       TEXT NOT NULL,              -- gemini | fal | heygen | elevenlabs | hostinger | domain | other
+  amount     NUMERIC(12,2) NOT NULL,
+  currency   TEXT NOT NULL DEFAULT 'THB', -- THB | USD
+  kind       TEXT NOT NULL DEFAULT 'credit', -- credit (เติมเครดิต) | fixed (ค่าบริการประจำ)
+  note       TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

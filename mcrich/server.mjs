@@ -20,6 +20,8 @@ import { registerBackoffice } from './backoffice.mjs';
 import { registerPrivacy, TERMS_VERSION, idHash } from './privacy.mjs';
 import { registerViral } from './viral.mjs';
 import { registerSamples } from './samples.mjs';
+import { installCostMeter, withCost, tagCost, loadPrices } from './costs.mjs';
+import { registerCosts } from './costreport.mjs';
 import { VIDEO_PRICE } from './video.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
@@ -252,6 +254,8 @@ async function post(url, form) {
 const app = express();
 app.set('trust proxy', true);
 app.disable('x-powered-by');
+// ทุกคำขอ API มีบริบทต้นทุน (ผู้ใช้/เส้นทาง) — ใช้ผูกค่า AI ที่เกิดระหว่างคำขอ
+app.use((req, _res, next) => withCost({ src: `api ${req.method} ${req.path.replace(/\/\d+/g, '/:id').slice(0, 60)}` }, next));
 app.use(express.json({ limit: '200kb', verify: (req, _res, buf) => { if (req.url.startsWith('/line/')) req.rawBody = buf; } }));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -325,6 +329,7 @@ const auth = async (req, res, next) => {
   if (!t?.uid) return res.status(401).json({ error: 'login' });
   if (BANNED.has(Number(t.uid))) return res.status(403).json({ error: 'บัญชีนี้ถูกระงับ ติดต่อแอดมิน' });
   req.uid = t.uid;
+  tagCost({ userId: Number(t.uid) });
   next();
 };
 const wrap = (fn) => (req, res) => fn(req, res).catch((e) => { log('error', req.path, e.message); res.status(500).json({ error: 'ระบบขัดข้อง ลองใหม่อีกครั้ง' }); });
@@ -411,6 +416,8 @@ const films = registerFilm(app, { q, auth, wrap, log });
 const create = registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl: social.pubUrl, films, hooks: extras.hooks });
 const auto = registerAuto(app, { q, auth, wrap, log, DATA_DIR, rand, create, videoPrice: VIDEO_PRICE, notify: (uid, t) => chat.notifyLine(uid, t) });
 const office = registerBackoffice(app, { q, pool, auth, wrap, log, banned: BANNED });
+installCostMeter({ q, log }); loadPrices(q);
+registerCosts(app, { q, auth, wrap, log });
 const viral = registerViral(app, { q, auth, wrap, log, DATA_DIR });
 const samples = registerSamples(app, { q, auth, wrap, log, DATA_DIR, create });
 const priv = registerPrivacy(app, { q, pool, auth, wrap, log, DATA_DIR, PUBLIC_DIR: path.join(__dir, 'public'), banned: BANNED, purgeFiles: create.purgeFiles, clearSession: (res) => setCookie(res, 'mr_sid', '', 0) });

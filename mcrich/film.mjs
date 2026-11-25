@@ -45,6 +45,22 @@ export const FILM_PRICE = { std: { 30: 89, 60: 169, 90: 249 }, pro: { 30: 249, 6
 export const FILM_QUALITIES = ['std', 'pro', 'cine'];
 const qOf = (x) => (FILM_QUALITIES.includes(x) ? x : 'std');
 const SHOT_SEC = 5;
+// ffmpeg ในหนังสั้น: จำกัดทำพร้อมกัน 2 งาน + เธรดน้อย (ไม่แย่ง CPU/RAM กับ AFF Studio) · ล้มแล้วลองซ้ำ 1 ครั้ง · เก็บสาเหตุจริง (stderr/ถูกฆ่า)
+let FF_RUN = 0; const FF_Q = [];
+const FF_MAX = () => Math.max(1, Number(process.env.FILM_FF_PAR) || 2);
+async function ffL(args, t = 300000) {
+  if (FF_RUN >= FF_MAX()) await new Promise((ok) => FF_Q.push(ok));
+  FF_RUN++;
+  try {
+    for (let k = 0; ; k++) {
+      try { return await V.ff(['-threads', '2', ...args], t); } catch (e) {
+        const why = e.killed || e.signal ? `ถูกหยุด (${e.signal || 'timeout'}) — เครื่องอาจหน่วยความจำ/CPU ไม่พอ` : String(e.stderr || '').trim().split('\n').slice(-3).join(' | ');
+        if (k >= 1) { const x = new Error(`ffmpeg ล้ม: ${why || e.message.split('\n')[1] || 'ไม่ทราบสาเหตุ'}`); x.cmd = e.cmd; throw x; }
+        await new Promise((ok) => setTimeout(ok, 3000));
+      }
+    }
+  } finally { FF_RUN--; FF_Q.shift()?.(); }
+}
 const I2V = { std: () => process.env.FILM_I2V_STD || 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video', pro: () => process.env.FILM_I2V_PRO || 'fal-ai/kling-video/v2.5-turbo/pro/image-to-video',
   cine: () => process.env.FILM_I2V_CINE || 'bytedance/seedance-2.5/image-to-video' };
 // เกรดหนังโรง (Seedance 2.5): ความละเอียด และวิธีพากย์ — dub = เสียงพากย์ไทยของเรา + ขยับปาก (เสียงฉากจาก Seedance), native = ให้ Seedance พูดเองพร้อมปาก
@@ -205,12 +221,12 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
         const raw = T('.wav'); fs.writeFileSync(raw, Buffer.from(vo.audio_base64, 'base64'));
         const trim = 'silenceremove=start_periods=1:start_threshold=-42dB:start_silence=0.03';
         let sp = (await V.probe(raw)).sec;
-        const tight = T('.wav'); await V.ff(['-i', raw, '-af', `${trim},areverse,${trim},areverse`, '-ac', '1', '-ar', '48000', tight]);
+        const tight = T('.wav'); await ffL(['-i', raw, '-af', `${trim},areverse,${trim},areverse`, '-ac', '1', '-ar', '48000', tight]);
         sp = (await V.probe(tight)).sec || sp;
         const room = SHOT_SEC - 0.6;
         const k = sp > room ? Math.min(1.15, sp / room) : 1; // เร่งได้นิดเดียว ไม่ให้เสียงเพี้ยน
         voice = T('.wav');
-        await V.ff(['-i', tight, '-af', `${k > 1 ? `atempo=${k.toFixed(3)},` : ''}loudnorm=I=-16:TP=-1.5:LRA=7,adelay=200,afade=t=in:d=0.02,aresample=48000`, '-ac', '1', '-ar', '48000', voice]);
+        await ffL(['-i', tight, '-af', `${k > 1 ? `atempo=${k.toFixed(3)},` : ''}loudnorm=I=-16:TP=-1.5:LRA=7,adelay=200,afade=t=in:d=0.02,aresample=48000`, '-ac', '1', '-ar', '48000', voice]);
         vSecVoice = sp / k + 0.2;
       }
       let avDone = false;
@@ -218,13 +234,13 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
         // AI Avatar: เสียงเติมเงียบให้ครบช็อต → ตัวละครพูดแล้วนิ่งฟังตามธรรมชาติ
         try {
           const pad = T('.mp3');
-          await V.ff(['-i', voice, '-af', `apad=whole_dur=${Math.max(SHOT_SEC, vSecVoice + 0.4).toFixed(2)}`, '-ac', '1', '-ar', '44100', '-b:a', '128k', pad]);
+          await ffL(['-i', voice, '-af', `apad=whole_dur=${Math.max(SHOT_SEC, vSecVoice + 0.4).toFixed(2)}`, '-ac', '1', '-ar', '44100', '-b:a', '128k', pad]);
           const o = await V.falRun(AVATAR_MODEL[avTier(q)](), { image_url: pubUrl(keys[i]), audio_url: pubUrl(pad),
             prompt: `${s.speaker} speaks naturally in a drama scene, ${s.mood} mood, natural blinking, subtle head and shoulder movement, small expressive gestures, cinematic, stable camera with a slow gentle push-in.` });
           const sec = Number(o.duration) || Math.max(SHOT_SEC, vSecVoice + 0.4);
           used.avSec += sec;
           const v0 = T('.mp4'); await V.download(o.video.url, v0);
-          await V.ff(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryfast', v1]);
+          await ffL(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryfast', v1]);
           avDone = true;
         } catch (e) {
           used.avFail++; log('film avatar fallback', id, i + 1, e.message.slice(0, 160));
@@ -241,9 +257,9 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
         });
         used.i2v++; used.cineSec += SHOT_SEC;
         await V.download(o.video?.url || o.video_url || o.url, v0);
-        await V.ff(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryfast', v1]);
+        await ffL(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryfast', v1]);
         sfx = T('.wav');
-        try { await V.ff(['-i', v0, '-vn', '-ac', '1', '-ar', '44100', sfx]); } catch { sfx = null; }
+        try { await ffL(['-i', v0, '-vn', '-ac', '1', '-ar', '44100', sfx]); } catch { sfx = null; }
       } else if (plan[i] === 'motion' || (plan[i] === 'talk' && q !== 'std')) {
         const v0 = T('.mp4');
         const o = await V.falRun(I2V[q === 'cine' ? 'pro' : q](), {
@@ -253,13 +269,13 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
         });
         used.i2v++;
         await V.download(o.video.url, v0);
-        await V.ff(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'veryfast', v1]);
+        await ffL(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'veryfast', v1]);
       } else {
         // ภาพนิ่งเคลื่อนกล้องช้าๆ (ฟรี) — ซูมเข้า/ออก/แพนสลับกันให้ไม่ซ้ำ
         const fr = SHOT_SEC * 30, mv = i % 3;
         const z = mv === 1 ? `'max(1.12-0.0008*on,1)'` : `'min(1+0.0008*on,1.12)'`;
         const x = mv === 2 ? `'(iw-iw/zoom)*on/${fr}'` : `'iw/2-(iw/zoom/2)'`;
-        await V.ff(['-loop', '1', '-i', keys[i], '-vf', `scale=1440:2560,zoompan=z=${z}:x=${x}:y='ih/2-(ih/zoom/2)':d=${fr}:s=720x1280:fps=30,format=yuv420p`, '-t', String(SHOT_SEC), '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', v1]);
+        await ffL(['-loop', '1', '-i', keys[i], '-vf', `scale=1440:2560,zoompan=z=${z}:x=${x}:y='ih/2-(ih/zoom/2)':d=${fr}:s=720x1280:fps=30,format=yuv420p`, '-t', String(SHOT_SEC), '-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', v1]);
       }
       let vid = v1, audio = null, aSec = 0, lineSec = 0;
       if (s.speaker && s.line && !dub) { audio = sfx; lineSec = SHOT_SEC - 0.4; } // Seedance พูดเองแล้ว
@@ -269,7 +285,7 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
         if (!avDone && isTalk(s)) {
           for (let t = 0; t < 2; t++) {
             try {
-              const mp3 = T('.mp3'); await V.ff(['-i', audio, '-af', `apad=whole_dur=${SHOT_SEC}`, '-ac', '1', '-ar', '44100', '-b:a', '128k', mp3]);
+              const mp3 = T('.mp3'); await ffL(['-i', audio, '-af', `apad=whole_dur=${SHOT_SEC}`, '-ac', '1', '-ar', '44100', '-b:a', '128k', mp3]);
               const ls = await V.falRun(V.KLING_LIPSYNC_MODEL(), { video_url: pubUrl(v1), audio_url: pubUrl(mp3) });
               used.lipSec += SHOT_SEC;
               const lv = T('.mp4'); await V.download(ls.video.url, lv); vid = lv; break;
@@ -280,23 +296,24 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
       if (sfx && audio && audio !== sfx) {
         // เสียงพากย์ + เสียงฉากจาก Seedance
         const mix = T('.wav');
-        await V.ff(['-i', audio, '-i', sfx, '-filter_complex', '[1:a]volume=0.45[s];[0:a][s]amix=inputs=2:duration=longest:normalize=0', '-ac', '1', '-ar', '44100', mix]);
+        await ffL(['-i', audio, '-i', sfx, '-filter_complex', '[1:a]volume=0.45[s];[0:a][s]amix=inputs=2:duration=longest:normalize=0', '-ac', '1', '-ar', '44100', mix]);
         audio = mix;
       } else if (sfx && !audio) audio = sfx;
       const vSec = (await V.probe(vid)).sec || SHOT_SEC;
       // ช็อตยาวไม่เกิน 5.2 วิ (ยืดได้นิดเดียวถ้าเสียงยังไม่จบ สูงสุด 5.6 วิ)
       const len = Math.min(SHOT_SEC + 2, Math.max(Math.min(vSec, SHOT_SEC + 0.2), aSec + 0.35));
       const out = T('.mp4');
-      await V.ff(['-i', vid, ...(audio ? ['-i', audio] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono']),
-        '-filter_complex', `[0:v]tpad=stop_mode=clone:stop_duration=6,scale=1080:1920:flags=lanczos,fps=30,format=yuv420p[v];[1:a]aresample=48000,aformat=channel_layouts=mono,apad,afade=t=in:d=0.02,afade=t=out:st=${Math.max(0, len - 0.08).toFixed(3)}:d=0.08[a]`,
+      const enc = (src) => ffL(['-i', src, ...(audio ? ['-i', audio] : ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono']),
+        '-filter_complex', `[0:v]tpad=stop_mode=clone:stop_duration=6,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p[v];[1:a]aresample=48000,aformat=channel_layouts=mono,apad,afade=t=in:d=0.02,afade=t=out:st=${Math.max(0, len - 0.08).toFixed(3)}:d=0.08[a]`,
         '-map', '[v]', '-map', '[a]', '-t', len.toFixed(3), '-c:v', 'libx264', '-crf', '19', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', out], 300000);
+      try { await enc(vid); } catch (e) { if (vid === v1) throw e; log('film shot encode fallback', id, i + 1, e.message.slice(0, 200)); await enc(v1); }
       clips[i] = { file: out, len, line: s.line, lineSec };
       done++; stage(`ถ่ายทำช็อต ${done}/${shots.length}`, 30 + Math.round((done / shots.length) * 50));
     });
     // 3) ต่อทุกช็อต
     const list = T('.txt'); fs.writeFileSync(list, clips.map((c) => `file '${c.file}'`).join('\n'));
     const full = path.join(WORK_DIR, `fl-${id}-full-${Math.random().toString(36).slice(2, 6)}.mp4`);
-    await V.ff(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', full], 300000);
+    await ffL(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', full], 300000);
     const segments = []; let t = 0;
     for (const c of clips) { if (c.line) segments.push({ start: t + 0.2, end: t + Math.max(0.8, c.lineSec || c.len - 0.3), text: c.line }); t += c.len; }
     const costUsd = +(used.key * COST.key[q] + (cine ? used.cineSec * COST.cinePerSec() + Math.max(0, used.i2v - used.cineSec / SHOT_SEC) * COST.i2v.pro : used.i2v * COST.i2v[q]) + used.avSec * COST.avatar[avTier(q)] + used.lipSec * COST.lipPerSec + 0.02).toFixed(2);

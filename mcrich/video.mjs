@@ -376,6 +376,7 @@ export const ART = [
   { id: 'anime', label: 'อนิเมะ', prompt: 'Japanese anime illustration style, clean cel shading, vibrant colors' },
   { id: 'real', label: 'ภาพจริงแบบซีรีส์', prompt: 'cinematic photorealistic Thai TV drama still, natural lighting, 35mm film look' },
   { id: 'blocky', label: 'ตัวบล็อกน่ารัก', prompt: 'cute blocky toy-like characters with cube heads and simple shapes, clean bright 3D render' },
+  { id: 'stick', label: 'ตัวก้านไม้หัวกลม (เล่าเรื่องชีวิต)', prompt: 'simple flat 2D storybook illustration, minimalist stick-figure characters with big round plain white heads, simple dot eyes and small expressive mouth, thick clean black outlines, thin black stick arms, simple solid-color clothes, richly detailed warm cozy hand-drawn backgrounds, soft warm lamp lighting, gentle muted palette, heartwarming slice-of-life mood' },
   { id: 'comic', label: 'การ์ตูนหมึก', prompt: 'Thai comic book illustration, bold ink outlines, flat colors, halftone shading' },
 ];
 export const DRAMA_PRICE = { 4: 25, 6: 35 };
@@ -446,6 +447,7 @@ export async function voiceOne(text, voice) { return voiceGemini([text], voice, 
 
 // ---------- ซีรีส์แนวตั้ง (เล่าเรื่องล้วน ไม่ขายของ · ต่อเป็นตอนๆ ได้) ----------
 export const SERIES_GENRES = [
+  { id: 'life', label: 'เรื่องเล่าชีวิต/อาชีพ', desc: 'ชีวิตคนสู้ชีวิต พ่อค้าแม่ค้า อาชีพเล็กๆ ที่ตั้งใจทำของดี ไม่ยอมลดคุณภาพ เล่าบุรุษที่ 3 แบบอบอุ่น ซึ้ง มีข้อคิดตอนจบ' },
   { id: 'magic', label: 'เวทมนตร์', desc: 'พลังวิเศษ คาถา โลกเวทมนตร์ซ่อนอยู่ในเมือง' },
   { id: 'wizard', label: 'พ่อมด แม่มด', desc: 'โรงเรียนเวทมนตร์ ศึกพ่อมด คำสาป' },
   { id: 'past', label: 'ย้อนอดีต', desc: 'ทะลุมิติกลับไปยุคโบราณ อยุธยา ชาววัง' },

@@ -38,6 +38,7 @@ export const FILM_ARTS = [
   { id: 'cdrama', label: 'ซีรีส์จีนย้อนยุค', en: 'Chinese historical drama look, ornate costumes, palace sets, cinematic, photorealistic' },
   { id: 'noir', label: 'หนังมืด ลึกลับ', en: 'dark moody thriller look, low-key lighting, teal and orange, rain and neon, photorealistic' },
   { id: 'anime', label: 'อนิเมะ', en: 'high-quality Japanese anime film style, detailed backgrounds, cel shading, expressive characters' },
+  { id: 'stick', label: 'ตัวก้านไม้หัวกลม', en: 'simple flat 2D storybook illustration, minimalist stick-figure characters with big round plain white heads, simple dot eyes and small expressive mouth, thick clean black outlines, thin black stick arms, simple solid-color clothes, richly detailed warm cozy hand-drawn backgrounds, soft warm lamp lighting, gentle muted palette, heartwarming slice-of-life mood' },
   { id: '3d', label: 'แอนิเมชัน 3D', en: 'high-end 3D animated feature film style, soft global illumination, expressive stylized characters' },
 ];
 export const FILM_LENS = [30, 60, 90];

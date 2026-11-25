@@ -85,7 +85,7 @@ services:
       - aff_data:/data
     networks:
       - n8n_net
-    mem_limit: 512m
+    mem_limit: 2g   # หนังสั้น/แกะคลิปใช้ ffmpeg หลายตัว (512m เคยโดน OOM)
 volumes:
   aff_data:
   mcrich_pg:

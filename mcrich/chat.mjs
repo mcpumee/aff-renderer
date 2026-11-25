@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STYLES, GOALS } from './create.mjs';
+import { STYLES, GOALS, aiWhy } from './create.mjs';
 import { VIDEO_STYLES, VIDEO_PRICE, DRAMA_PRICE, MOTION_PRICE, AVATAR_PRICE } from './video.mjs';
 
 const API = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
@@ -131,7 +131,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
     } catch (e) {
       log('chat fail', uid, e.message.slice(0, 300));
       // แอดมินเห็นสาเหตุจริง (ลูกค้าเห็นข้อความปกติ)
-      if (m.admin) out.reply += `\n\n[แอดมิน] สาเหตุ: ${e.message.slice(0, 220)}`;
+      if (m.admin) out.reply += `\n\n[แอดมิน] ${aiWhy(e)} · ${e.message.slice(0, 200)}`;
     }
     const ins = await q('INSERT INTO chat_messages(user_id,role,content,draft,channel,chips) VALUES($1,$2,$3,$4,$5,$6) RETURNING id', [uid, 'model', out.reply, out.draft, channel, out.chips || []]);
     out.id = ins.rows[0]?.id;

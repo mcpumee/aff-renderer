@@ -189,6 +189,17 @@ export async function gpost(url, body, timeoutMs) {
   }
   throw last;
 }
+// แปลสาเหตุ Gemini ล่มเป็นภาษาคน (ให้แอดมินเห็นในหลังบ้าน/หน้าผลงาน)
+export function aiWhy(e) {
+  const m = String(e?.message || ''), st = e?.status || Number((m.match(/gemini (\d{3})/) || [])[1]) || 0;
+  if (st === 429 && /quota|exhaust|billing|credit|spend|limit/i.test(m)) return 'โควตา/เครดิต Gemini ของระบบเต็มหรือหมด → เช็กบิลและโควตาใน Google AI Studio โปรเจกต์ mc-rich-515413';
+  if (st === 429) return 'Gemini คิวเต็ม (ยิงถี่เกิน) ลองใหม่อีกครู่';
+  if (st === 401 || st === 403 || /API key|permission|billing account/i.test(m)) return 'คีย์ Gemini ใช้ไม่ได้ (คีย์ผิด/ถูกปิด/บัญชีบิลมีปัญหา)';
+  if (st === 404) return 'รุ่นโมเดลถูกเปลี่ยนหรือปิดแล้ว';
+  if (st >= 500) return 'Google ล่มชั่วคราว';
+  if (/timeout|aborted/i.test(m)) return 'Gemini ตอบช้าเกินเวลา';
+  return 'ไม่ทราบสาเหตุ';
+}
 export async function genImage({ model, prompt, refs, ratio, size }) {
   const input = [{ type: 'text', text: prompt }, ...refs.map((b) => ({ type: 'image', mime_type: 'image/jpeg', data: b.toString('base64') }))];
   const response_format = { type: 'image', mime_type: 'image/jpeg', aspect_ratio: ratio };
@@ -1573,7 +1584,10 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
       const e = results[0].reason;
       log('image fail', w.id, e?.message, e?.text || '');
       const policy = e?.message === 'no_image' || /safety|policy|blocked|prohibit|harm|sensitive|400/i.test(e?.message || '');
-      if (!policy) return refund(w, 'ระบบ AI ขัดข้องชั่วคราว · คืนดาวแล้ว');
+      if (!policy) {
+        await q("UPDATE works SET params = params || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ failDetail: `${aiWhy(e)} — ${String(e?.message || '').slice(0, 400)}` })]).catch(() => {});
+        return refund(w, 'ระบบ AI ขัดข้องชั่วคราว · คืนดาวแล้ว');
+      }
       const why = await explainRefusal({ fields: { product: p.product, details: p.details, headline: p.headline, price: p.price, info: p.info }, refs: refs.slice(0, 3), what: 'image', aiText: e?.text || e?.message });
       return refund(w, `AI ไม่สร้างภาพนี้ (ขัดนโยบายเนื้อหาของ AI)${why ? ` · ${why}` : ' ลองปรับรายละเอียดหรือเปลี่ยนรูปที่แนบ'} · คืนดาวแล้ว`);
     }

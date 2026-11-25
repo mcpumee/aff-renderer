@@ -1635,7 +1635,7 @@ async function workView(qs) {
   }
   if (w.status === 'review') return subsEditor(w, qs);
   if (w.status === 'failed') {
-    $('main').innerHTML = `<section class="card" style="background:var(--bad-bg)"><b style="color:var(--bad)">สร้างไม่สำเร็จ</b><span>${esc(w.error)}</span></section>
+    $('main').innerHTML = `<section class="card" style="background:var(--bad-bg)"><b style="color:var(--bad)">สร้างไม่สำเร็จ</b><span>${esc(w.error)}</span>${ME?.admin && w.params?.failDetail ? `<span class="muted" style="font-size:13px;overflow-wrap:anywhere">[แอดมิน] ${esc(w.params.failDetail)}</span>` : ''}</section>
       <button type="button" class="btn" id="again">ลองใหม่ (แก้รายละเอียดได้)</button><button type="button" class="btn ghost" id="del">ลบรายการนี้</button>`;
   } else {
     const caps = PLAT.slice(0, 4).filter(([k]) => w.captions?.[k]);

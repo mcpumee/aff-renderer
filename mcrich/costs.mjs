@@ -46,11 +46,11 @@ const pick = (tbl, model) => tbl[model] || tbl[Object.keys(tbl).find((k) => k !=
 
 async function record(row) {
   const c = costCtx();
-  const usd = Math.max(0, Number(row.usd) || 0);
+  const usd = c.free ? 0 : Math.max(0, Number(row.usd) || 0); // คีย์ฟรี = ไม่เสียเงิน
   if (!Q) return;
   try {
     await Q(`INSERT INTO ai_costs(provider, model, op, units, unit, usd, work_id, user_id, src, meta) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [row.provider, row.model || '', row.op || '', row.units || 0, row.unit || '', usd, c.workId || null, c.userId || null, c.src || 'other', JSON.stringify(row.meta || {})]);
+      [row.provider + (c.free ? ' (ฟรี)' : ''), row.model || '', row.op || '', row.units || 0, row.unit || '', usd, c.workId || null, c.userId || null, c.src || 'other', JSON.stringify(row.meta || {})]);
   } catch (e) { LOG('cost record', e.message); }
 }
 
@@ -143,7 +143,8 @@ export function installCostMeter({ q, log }) {
         : (/fal\.run|fal\.ai/.test(host) || (process.env.FAL_QUEUE_URL && host === new URL(process.env.FAL_QUEUE_URL).host)) ? 'fal' : /heygen/.test(host) ? 'heygen' : /elevenlabs/.test(host) && method === 'POST' ? 'eleven' : '';
       if (which && res.ok && /json/.test(res.headers.get('content-type') || '')) {
         const body = typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body); } catch { return null; } })() : null;
-        const ctx = costCtx();
+        const hk = init.headers?.['x-goog-api-key'] || (typeof init.headers?.get === 'function' ? init.headers.get('x-goog-api-key') : '');
+        const ctx = { ...costCtx(), ...(hk && hk === process.env.GEMINI_CHAT_KEY && hk !== process.env.GEMINI_API_KEY ? { free: true } : {}) };
         res.clone().json().then((j) => withCost(ctx, () => (which === 'gemini' ? onGemini(url, body, j) : which === 'fal' ? onFal(method, url, body, j) : which === 'heygen' ? onHeygen(method, url, body, j) : null))).catch(() => {});
       } else if (which === 'eleven' && res.ok) {
         const body = typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body); } catch { return null; } })() : null;

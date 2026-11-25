@@ -128,6 +128,12 @@ if [ "${SET_MCRICH_AVATAR:-}" = "1" ] && [ -r /dev/tty ]; then
   echo ">> fal.ai API key สำหรับอวตารมาตรฐาน Kling (fal.ai > Dashboard > API Keys · กด Enter ข้าม)"
   askkey "   fal.ai key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && FALKEY=$REPLY
 fi
+# ---- คีย์ Gemini ฟรีสำหรับแชทริช (โปรเจกต์ที่ไม่ผูกบิล · กด Enter ข้าม) ----
+GCHAT=$(envget GEMINI_CHAT_KEY)
+if [ "${SET_MCRICH_CHATKEY:-}" = "1" ] && [ -r /dev/tty ]; then
+  echo ">> Gemini API key ฟรี (aistudio.google.com > Get API key > สร้างในโปรเจกต์ใหม่ที่ไม่ผูกบิล · กด Enter ข้าม)"
+  askkey "   Gemini free key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && GCHAT=$REPLY
+fi
 # ---- Meta (โพสต์ตรง Facebook Page / Instagram · กด Enter ข้าม) ----
 MAID=$(envget META_APP_ID); MASEC=$(envget META_APP_SECRET); MACFG=$(envget META_CONFIG_ID)
 if [ "${SET_MCRICH_META:-}" = "1" ] && [ -r /dev/tty ]; then
@@ -160,6 +166,7 @@ SELLER_NAME="${SNAME}"
 SELLER_ADDRESS="${SADDR}"
 SELLER_TAX_ID=${STAX}
 GEMINI_API_KEY=${GKEY}
+GEMINI_CHAT_KEY=${GCHAT}
 ELEVENLABS_API_KEY=${ELKEY}
 LINEOA_SECRET=${OASEC}
 LINEOA_TOKEN=${OATOK}

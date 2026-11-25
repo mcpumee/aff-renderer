@@ -2,8 +2,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
-import { STYLES } from './create.mjs';
+import { STYLES, TIERS, genImage } from './create.mjs';
 import * as V from './video.mjs';
+import { withCost } from './costs.mjs';
 
 // สินค้าตัวอย่างตามหมวด (เลือกจากแท็กของการ์ด)
 const DEMO = [
@@ -49,7 +50,7 @@ const STYLE_DEMO = {
 const imgDemo = (st) => STYLE_DEMO[st.id] || (st.pr ? { product: 'กิจกรรมขององค์กร', headline: st.label, info: ORG } : st.agent ? { product: 'ประกันสุขภาพเหมาจ่าย', headline: st.label, agentType: 'insurance' } : { product: 'เซรั่มวิตามินซี', headline: st.text ? 'ผิวใสใน 7 วัน' : '', price: '฿199', details: 'ขวดแก้วหยด 30 ml' });
 const imgGoal = (st) => (st.pr ? 'pr' : st.agent ? 'agent' : 'sell');
 // แนวคลิป: ต้องใช้ของจริงของลูกค้า (อวตาร/โปรเจกต์หนัง/คลิปที่ถ่ายเอง) → แอดมินอัปโหลดหรือเลือกจากผลงานแทน
-const VID_MANUAL = ['v_film', 'v_avatar', 'v_self'];
+const VID_MANUAL = ['v_film', 'v_avatar', 'v_self', 'v_remix'];
 const VID_NOPHOTO = ['v_tips', 'v_agent_tips', 'v_agent_plan', 'v_pr_announce', 'v_series'];
 const P0 = { product: 'เซรั่มวิตามินซี', price: '฿199', details: 'ผิวดูกระจ่างใส ซึมไว ไม่เหนียวเหนอะหนะ ขวด 30 ml' };
 function vidBody(id) {
@@ -152,9 +153,29 @@ export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
     ...STYLES.map((x) => ({ id: x.id, kind: 'image', label: x.label })),
     ...V.VIDEO_STYLES.map((x) => ({ id: x.id, kind: 'video', label: x.label, manual: VID_MANUAL.includes(x.id) })),
   ];
+  const withCostSys = async (fn) => withCost({ userId: await sysUser(), src: 'system covers' }, fn);
+  // ภาพปกของทุกแนวคลิป (ถูก ~1 บาท/ภาพ) — แนวที่ยังไม่มีคลิปตัวอย่าง/ปกจากการ์ดฮิต ให้มีปกโชว์ในขั้นเลือกแนว
+  async function coverStep(rows, trendVid) {
+    const need = V.VIDEO_STYLES.find((x) => !rows[x.id]?.poster && !trendVid.has(x.id) && !rows['cover:' + x.id]);
+    if (!need) return false;
+    const key = 'cover:' + need.id;
+    const tier = TIERS.find((t) => t.id === 'std') || TIERS[0];
+    try {
+      const buf = await withCostSys(() => genImage({ model: tier.model, size: '1K', ratio: '9:16', refs: [],
+        prompt: `Vertical 9:16 thumbnail cover image for a Thai short-form social video. Video format: "${need.label}" ${need.emoji || ''}${need.open ? ` (${need.open})` : ''}. Show one eye-catching representative moment of this format with Thai people/products/setting as appropriate, vivid colors, cinematic lighting, bold central composition, feels like a viral TikTok/Reels cover. Absolutely NO text, letters, captions, logos or watermarks.` }));
+      const out = `c-${need.id}-${Date.now().toString(36)}.jpg`;
+      fs.writeFileSync(path.join(DIR, out), buf);
+      await q(`INSERT INTO style_samples(style,kind,file,poster,status,error,at) VALUES($1,'cover','',$2,'done','',now()) ON CONFLICT (style) DO UPDATE SET poster=EXCLUDED.poster, status='done', error='', at=now()`, [key, out]);
+      log('style cover done', need.id);
+    } catch (e) {
+      await q(`INSERT INTO style_samples(style,kind,status,error,at) VALUES($1,'cover','failed',$2,now()) ON CONFLICT (style) DO UPDATE SET status='failed', error=EXCLUDED.error, at=now()`, [key, String(e.message).slice(0, 200)]);
+    }
+    return true;
+  }
   async function styleStep() {
     const all = ALL().filter((x) => !x.manual);
     const rows = Object.fromEntries((await q('SELECT * FROM style_samples')).rows.map((r) => [r.style, r]));
+    if (await coverStep(rows, new Set((await q("SELECT style FROM trends WHERE active AND sample->>'file' IS NOT NULL")).rows.map((r) => r.style)))) return true;
     // คลิปที่มีตัวอย่างจากการ์ดแนวงานฮิตแล้ว ไม่ต้องสร้างซ้ำ (แอดมินกดสร้างใหม่ได้)
     const trendVid = new Set((await q("SELECT style FROM trends WHERE active AND sample->>'file' IS NOT NULL")).rows.map((r) => r.style));
     const pick = (st) => all.map((x) => rows[x.id] && { ...rows[x.id], kind: x.kind }).find((r) => r && st.includes(r.status));
@@ -215,12 +236,17 @@ export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
     return { file, poster };
   }
   app.get('/api/style-samples', auth, wrap(async (_req, res) => {
-    const rows = (await q("SELECT style, kind, file, poster, at FROM style_samples WHERE file<>''")).rows;
+    const rows = (await q("SELECT style, kind, file, poster, at FROM style_samples WHERE file<>'' AND kind<>'cover'")).rows;
     const u = (r, poster) => `api/style-samples/${r.style}?${poster ? 'poster=1&' : ''}v=${new Date(r.at).getTime()}`;
     const img = {}, vid = {}, play = {};
     for (const r of rows) {
       if (r.kind === 'video') { vid[r.style] = r.poster ? u(r, true) : ''; play[r.style] = u(r); }
-      else img[r.style] = u(r);
+      else if (r.kind !== 'cover') img[r.style] = u(r);
+    }
+    // ปกของแนวคลิปที่ยังไม่มีตัวอย่าง
+    for (const r of (await q("SELECT style, poster, at FROM style_samples WHERE kind='cover' AND poster<>''")).rows) {
+      const id = r.style.slice(6);
+      if (!vid[id]) vid[id] = `api/style-samples/${encodeURIComponent(r.style)}?poster=1&v=${new Date(r.at).getTime()}`;
     }
     for (const t of (await q("SELECT id, style, sample FROM trends WHERE active AND sample->>'file' IS NOT NULL ORDER BY sort, id")).rows) {
       if (play[t.style]) continue;

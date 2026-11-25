@@ -6,6 +6,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import * as V from './video.mjs';
 import { withCost } from './costs.mjs';
+import * as RX from './remix.mjs';
 import * as LR from './linkread.mjs';
 import * as FM from './film.mjs';
 import crypto from 'node:crypto';
@@ -32,7 +33,7 @@ const REC_TIER = { poster_menu: 'hd', knowledge: 'hd', agent_plan: 'hd', agent_t
 const recTier = (id) => REC_TIER[id] || 'std';
 
 export const GOALS = [
-  { id: 'sell', label: 'ขายของตัวเอง', hint: 'ปิดการขาย ให้ทักแชท/สั่งซื้อ' },
+  { id: 'sell', label: 'โปรโมตสินค้า', hint: 'ปิดการขาย ให้ทักแชท/สั่งซื้อ' },
   { id: 'aff', label: 'Affiliate', hint: 'ชวนกดลิงก์ตะกร้า' },
   { id: 'promo', label: 'โปรโมตร้าน', hint: 'ให้คนรู้จักและมาที่ร้าน' },
   { id: 'content', label: 'ทำคอนเทนต์', hint: 'เพิ่มยอดติดตาม ยอดแชร์' },
@@ -52,7 +53,8 @@ const agentOf = (p) => (p.goal === 'agent' ? AGENT_TYPES.find((a) => a.id === p.
 export const RATIOS = [
   { id: '4:5', label: 'ฟีด 4:5' }, { id: '1:1', label: 'จัตุรัส 1:1' }, { id: '9:16', label: 'สตอรี่ 9:16' }, { id: '16:9', label: 'แนวนอน 16:9' },
 ];
-export const TONES = ['เป็นกันเอง', 'ขายตรง ปิดการขาย', 'ตลก ขำๆ', 'หรูหรา พรีเมียม', 'ให้ความรู้', 'อบอุ่น ใส่ใจ'];
+export const TONES = ['เป็นกันเอง', 'Gen Z ภาษาวัยรุ่น', 'ขายตรง ปิดการขาย', 'ตลก ขำๆ', 'เล่าเรื่อง Storytelling', 'สั้น กระชับ ตรงประเด็น', 'หรูหรา พรีเมียม', 'ให้ความรู้', 'อบอุ่น ใส่ใจ'];
+export const TONE_HINT = V.TONE_HINT;
 export const CONCEPTS = ['สีสดใส', 'มินิมอล', 'หรูหรา', 'น่ารัก', 'ธรรมชาติ', 'ย้อนยุค', 'สตรีทฟู้ด', 'แสงธรรมชาติ', 'พื้นหลังเรียบ', 'มีคนใช้สินค้า', 'ไทยๆ', 'เทศกาล'];
 
 // แนวภาพ (คำสั่งอยู่ฝั่งเซิร์ฟเวอร์ ลูกค้าไม่ต้องเขียน prompt เอง)
@@ -272,9 +274,9 @@ function captionPrompt(p, style, brand) {
 ราคา/โปร: ${p.price || '-'}
 ร้าน: ${brand.shopName || '-'} ${brand.line ? `LINE ${brand.line}` : ''} ${brand.phone ? `โทร ${brand.phone}` : ''}
 ลิงก์: ${p.link ? 'มี — เขียน {LINK} ตรงตำแหน่งที่จะใส่ลิงก์ ห้ามเขียน URL เอง' : '-'}
-โทน: ${p.goal === 'pr' ? 'ทางการ สุภาพ เป็นข่าวประชาสัมพันธ์ ไม่ขายของ' : p.tone || 'เป็นกันเอง'}
+สไตล์การเขียน: ${p.goal === 'pr' ? 'ทางการ สุภาพ เป็นข่าวประชาสัมพันธ์ ไม่ขายของ' : `${p.tone || 'เป็นกันเอง'}${TONE_HINT[p.tone] ? ` — ${TONE_HINT[p.tone]}` : ''}`}
 ${agentOf(p) ? `สาย: ตัวแทน/นายหน้า ${agentOf(p).label} — เขียนแบบผู้เชี่ยวชาญที่จริงใจ ให้ข้อมูลก่อนขาย ชวนทักปรึกษา/นัดดู ไม่กดดัน\nกติกาสายนี้: ${agentOf(p).rule}\n${p.info?.org ? `สังกัด: ${p.info.org}\n` : ''}${p.info?.contact ? `ติดต่อ: ${p.info.contact}\n` : ''}` : ''}กฎ: ห้ามอ้างรักษาโรค ห้ามคำเกินจริง (100%, เห็นผลทันที, ดีที่สุดในโลก) ตามกฎหมาย อย. และคุ้มครองผู้บริโภค · ใช้อีโมจิพอดี · ถ้ามีลิงก์ให้ใส่ {LINK} 1 ครั้งต่อแคปชั่น · ถ้าเป็น Affiliate ให้ชวนกดตะกร้า/ลิงก์
-ตอบเป็น JSON เท่านั้น: {"facebook":"แคปชั่นยาว 3-6 บรรทัด","instagram":"กระชับ 2-4 บรรทัด","tiktok":"สั้นมาก 1-2 บรรทัด มีฮุค","shopee":"แคปชั่นขาย สั้น ชัด","hashtags":["#แท็ก", "... 5-8 แท็กภาษาไทย/อังกฤษที่เกี่ยวข้อง"]}`;
+ตอบเป็น JSON เท่านั้น: {"facebook":"แคปชั่นเดียวใช้ได้ทุกแพลตฟอร์ม: บรรทัดแรกเป็นฮุค ตามด้วยเนื้อหาตามสไตล์การเขียน","hashtags":["#แท็ก", "... 5-8 แท็กภาษาไทย/อังกฤษที่เกี่ยวข้อง"]}`;
 }
 
 // ---------- โลโก้ร้าน (ผลงานทุกชิ้นไม่มีลายน้ำ ทั้งฟรีและเสียดาว) ----------
@@ -375,6 +377,15 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       const c0 = checkContent({ product: p.product, details: p.details, price: p.price, hookText: p.hookText });
       const cost = V.selfPrice(p.videoSec, mode) + (premium ? V.PREMIUM_VOICE_EXTRA : 0);
       return { video: true, self: true, style, tier: { id: mode === 'voice' ? 'self_voice' : 'self_subs', free: false, stars: cost }, versions: 1, p, cost, ...c0 };
+    }
+    if (style.id === 'v_remix') {
+      const sec = Math.min(RX.REMIX_MAX_SEC, Math.max(1, Number(b.videoSec) || 30));
+      const voice = !!b.remixVoice, avatar = Math.max(0, Number(b.avatarId) || 0) > 0 && !!b.remixAvatar;
+      Object.assign(p, { videoSec: sec, remixVoice: voice, bg: ['off', 'low', 'mid'].includes(b.bg) ? b.bg : 'low', remixAvatar: avatar,
+        avatarId: avatar ? Number(b.avatarId) : 0, avatarMode: RX.AVATAR_MODES.some((m) => m.id === b.avatarMode) ? b.avatarMode : 'replace', avatarNote: clean(b.avatarNote, 200), dialogue: false, premium: false });
+      if (voice && !b.hasVoice) return { error: 'อัดเสียงหรือแนบไฟล์เสียงก่อน (หรือปิดตัวเลือกเปลี่ยนเสียง)' };
+      const cost = RX.remixPrice(sec, { voice, avatar });
+      return { video: true, remix: true, style, tier: { id: 'remix', free: false, stars: cost }, versions: 1, p, cost, ...checkContent({ product: p.product, avatarNote: p.avatarNote }) };
     }
     if (V.INFO_STYLES.includes(style.id)) {
       p.info = cleanInfo(b.info);
@@ -486,6 +497,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal, variants, pr, agent, film }) => ({ id, label, emoji, color, reveal, variants, pr: !!pr, agent: !!agent, film: !!film })),
         formulas: V.FORMULAS.map(({ id, label, desc, rec, dialogue }) => ({ id, label, desc, rec, dialogue: !!dialogue })),
         music: V.MUSIC,
+        remix: { prices: RX.REMIX_PRICE, modes: RX.AVATAR_MODES, maxSec: RX.REMIX_MAX_SEC, flow: RX.FLOW_URL },
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
         genres: V.GENRES, art: V.ART.map(({ id, label }) => ({ id, label })), dramaPrices: V.DRAMA_PRICE, seriesGenres: V.SERIES_GENRES, seriesPrices: V.SERIES_PRICE, seriesLen: V.SERIES_LEN,
         motionPresets: V.MOTION_PRESETS.map(({ id, label, desc }) => ({ id, label, desc })), motionPrice: V.MOTION_PRICE.std,
@@ -508,13 +520,32 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }));
 
   // ยืนยันสร้าง: ตัดดาว (หรือภาพฟรี) แล้วเข้าคิว
-  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 8 }, { name: 'revs', maxCount: 3 }, { name: 'video', maxCount: 1 }]), wrap(async (req, res) => {
+  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 8 }, { name: 'revs', maxCount: 3 }, { name: 'video', maxCount: 1 }, { name: 'voice', maxCount: 1 }]), wrap(async (req, res) => {
     res.on('finish', () => rmTmp(req));
     if (!ready()) return res.status(503).json({ error: 'ระบบสร้างภาพกำลังตั้งค่า' });
     let body; try { body = JSON.parse(req.body?.data || '{}'); } catch { return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' }); }
     const m = await me(req.uid);
     // คลิปถ่ายเอง: ตรวจไฟล์และความยาวจริงก่อนคิดราคา
     let videoName = '';
+    let voiceName = '';
+    if (body.style === 'v_remix') {
+      const vf = req.files?.video?.[0];
+      const info = vf ? await V.probe(vf.path).catch(() => null) : null;
+      if (!info || !info.hasVideo) return res.status(400).json({ error: 'แนบคลิปวิดีโอก่อน (ไฟล์อาจเสียหรือไม่รองรับ)' });
+      if (info.sec > RX.REMIX_MAX_SEC + 1) return res.status(400).json({ error: `คลิปยาวเกิน ${RX.REMIX_MAX_SEC / 60} นาที ตัดให้สั้นลงก่อน` });
+      body.videoSec = info.sec;
+      const vo = req.files?.voice?.[0];
+      body.hasVoice = false;
+      if (body.remixVoice) {
+        const ai = vo ? await V.probe(vo.path).catch(() => null) : null;
+        if (!ai?.hasAudio) return res.status(400).json({ error: 'ไฟล์เสียงที่อัดใช้ไม่ได้ ลองอัดใหม่' });
+        body.hasVoice = true;
+        voiceName = `${req.uid}-${Date.now().toString(36)}${rand(5).toLowerCase()}-voice${(path.extname(vo.originalname || '') || '.m4a').toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 6)}`;
+        fs.renameSync(vo.path, path.join(VID_DIR, voiceName));
+      }
+      videoName = `${req.uid}-${Date.now().toString(36)}${rand(5).toLowerCase()}${(path.extname(vf.originalname || '') || '.mp4').toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 6)}`;
+      fs.renameSync(vf.path, path.join(VID_DIR, videoName));
+    }
     if (body.style === 'v_self') {
       const vf = req.files?.video?.[0];
       let info = null;
@@ -533,10 +564,11 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       }
     }
     const n = normalize(body, m.brand || {});
-    const dropVideo = () => { if (videoName && req.files?.video?.[0]) fs.rm(path.join(VID_DIR, videoName), { force: true }, () => {}); };
+    const dropVideo = () => { if (videoName && req.files?.video?.[0]) fs.rm(path.join(VID_DIR, videoName), { force: true }, () => {}); if (voiceName) fs.rm(path.join(VID_DIR, voiceName), { force: true }, () => {}); };
     if (n.error) { dropVideo(); return res.status(400).json({ error: n.error }); }
     if (n.blocked) { dropVideo(); return res.status(400).json({ error: n.blocked }); }
-    if (n.self) n.p.video = videoName;
+    if (n.self || n.remix) n.p.video = videoName;
+    if (n.remix && voiceName) n.p.voiceFile = voiceName;
 
     // ภาพอ้างอิง: อัปโหลดใหม่ หรือใช้ของงานเดิม
     const refs = [];
@@ -579,7 +611,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (n.style.id === 'v_drama' && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ละครต้องมีรูปสินค้า 1 รูป' }); }
     if (['v_shop', 'v_pr_recap', 'v_agent_listing'].includes(n.style.id) && n.p.nProducts < 1) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'ใส่รูปอย่างน้อย 1 รูป (แนะนำ 3–8 รูป)' }); }
     if (n.style.id !== 'v_show' && n.style.id !== 'v_top' && !V.INFO_STYLES.includes(n.style.id) && (req.files?.refs || []).length > 3) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'รูปสินค้าได้สูงสุด 3 รูป' }); }
-    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar', 'v_film'].includes(n.style.id) && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
+    if (n.video && !n.self && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar', 'v_film', 'v_remix'].includes(n.style.id) && !n.p.nProducts) { refs.forEach((r) => fs.rm(path.join(REF_DIR, r), () => {})); return res.status(400).json({ error: 'คลิปต้องมีรูปสินค้าอย่างน้อย 1 รูป' }); }
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -621,7 +653,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       fs.copyFileSync(f, path.join(REF_DIR, name)); refs.push(name);
     }
     n.p.nProducts = refs.length;
-    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar', 'v_film'].includes(n.style.id)) return { error: 'ต้องมีรูปสินค้า' };
+    if (n.video && !n.p.nProducts && !V.INFO_STYLES.includes(n.style.id) && !['v_series', 'v_motion', 'v_avatar', 'v_film', 'v_remix'].includes(n.style.id)) return { error: 'ต้องมีรูปสินค้า' };
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
@@ -733,7 +765,9 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   async function finalizeCaptions(w, p, cap) {
     const captions = {};
     const keepLines = (v) => String(v ?? '').replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 2200);
-    for (const k of ['facebook', 'instagram', 'tiktok', 'shopee']) captions[k] = keepLines(cap[k]);
+    // แคปชั่นเดียว (ตามสไตล์การเขียน) ใช้ทุกแพลตฟอร์ม — เก็บแยก key ไว้เพื่อระบบโพสต์/ลิงก์สั้นแยกแพลตฟอร์ม
+    const one = keepLines(cap.facebook || cap.instagram || cap.shopee || cap.tiktok || cap.caption);
+    for (const k of ['facebook', 'instagram', 'tiktok', 'shopee']) captions[k] = one;
     // ใส่ลิงก์: ลิงก์สั้นแยกตามแพลตฟอร์ม (นับคลิกได้) ถ้าไม่มีระบบลิงก์สั้นใช้ลิงก์จริง
     if (p.link) {
       const short = hooks.shortLinks ? await hooks.shortLinks(w, Object.keys(captions)).catch((e) => { log('shortlink', e.message); return {}; }) : {};
@@ -1103,6 +1137,39 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
       res.json({ product: clean(o.product, 120), headline: clean(o.headline, 60), sub: clean(o.sub, 40), details, points, caution,
         info: { org: clean(o.org, 80), place: clean(o.place, 100), date: clean(o.date, 60), contact: clean(o.contact, 80) }, unclear: clean(o.unclear, 200) });
     } finally { files.forEach((f) => fs.rm(f.path, { force: true }, () => {})); }
+  }));
+
+  // ---------- งานอ้างอิง: ลูกค้าอัปโหลดภาพตัวอย่าง → AI อ่าน แนวงาน/ขนาด/ชื่อสินค้า/ราคา/ข้อความ → กรอกขั้น 3 ให้ ----------
+  const REF_USE = new Map();
+  app.post('/api/create/reference', auth, digestUp.single('src'), wrap(async (req, res) => {
+    const f = req.file;
+    try {
+      if (!KEY()) return res.status(503).json({ error: 'ระบบ AI กำลังตั้งค่า' });
+      if (!f || !/^image\//.test(f.mimetype)) return res.status(400).json({ error: 'แนบภาพงานตัวอย่าง (jpg/png)' });
+      const day = thaiToday(), u = REF_USE.get(req.uid), used = u && u.day === day ? u.n : 0;
+      if (used >= 40) return res.status(429).json({ error: 'วันนี้อ่านงานตัวอย่างครบแล้ว กรอกเองได้เลย' });
+      REF_USE.set(req.uid, { day, n: used + 1 });
+      const vid = req.body?.kind === 'video';
+      const meta = await sharp(f.path).rotate().metadata();
+      const w = meta.autoOrient?.width || meta.width || 1, h = meta.autoOrient?.height || meta.height || 1;
+      const near = RATIOS.map((r) => { const [a, b] = r.id.split(':').map(Number); return { id: r.id, d: Math.abs(Math.log((a / b) / (w / h))) }; }).sort((x, y) => x.d - y.d)[0]?.id;
+      const list = vid ? V.VIDEO_STYLES.filter((x) => !x.film) : STYLES;
+      const small = await sharp(f.path).rotate().resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+      const prompt = `ภาพนี้คือ "งานตัวอย่าง" ที่ลูกค้าอยากได้แบบเดียวกัน อ่านแล้วตอบ JSON เท่านั้น
+แนวงานที่มี (เลือก id ที่ใกล้ที่สุด 1 อัน): ${list.map((x) => `${x.id}=${x.label}`).join(' · ')}
+กฎ: ใช้เฉพาะข้อความ/ตัวเลขที่เห็นในภาพจริง ห้ามแต่งราคา · ไม่เห็นให้ว่าง · ภาษาไทย
+{"style":"id","product":"ชื่อสินค้า/บริการในภาพ ไม่เกิน 60 ตัวอักษร หรือว่าง","price":"ราคา/โปรที่เห็น หรือว่าง","headline":"ข้อความหลักบนภาพ ไม่เกิน 40 ตัวอักษร หรือว่าง",
+"details":"จุดเด่น/ข้อความรองที่เห็น สรุปไม่เกิน 200 ตัวอักษร","look":"บรรยายสไตล์ภาพ (โทนสี ฉาก แสง การจัดวาง ฟอนต์) 1-2 ประโยค สำหรับทำงานใหม่ให้คล้ายกัน","goal":"sell|aff|promo|content|pr|agent"}`;
+      const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
+        contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data: small.toString('base64') } }, { text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+      }, 60000);
+      let o;
+      try { o = JSON.parse(findText(j.candidates?.[0]?.content || j).replace(/^```(json)?|```$/g, '').trim()); } catch { return res.status(502).json({ error: 'AI อ่านภาพไม่สำเร็จ ลองภาพที่ชัดขึ้น' }); }
+      const st = list.find((x) => x.id === o.style) || list[0];
+      res.json({ style: st.id, styleLabel: st.label, ratio: vid ? '' : near, w, h, product: clean(o.product, 120), price: clean(o.price, 40), headline: clean(o.headline, 60),
+        details: [clean(o.details, 300), o.look ? `แบบภาพอ้างอิง: ${clean(o.look, 260)}` : ''].filter(Boolean).join('\n'), goal: GOALS.some((g) => g.id === o.goal) ? o.goal : '' });
+    } finally { if (f) fs.rm(f.path, { force: true }, () => {}); }
   }));
 
   // ---------- อวตาร: ออกแบบ / อัปโหลด / ใช้ซ้ำ ----------
@@ -1493,6 +1560,57 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     log('series done', w.id, `ep${d.ep}`, d.scenes.length, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
 
+  // ---------- แกะคลิป: พรอมต์ทีละฉาก (+อวตาร) (+เปลี่ยนเสียง) ----------
+  async function processRemix(w) {
+    const p = w.params;
+    const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    const vfile = path.join(VID_DIR, path.basename(p.video || ''));
+    if (!p.video || !fs.existsSync(vfile)) { PROG.delete(w.id); return refund(w, 'ไม่พบไฟล์คลิป · คืนดาวแล้ว'); }
+    let avatar = null;
+    if (p.remixAvatar && p.avatarId) {
+      const a = (await q('SELECT id, name, spec, file, gender FROM avatars WHERE id=$1 AND user_id=$2', [p.avatarId, w.user_id])).rows[0];
+      if (a) {
+        const img = path.join(AV_DIR, path.basename(a.file || ''));
+        avatar = { id: Number(a.id), name: a.name, desc: [a.gender === 'male' ? 'man' : 'woman', ...Object.values(a.spec || {}).filter((v) => typeof v === 'string')].join(', ').slice(0, 300),
+          img: fs.existsSync(img) ? await sharp(img).resize({ width: 768, height: 768, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer() : null };
+      }
+    }
+    let rx;
+    try {
+      stage('AI กำลังดูคลิปและแยกฉาก', 20);
+      rx = await RX.analyze({ gpost, url: `${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, findText, file: vfile, sec: p.videoSec, avatar, mode: p.avatarMode, note: p.avatarNote, product: p.product });
+    } catch (e) {
+      log('remix analyze fail', w.id, e.message);
+      PROG.delete(w.id);
+      await q("UPDATE works SET params = params || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ failDetail: `${aiWhy(e)} — ${String(e?.message || '').slice(0, 300)}` })]).catch(() => {});
+      return refund(w, /safety|policy|blocked/i.test(e.message) ? 'AI ไม่วิเคราะห์คลิปนี้ (ขัดนโยบายเนื้อหา) · คืนดาวแล้ว' : 'แกะคลิปไม่สำเร็จ ลองคลิปอื่นหรือสั้นลง · คืนดาวแล้ว');
+    }
+    stage('ดึงภาพแต่ละฉาก', 65);
+    const base = `${w.user_id}-${w.id}-${rand(6).toLowerCase()}`;
+    const frames = await RX.sceneFrames(vfile, rx.scenes, path.join(WORK_DIR, base));
+    rx.scenes.forEach((s, i) => { s.frame = frames[i] || ''; });
+    const files = [];
+    if (p.remixVoice && p.voiceFile) {
+      try {
+        stage('ใส่เสียงของคุณลงคลิป', 80);
+        const out = path.join(WORK_DIR, `${base}.mp4`);
+        await RX.swapVoice({ file: vfile, voice: path.join(VID_DIR, path.basename(p.voiceFile)), bg: p.bg, sec: p.videoSec, out });
+        const jpg = path.join(WORK_DIR, `${base}-t.jpg`); let thumb = '';
+        try { await V.videoThumb(out, jpg); await sharp(jpg).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); thumb = `${base}.webp`; fs.rm(jpg, () => {}); } catch { /* ไม่มีปกก็ได้ */ }
+        files.push({ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' });
+      } catch (e) { log('remix voice fail', w.id, e.message); rx.voiceError = 'ใส่เสียงไม่สำเร็จ (ไฟล์เสียงอาจเสีย) · ส่วนพรอมต์ใช้ได้ตามปกติ'; }
+    }
+    // ภาพฉากเป็นไฟล์ผลงาน (โชว์ในแกลเลอรี/ดาวน์โหลดไปใช้เป็นภาพเริ่มใน Flow ได้)
+    for (const f of frames.filter(Boolean)) {
+      try { await sharp(path.join(WORK_DIR, f)).resize({ width: 480 }).webp({ quality: 75 }).toFile(path.join(WORK_DIR, f.replace(/\.jpg$/, '.webp'))); files.push({ name: f, thumb: f.replace(/\.jpg$/, '.webp'), w: 720, h: 1280, type: 'image' }); } catch { /* ข้าม */ }
+    }
+    await q("UPDATE works SET status='done', title=$3, files=$2, params = params || $4::jsonb, done_at=now() WHERE id=$1",
+      [w.id, JSON.stringify(files), (rx.title ? `แกะคลิป: ${rx.title}` : w.title).slice(0, 80), JSON.stringify({ remix: { ...rx, flow: RX.FLOW_URL, avatar: avatar ? { id: avatar.id, name: avatar.name } : null } })]);
+    PROG.delete(w.id);
+    if (hooks.onDone) hooks.onDone({ ...w, files }).catch((e) => log('onDone', w.id, e.message));
+    log('remix done', w.id, rx.scenes.length, files.length);
+  }
+
   // ---------- คลิปถ่ายเอง ----------
   async function processSelf(w) {
     const p = w.params;
@@ -1564,6 +1682,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
 
   async function process1(w) {
     if (w.style === 'v_self') return processSelf(w);
+    if (w.style === 'v_remix') return processRemix(w);
     if (w.style === 'v_drama') return processDrama(w);
     if (w.style === 'v_series') return processSeries(w);
     if (w.style === 'v_motion') return processMotion(w);

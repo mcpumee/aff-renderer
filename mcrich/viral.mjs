@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import { STYLES } from './create.mjs';
 import { VIDEO_STYLES } from './video.mjs';
 import { withCost, thinkLow } from './costs.mjs';
+import { readPage } from './linkread.mjs';
 
 const GEM = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
 const GKEY = () => process.env.GEMINI_API_KEY || '';
@@ -108,12 +109,23 @@ export const CATS = ['อาหาร ขนม', 'ความงาม', 'แ�
 export const VSTYLES = ['เปิดกล่อง / สุ่ม', 'ละครตลก', 'สยองขวัญ', 'ย้อนยุค', 'รีวิวเห็นหน้า', 'มินิมอล', 'ASMR', 'ความรู้ วิชาการ'];
 const IDEA_STYLES = [
   ...STYLES.filter((s) => !s.pr).map((s) => ({ id: s.id, kind: 'image', label: s.label, emoji: s.emoji || '🖼️' })),
-  ...VIDEO_STYLES.filter((s) => !s.pr && s.id !== 'v_self').map((s) => ({ id: s.id, kind: 'video', label: s.label, emoji: s.emoji || '🎬' })),
+  ...VIDEO_STYLES.filter((s) => !s.pr && s.id !== 'v_self' && s.id !== 'v_remix').map((s) => ({ id: s.id, kind: 'video', label: s.label, emoji: s.emoji || '🎬' })),
 ];
 const ent = (s) => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).trim();
 const tag = (xml, t) => ent((xml.match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`)) || [])[1] || '');
 const safeUrl = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && !/^(localhost|\d+\.\d+\.\d+\.\d+|\[.*\])$/i.test(x.hostname) ? x.href : ''; } catch { return ''; } };
 const platformOf = (u) => { const h = (() => { try { return new URL(u).hostname; } catch { return ''; } })(); return /tiktok/.test(h) ? 'tiktok' : /youtu/.test(h) ? 'youtube' : /facebook|fb\.watch/.test(h) ? 'facebook' : /instagram/.test(h) ? 'instagram' : 'web'; };
+
+// คลิปที่แอดมินแนบได้: เฉพาะ Reels (IG/FB) · YouTube Shorts · TikTok
+export function shortKind(u) {
+  let x; try { x = new URL(u); } catch { return ''; }
+  const h = x.hostname.replace(/^www\.|^m\./, ''), p = x.pathname;
+  if (/(^|\.)tiktok\.com$/.test(h) && (/\/video\/\d+/.test(p) || /^(vt|vm)\./.test(x.hostname) || /^\/t\//.test(p))) return 'tiktok';
+  if (/(^|\.)youtube\.com$/.test(h) && /^\/shorts\/[\w-]{6,}/.test(p)) return 'youtube';
+  if (/(^|\.)instagram\.com$/.test(h) && /^\/(reel|reels)\/[\w-]+/.test(p)) return 'instagram';
+  if ((/(^|\.)facebook\.com$/.test(h) && /\/reel\/\d+/.test(p)) || /(^|\.)fb\.watch$/.test(h) || (/(^|\.)facebook\.com$/.test(h) && /^\/share\/r\//.test(p))) return 'facebook';
+  return '';
+}
 
 export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
   const DIR = path.join(DATA_DIR, 'viral');
@@ -171,7 +183,8 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
   }
 
   // ---------- คลิปไวรัลหลายแพลตฟอร์ม (ScrapeCreators) แยกตามสไตล์ลูกค้า ----------
-  const DEF_CFG = { daily: 100, platforms: { tiktok: true, instagram: false, youtube: false, facebook: false }, perQuery: 6, ytShorts: true, ytDaily: 72 };
+  // auto=false (ค่าเริ่มต้น): ไม่ดึงอัตโนมัติ (ประหยัดงบ) — หน้าแรกแสดงเฉพาะคลิปที่แอดมินแนบลิงก์เอง
+  const DEF_CFG = { auto: false, daily: 100, platforms: { tiktok: true, instagram: false, youtube: false, facebook: false }, perQuery: 6, ytShorts: true, ytDaily: 72 };
   async function cfg() {
     const r = (await q("SELECT value FROM app_settings WHERE key='viral_cfg'")).rows[0]?.value || {};
     return { ...DEF_CFG, ...r, platforms: { ...DEF_CFG.platforms, ...(r.platforms || {}) } };
@@ -378,7 +391,10 @@ ${list}
     if (running) return running;
     running = (async () => {
       const out = {};
-      for (const [k, fn] of [['trends', fetchTrends], ['youtube', fetchYouTube], ['clips', fetchClips], ['thumbs', cacheThumbs], ['ideas', enrich], ['cleanup', cleanup]]) {
+      const auto = (await cfg()).auto;
+      const steps = auto ? [['trends', fetchTrends], ['youtube', fetchYouTube], ['clips', fetchClips], ['thumbs', cacheThumbs], ['ideas', enrich], ['cleanup', cleanup]]
+        : [['thumbs', cacheThumbs], ['ideas', enrich]]; // ปิดดึงอัตโนมัติ: ทำแค่ภาพปก+ไอเดียของคลิปที่แอดมินแนบ
+      for (const [k, fn] of steps) {
         try { out[k] = await fn(); } catch (e) { out[k] = `ERR ${e.message}`; lastErr = `${k}: ${e.message}`; log('viral', k, e.message); }
       }
       lastRun = new Date(); log('viral refresh', JSON.stringify(out));
@@ -439,8 +455,11 @@ ${list}
     const myGroups = GROUPS.filter((g) => mine.has(g.interest)).map((g) => g.key);
     const all = await rowsNow();
     const clipsOf = (pf) => all.filter((r) => isClip(r) && view(r).platform === pf && (r.pinned || isSocial(r)));
-    const tabs = [{ key: 'tiktok', label: 'TikTok' }, { key: 'youtube', label: 'YouTube Shorts' }, { key: 'google', label: 'Google Trends' },
-      ...['instagram', 'facebook'].filter((k) => clipsOf(k).length).map((k) => ({ key: k, label: k === 'instagram' ? 'Instagram' : 'Facebook' }))];
+    const auto = (await cfg()).auto;
+    // ปิดดึงอัตโนมัติ: แสดงเฉพาะแพลตฟอร์มที่มีคลิปแอดมินแนบ (TikTok / Shorts / Reels) ไม่มี Google Trends
+    const tabs = auto ? [{ key: 'tiktok', label: 'TikTok' }, { key: 'youtube', label: 'YouTube Shorts' }, { key: 'google', label: 'Google Trends' },
+      ...['instagram', 'facebook'].filter((k) => clipsOf(k).length).map((k) => ({ key: k, label: k === 'instagram' ? 'Instagram' : 'Facebook' }))]
+      : (() => { const t = [['tiktok', 'TikTok'], ['youtube', 'YouTube Shorts'], ['instagram', 'IG Reels'], ['facebook', 'FB Reels']].filter(([k]) => clipsOf(k).length).map(([key, label]) => ({ key, label })); return t.length ? t : [{ key: 'tiktok', label: 'TikTok' }]; })();
     const prefPf = (p.platforms || []).map((x) => PF_PREF[x]).find((k) => tabs.some((t) => t.key === k)) || 'tiktok';
     const pf = tabs.some((t) => t.key === req.query.platform) ? req.query.platform : prefPf;
     const g = String(req.query.group || 'mine');
@@ -472,7 +491,7 @@ ${list}
     if (pf !== 'google' && !page) {
       const own = list.filter((r) => !r._fb).length;
       const want = g === 'mine' ? myChips.filter((x) => x.n < 4).map((x) => x.key) : own < 4 ? [g] : [];
-      if (want.length) { const c = await cfg(); const pairs = want.filter((k) => GROUPS.some((x) => x.key === k)).slice(0, 3).map((k) => [k, pf]); if (pairs.length && provOf(pf, c)) fillingNow = fillNow(pairs); }
+      if (want.length) { const c = await cfg(); const pairs = want.filter((k) => GROUPS.some((x) => x.key === k)).slice(0, 3).map((k) => [k, pf]); if (c.auto && pairs.length && provOf(pf, c)) fillingNow = fillNow(pairs); }
     }
     res.json({ platform: pf, tabs, items: list.slice(page * limit, page * limit + limit).map((r) => ({ ...view(r), other: !!r._fb })), total: list.length, general,
       myChips, needStyles: !myGroups.length, filling: fillingNow, fallback });
@@ -494,23 +513,37 @@ ${list}
   }));
   app.put('/api/admin/viral/cfg', auth, admin, wrap(async (req, res) => {
     const b = req.body || {};
-    const v = { daily: Math.min(5000, Math.max(0, Math.trunc(Number(b.daily) || 0))), perQuery: Math.min(20, Math.max(1, Math.trunc(Number(b.perQuery) || 6))),
+    const v = { auto: b.auto === true, daily: Math.min(5000, Math.max(0, Math.trunc(Number(b.daily) || 0))), perQuery: Math.min(20, Math.max(1, Math.trunc(Number(b.perQuery) || 6))),
       platforms: Object.fromEntries(PLATFORMS.map((p) => [p, b.platforms?.[p] === true])),
       ytShorts: b.ytShorts !== false, ytDaily: Math.min(95, Math.max(0, Math.trunc(Number(b.ytDaily) || 0))) };
     await q("INSERT INTO app_settings(key,value) VALUES('viral_cfg',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", [v]);
     res.json(v);
   }));
+  // แอดมินแนบลิงก์ (วางได้หลายลิงก์ บรรทัดละ 1) — รับเฉพาะ Reels / YouTube Shorts / TikTok
+  async function addLink(raw, title0, group) {
+    const url = safeUrl(String(raw || '').trim());
+    const kind = url && shortKind(url);
+    if (!kind) return { url: raw, error: 'รับเฉพาะลิงก์ Reels (IG/FB), YouTube Shorts หรือ TikTok' };
+    let o = await oembed(url);
+    if (!o.title || !o.thumb) { // IG/FB ไม่มี oEmbed ฟรี → อ่านหน้าเว็บ (og:title/og:image)
+      try { const p = await readPage(url); o = { ...o, title: o.title || ent(p.title || '').replace(/\s*[|•·-]\s*(Instagram|Facebook|TikTok).*$/i, ''), thumb: o.thumb || safeUrl(p.image || '') }; } catch { /* ไม่เป็นไร */ }
+    }
+    const title = String(title0 || '').trim().slice(0, 200) || o.title || `${{ tiktok: 'TikTok', youtube: 'YouTube Shorts', instagram: 'Instagram Reels', facebook: 'Facebook Reels' }[kind]}`;
+    const g = GROUPS.find((x) => x.key === group);
+    await upsert({ source: 'curated', ext_id: url, title, url, thumb: o.thumb, meta: { platform: kind, author: o.author || '', vertical: true, ...(g ? { groups: [g.key] } : {}) }, rank: 0 });
+    await q("UPDATE viral_items SET pinned=TRUE, idea=NULL, active=TRUE, tags=$2 WHERE source='curated' AND ext_id=$1", [url, g ? [g.interest] : []]);
+    return { url, title, platform: kind, thumb: !!o.thumb };
+  }
   app.post('/api/admin/viral', auth, admin, wrap(async (req, res) => {
-    const url = safeUrl(String(req.body?.url || '').trim());
-    if (!url) return res.status(400).json({ error: 'ลิงก์ต้องขึ้นต้น https://' });
-    const o = await oembed(url);
-    const title = String(req.body?.title || '').trim().slice(0, 200) || o.title;
-    if (!title) return res.status(400).json({ error: 'ดึงชื่อคลิปไม่ได้ ใส่ชื่อเองด้วย' });
-    await upsert({ source: 'curated', ext_id: url, title, url, thumb: o.thumb, meta: { platform: o.platform, author: o.author || '', vertical: !!o.vertical }, rank: 0 });
-    await q("UPDATE viral_items SET pinned=TRUE, idea=NULL, active=TRUE WHERE source='curated' AND ext_id=$1", [url]);
+    const links = [...new Set(String(req.body?.urls || req.body?.url || '').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean))].slice(0, 20);
+    if (!links.length) return res.status(400).json({ error: 'วางลิงก์ก่อน' });
+    const out = [];
+    for (const u of links) out.push(await addLink(u, links.length === 1 ? req.body?.title : '', req.body?.group).catch((e) => ({ url: u, error: e.message })));
     cache.at = 0;
-    refresh().catch(() => {});
-    res.json({ ok: true, title, platform: o.platform, thumb: !!o.thumb });
+    if (out.some((x) => !x.error)) refresh().catch(() => {});
+    const ok = out.filter((x) => !x.error);
+    if (!ok.length) return res.status(400).json({ error: out[0].error, results: out });
+    res.json({ ok: true, added: ok.length, title: ok[0].title, results: out });
   }));
   app.patch('/api/admin/viral/:id', auth, admin, wrap(async (req, res) => {
     const b = req.body || {};

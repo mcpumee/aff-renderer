@@ -839,7 +839,9 @@ document.addEventListener('click', (e) => {
 let D = null;        // ร่างงานที่กำลังสร้าง
 let REFS = [];       // ไฟล์ภาพอ้างอิง (อยู่ในหน่วยความจำ)
 let REVS = [];       // แคปรีวิว (คลิป)
-let VFILE = null;    // คลิปที่ถ่ายเอง
+let VFILE = null;
+let VOICEB = null; // เสียงที่ลูกค้าอัด (แกะคลิป)
+let REC = { on: false, t: 0 };    // คลิปที่ถ่ายเอง
 let ITEMF = [];      // รูปสินค้าแต่ละอันดับ (Top N)
 // แนวข้อความตามประเภทงาน: [ข้อความหลัก, ข้อความรอง]
 const TEXT_PRESETS = {
@@ -893,6 +895,7 @@ async function createView(qs) {
 }
 
 let LINKBUSY = false;
+let REFBUSY = false;
 let LINKIMG = null; // รูปจากลิงก์ (data URL) — ไม่เก็บลง draft เพราะใหญ่
 const linkCard = () => {
   const L = D.linkInfo;
@@ -955,9 +958,10 @@ function stepShell(inner, { next = 'ถัดไป', nextId = 'next', disabled 
     <div class="grid2 stepnav">${s ? '<button type="button" class="btn dark" id="prev">ย้อนกลับ</button>' : '<span></span>'}
       <button type="button" class="btn" id="${nextId}" ${disabled ? 'disabled' : ''}>${next}</button></div>
   </main>${nav('create')}`;
-  if (s) { const b = app.querySelector('header .back'); if (b) b.onclick = (e) => { e.preventDefault(); D.step--; drawStep(); }; }
-  const p = $('#prev'); if (p) p.onclick = () => { D.step--; drawStep(); };
-  $('#reset').onclick = () => { D = newDraft(); REFS = []; REVS = []; VFILE = null; ITEMF = []; saveDraft(); drawStep(); };
+  if (s) { const b = app.querySelector('header .back'); if (b) b.onclick = (e) => { e.preventDefault(); back(); }; }
+  const back = () => { D.step = D.style === 'v_remix' && D.step === 5 ? 2 : D.step - 1; drawStep(); };
+  const p = $('#prev'); if (p) p.onclick = back;
+  $('#reset').onclick = () => { D = newDraft(); REFS = []; REVS = []; VFILE = null; VOICEB = null; ITEMF = []; saveDraft(); drawStep(); };
 }
 // แนวงานที่ตรงกับเป้าหมาย (ไม่ปนหมวด) — ดูทั้งหมดได้จากปุ่ม "ดูแนวอื่นทั้งหมด"
 function goalStyles(list) {
@@ -965,7 +969,7 @@ function goalStyles(list) {
   if (D.goal === 'agent') return ['ตัวแทน / นายหน้า', [...list.filter((x) => x.agent), ...list.filter((x) => x.id === 'v_avatar')]];
   if (D.goal === 'pr') return ['ประชาสัมพันธ์องค์กร', list.filter((x) => x.pr)];
   const biz = list.filter((x) => !x.pr && !x.agent);
-  const label = { sell: 'ขายของตัวเอง', aff: 'Affiliate', promo: 'โปรโมตร้าน', content: 'ทำคอนเทนต์' }[D.goal] || 'ขายของ / คอนเทนต์';
+  const label = { sell: 'โปรโมตสินค้า', aff: 'Affiliate', promo: 'โปรโมตร้าน', content: 'ทำคอนเทนต์' }[D.goal] || 'ขายของ / คอนเทนต์';
   return [`${vid ? 'คลิป' : 'ภาพ'}สำหรับ${label}`, biz];
 }
 const chipRow = (items, sel, key, multi) => `<div class="chips">${items.map((v) => {
@@ -983,15 +987,20 @@ function bindChips(multi, onChange) {
 }
 const readInputs = (ids) => ids.forEach((k) => { const el = $('#' + k); if (el) D[k] = el.type === 'checkbox' ? el.checked : el.value; });
 
+let LASTSTEP = -1;
 function drawStep() {
-  saveDraft(); window.scrollTo(0, 0);
+  // เปลี่ยนขั้น → ขึ้นบนสุด · วาดขั้นเดิมซ้ำ (เลือกแนว/ชิป) → คงตำแหน่งเดิม
+  const keepY = LASTSTEP === D.step && location.hash.startsWith('#create') ? window.scrollY : 0;
+  LASTSTEP = D.step;
+  saveDraft();
+  requestAnimationFrame(() => window.scrollTo(0, keepY));
   if (!CAT.ready) {
     app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main><div class="soon card"><span class="badge b-warn">กำลังตั้งค่า</span><h2>ระบบสร้างภาพกำลังเปิด</h2><p class="muted">ระหว่างนี้ตั้งค่าชุดแบรนด์และแฮชแท็กรอไว้ได้เลย</p><a class="btn" href="#brand">ตั้งค่าชุดแบรนด์</a></div></main>${nav('create')}`;
     return;
   }
   const s = D.step;
   if (s === 0) {
-    stepShell(`<h1 style="font-size:22px">สร้างไปเพื่ออะไร?</h1>
+    stepShell(`<h1 style="font-size:22px">ผลงานเพื่อ?</h1>
       <div class="grid2">${CAT.goals.map((g) => `<button type="button" class="card opt" data-goal="${g.id}" aria-pressed="${D.goal === g.id}"><b>${esc(g.label)}</b><span class="muted">${esc(g.hint)}</span></button>`).join('')}</div>
       ${D.goal === 'agent' ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>สายงานของคุณ</h2>${chipRow(CAT.agentTypes, D.agentType || 'insurance', 'agentType', false)}
         <span class="muted">AI จะเขียนตามกติกาโฆษณาของสายนี้ และใส่ข้อความกำกับท้ายแคปชั่นให้ (เช่น ประกันภัย)</span></section>` : ''}
@@ -1015,6 +1024,9 @@ function drawStep() {
     stepShell(`<div class="grid2" role="group" aria-label="ประเภทผลงาน">
         <button type="button" class="card opt" data-kind="image" aria-pressed="${!vid}"><b>ภาพ</b><span class="muted">โปสเตอร์ ภาพสินค้า ป้ายโปร</span></button>
         <button type="button" class="card opt" data-kind="video" aria-pressed="${vid}"><b>คลิปวิดีโอ</b><span class="muted">เปิดกล่อง ลุ้นของ พากย์เสียง</span></button></div>
+      <label class="card refup" for="refwork" style="flex-direction:row;align-items:center;gap:12px;cursor:pointer;border-style:dashed">
+        <span style="font-size:26px">📎</span><span style="flex:1"><b>มีงานตัวอย่างอยู่แล้ว?</b><br><span class="muted" style="font-size:13px">${vid ? 'อัปโหลดภาพหรือคลิปที่อยากได้แบบนี้ · คลิป = แกะพรอมต์/เปลี่ยนเสียง/ใส่อวตาร' : 'อัปโหลดภาพที่อยากได้แบบนี้ AI อ่านแนวงาน ขนาด ชื่อสินค้า ราคาให้ แล้วข้ามไปกรอกรายละเอียด'}</span></span>
+        <span class="btn dark sm" id="refbusy">${REFBUSY ? 'กำลังอ่าน…' : 'อัปโหลด'}</span><input id="refwork" type="file" accept="${vid ? 'image/*,video/*' : 'image/*'}" hidden></label>
       ${(() => {
         const card = (x) => { const im = (vid ? SAMPLES?.video : SAMPLES?.image)?.[x.id]; const pl = vid ? SAMPLES?.play?.[x.id] : im; return `<button type="button" class="stylecard has-img" data-style="${x.id}" aria-pressed="${D.style === x.id}">
           ${im ? `<span class="sx"><img src="${im}" alt="ตัวอย่าง ${esc(x.label)}" loading="lazy">${pl ? `<i data-play="${x.id}">${vid ? '▶ ดูตัวอย่าง' : '🔍 ดูภาพ'}</i>` : ''}</span>`
@@ -1031,6 +1043,30 @@ function drawStep() {
       })()}`, { disabled: !D.style || !(D.showAllStyles ? list : goalStyles(list)[1]).some((x) => x.id === D.style) });
     app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
     const sa = $('#showAll'); if (sa) sa.onclick = () => { D.showAllStyles = true; drawStep(); };
+    $('#refwork').onchange = async (e) => {
+      const f = e.target.files[0]; if (!f || REFBUSY) return;
+      if (/^video\//.test(f.type)) { // คลิปตัวอย่าง → แนวแกะคลิป
+        if (!CAT.video.styles.some((x) => x.id === 'v_remix')) return toast('แนวแกะคลิปยังไม่เปิด');
+        const v = document.createElement('video'); v.preload = 'metadata';
+        const goRx = (sec) => { VFILE = f; D.kind = 'video'; D.style = 'v_remix'; D.showAllStyles = true; D.videoSec = sec; D.step = 2; drawStep(); };
+        v.onloadedmetadata = () => (v.duration > CAT.video.remix.maxSec + 1 ? toast(`คลิปยาว ${Math.round(v.duration)} วิ เกิน ${CAT.video.remix.maxSec / 60} นาที`) : goRx(v.duration));
+        v.onerror = () => goRx(60);
+        v.src = URL.createObjectURL(f); return;
+      }
+      REFBUSY = true; $('#refbusy').textContent = 'กำลังอ่าน…';
+      try {
+        const fd = new FormData(); fd.append('src', f); fd.append('kind', D.kind);
+        const r = await api('api/create/reference', { method: 'POST', body: fd });
+        D.style = r.style; D.showAllStyles = true;
+        if (r.ratio) D.ratio = r.ratio;
+        if (r.product) D.product = r.product;
+        if (r.price) D.price = r.price;
+        if (r.headline) D.headline = r.headline;
+        if (r.details) D.details = [D.details, r.details].filter(Boolean).join('\n').slice(0, 600);
+        toast(`AI อ่านแล้ว: ${r.styleLabel}${r.ratio ? ` · ${r.ratio}` : ''} · ตรวจทาน/แก้ได้`);
+        REFBUSY = false; D.step = 2; drawStep();
+      } catch (x) { REFBUSY = false; toast(x.message); const b = $('#refbusy'); if (b) b.textContent = 'อัปโหลด'; }
+    };
     app.querySelectorAll('[data-style]').forEach((b) => b.onclick = (e) => {
       const pl = e.target.closest('[data-play]');
       if (pl) { const x = list.find((y) => y.id === pl.dataset.play); sampleSheet(vid ? SAMPLES?.play?.[x.id] : SAMPLES?.image?.[x.id], vid ? 'video' : 'image', x.label); }
@@ -1275,6 +1311,73 @@ function drawStep() {
       }
       D.step = 3; drawStep();
     };
+  } else if (s === 2 && D.style === 'v_remix') {
+    const R = CAT.video.remix;
+    if (D.remixAvatar && !AVS_LOADED) { loadAvatars().then(drawStep).catch((e) => toast(e.message)); }
+    const price = () => (R.prices.base.find(([x]) => (D.videoSec || 30) <= x + 0.5) || R.prices.base.at(-1))[1] + (D.remixVoice ? R.prices.voice : 0) + (D.remixAvatar ? R.prices.avatar : 0);
+    const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+    stepShell(`<section class="card"><b>คลิปตัวอย่าง (ไม่เกิน ${R.maxSec / 60} นาที)</b>
+        ${VFILE ? `<video id="rxv" src="${URL.createObjectURL(VFILE)}" controls playsinline style="width:100%;max-height:380px;border-radius:12px;background:#000"></video>
+          <div class="row between"><span class="muted">${esc(VFILE.name)} · ${fmt(D.videoSec || 0)}</span><label class="chip" for="vin" style="cursor:pointer">เปลี่ยนคลิป</label></div>`
+          : '<label class="ref add" for="vin" style="width:100%;height:120px;cursor:pointer">+ เลือกคลิปจากเครื่อง (TikTok/Reels ที่ดาวน์โหลดมา หรือคลิปของคุณ)</label>'}
+        <input id="vin" type="file" accept="video/*" hidden>
+        <label class="f" for="product">จะเอาไปทำเรื่อง/สินค้าอะไร (ไม่บังคับ)<input id="product" type="text" maxlength="120" placeholder="เช่น เต้าหู้ไข่บ้านพรุ — ให้พรอมต์เปลี่ยนเป็นสินค้านี้" value="${esc(D.product)}"></label></section>
+      <section class="card" style="gap:6px"><b>🧩 แกะพรอมต์ทีละฉาก <span class="badge b-lime">รวมในราคา</span></b>
+        <span class="muted" style="font-size:13px">AI ดูทั้งคลิป แยกฉาก เขียนพรอมต์ภาษาอังกฤษพร้อมวางใน Google Flow + ภาพแต่ละฉาก + เคล็ดลับว่าทำไมคลิปนี้ปัง · ราคาตามความยาว: ${R.prices.base.map(([x, p]) => `≤${x < 60 ? `${x} วิ` : `${x / 60} นาที`} ${p}⭐`).join(' · ')}</span></section>
+      <section class="card" style="gap:10px">
+        <label class="row between" for="rxa"><span><b>🧑‍🎤 ใส่อวตาร/ตัวละครของฉัน</b> <span class="muted">+${R.prices.avatar} ดาว</span><br><span class="muted" style="font-size:13px">ได้พรอมต์ฉบับมีตัวละครคุณ + วิธีทำใน Flow</span></span><input id="rxa" type="checkbox" class="sw-in" ${D.remixAvatar ? 'checked' : ''}></label>
+        ${D.remixAvatar ? (!AVS_LOADED ? '<span class="muted">กำลังโหลดอวตาร…</span>' : AVS.length ? `<div class="avgrid">${AVS.map((a) => `<button type="button" class="avcard" data-av="${a.id}" aria-pressed="${D.avatarId === a.id}"><img src="${a.img}" alt="" loading="lazy"><b>${esc(a.name)}</b></button>`).join('')}</div>
+            <div class="grid2">${R.modes.map((m) => `<button type="button" class="card opt" data-amode="${m.id}" aria-pressed="${(D.avatarMode || 'replace') === m.id}"><b>${esc(m.label)}</b><span class="muted">${esc(m.hint)}</span></button>`).join('')}</div>
+            ${(D.avatarMode || 'replace') === 'custom' ? `<label class="f" for="avatarNote">อยากให้อยู่ตรงไหน ทำอะไร<textarea id="avatarNote" rows="2" maxlength="200" placeholder="เช่น ยืนรีวิวสินค้าในฉากสุดท้าย">${esc(D.avatarNote || '')}</textarea></label>` : ''}`
+          : '<a class="btn dark sm" href="#avatars?from=create">ยังไม่มีอวตาร · สร้างอวตารก่อน</a>') : ''}
+      </section>
+      <section class="card" style="gap:10px">
+        <label class="row between" for="rxv2"><span><b>🎙️ เปลี่ยนเสียงเป็นเสียงของคุณ</b> <span class="muted">+${R.prices.voice} ดาว</span><br><span class="muted" style="font-size:13px">อัดเสียงพูดทับ ได้คลิปใหม่ที่เป็นเสียงคุณ</span></span><input id="rxv2" type="checkbox" class="sw-in" ${D.remixVoice ? 'checked' : ''}></label>
+        ${D.remixVoice ? `<div class="grid2"><button type="button" class="btn ${REC.on ? '' : 'dark'}" id="recbtn">${REC.on ? `⏹ หยุดอัด ${REC.t}s` : VOICEB ? '🎙️ อัดใหม่' : '🎙️ เริ่มอัด (คลิปเล่นพร้อมกัน)'}</button>
+            <label class="btn ghost" for="vofile" style="cursor:pointer">แนบไฟล์เสียง<input id="vofile" type="file" accept="audio/*" hidden></label></div>
+          ${VOICEB ? `<audio src="${URL.createObjectURL(VOICEB)}" controls style="width:100%"></audio>` : '<span class="muted" style="font-size:13px">กดอัดแล้วพูดตามจังหวะคลิปที่เล่นอยู่ (คลิปปิดเสียงให้) · ยาวได้ไม่เกินคลิป</span>'}
+          <span class="muted">เสียงเดิมในคลิป</span>${chipRow([{ id: 'off', label: 'ปิดเสียงเดิม' }, { id: 'low', label: 'เบาๆ (เก็บบรรยากาศ)' }, { id: 'mid', label: 'ปานกลาง' }], D.bg || 'low', 'bg', false)}` : ''}
+      </section>
+      <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">ราคา</span><b class="num" style="font-size:24px">${price()} ดาว</b></div>
+        <span class="muted">ทำคลิปจริงต่อใน <a href="${R.flow}" target="_blank" rel="noopener">Google Flow</a> ด้วยบัญชี Google ของคุณเอง (ใช้เครดิต Flow ของคุณ)</span></section>`, { disabled: !VFILE || REC.on });
+    const keep = () => readInputs(['product', 'avatarNote']);
+    $('#vin').onchange = (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      if (f.size > 400 * 1024 * 1024) return toast('ไฟล์ใหญ่เกิน 400MB');
+      keep();
+      const v = document.createElement('video'); v.preload = 'metadata';
+      v.onloadedmetadata = () => { if (v.duration > R.maxSec + 1) return toast(`คลิปยาว ${Math.round(v.duration)} วิ เกิน ${R.maxSec / 60} นาที`); VFILE = f; D.videoSec = v.duration; drawStep(); };
+      v.onerror = () => { VFILE = f; D.videoSec = 60; drawStep(); };
+      v.src = URL.createObjectURL(f);
+    };
+    $('#rxa').onchange = (e) => { keep(); D.remixAvatar = e.target.checked; drawStep(); };
+    $('#rxv2').onchange = (e) => { keep(); D.remixVoice = e.target.checked; drawStep(); };
+    app.querySelectorAll('[data-av]').forEach((b) => b.onclick = () => { keep(); D.avatarId = Number(b.dataset.av); drawStep(); });
+    app.querySelectorAll('[data-amode]').forEach((b) => b.onclick = () => { keep(); D.avatarMode = b.dataset.amode; drawStep(); });
+    bindChips([], keep);
+    const vo = $('#vofile'); if (vo) vo.onchange = (e) => { const f = e.target.files[0]; if (!f) return; keep(); VOICEB = f; drawStep(); };
+    const rb = $('#recbtn'); if (rb) rb.onclick = async () => {
+      keep();
+      if (REC.on) return REC.stop();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || '';
+        const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); const chunks = [];
+        const vid = $('#rxv'); if (vid) { vid.muted = true; vid.currentTime = 0; vid.play().catch(() => {}); }
+        mr.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
+        mr.onstop = () => { stream.getTracks().forEach((t) => t.stop()); clearInterval(REC.timer); REC.on = false; const type = mr.mimeType || 'audio/webm'; VOICEB = new File([new Blob(chunks, { type })], `voice.${/mp4/.test(type) ? 'm4a' : 'webm'}`, { type }); if (vid) vid.pause(); drawStep(); };
+        REC = { on: true, t: 0, stop: () => mr.state !== 'inactive' && mr.stop() };
+        REC.timer = setInterval(() => { REC.t++; const b = $('#recbtn'); if (b) b.textContent = `⏹ หยุดอัด ${REC.t}s`; if (REC.t >= Math.ceil(D.videoSec || 60)) REC.stop(); }, 1000);
+        mr.start(); drawStep();
+      } catch { toast('เปิดไมค์ไม่ได้ · อนุญาตไมโครโฟนในเบราว์เซอร์ หรือแนบไฟล์เสียงแทน'); }
+    };
+    $('#next').onclick = () => {
+      keep();
+      if (!VFILE) return toast('เลือกคลิปก่อน');
+      if (D.remixAvatar && !D.avatarId) return toast('เลือกอวตารก่อน (หรือปิดตัวเลือกใส่อวตาร)');
+      if (D.remixVoice && !VOICEB) return toast('อัดเสียงหรือแนบไฟล์เสียงก่อน');
+      D.step = 5; drawStep();
+    };
   } else if (s === 2 && D.style === 'v_self') {
     const voice = D.selfMode === 'voice';
     const cs = CAT.video.captionStyles;
@@ -1405,8 +1508,8 @@ function drawStep() {
     stepShell(`${vid && fm.length ? `<h1 style="font-size:22px">เล่าเรื่องแบบไหน?</h1>
       <div class="grid2">${fm.map((f) => `<button type="button" class="card opt" data-formula="${f.id}" aria-pressed="${D.formula === f.id}">
         <b>${esc(f.label)}${f.rec.includes(D.goal) ? ' <span class="badge b-lime">แนะนำ</span>' : ''}</b><span class="muted">${esc(f.desc)}</span></button>`).join('')}</div>
-      <h2>โทน</h2>` : `<h1 style="font-size:22px">${D.style?.startsWith('v_pr') || D.goal === 'pr' ? 'โทนแคปชั่น (งานประชาสัมพันธ์ใช้ภาษาทางการให้อัตโนมัติ)' : 'แคปชั่นโทนไหน?'}</h1>`}
-      <p class="muted">AI เขียนให้ 4 แบบ: Facebook, Instagram, TikTok, Shopee${D.link ? ' พร้อมใส่ลิงก์' : ''}</p>
+      <h2>สไตล์การเขียน</h2>` : `<h1 style="font-size:22px">${D.style?.startsWith('v_pr') || D.goal === 'pr' ? 'โทนแคปชั่น (งานประชาสัมพันธ์ใช้ภาษาทางการให้อัตโนมัติ)' : 'แคปชั่นสไตล์ไหน?'}</h1>`}
+      <p class="muted">AI เขียนแคปชั่นให้ 1 แบบ ใช้ได้ทุกแพลตฟอร์ม · เลือกสไตล์การเขียน${D.link ? ' · ใส่ลิงก์ให้' : ''}</p>
       ${chipRow(CAT.tones, D.tone || CAT.tones[0], 'tone', false)}
       <section style="display:flex;flex-direction:column;gap:10px"><h2>แฮชแท็กประจำ</h2>
         ${saved.length ? chipRow(saved, D.hashtags, 'hashtags', true) : '<p class="muted">ยังไม่มีแฮชแท็กประจำ</p>'}
@@ -1558,7 +1661,7 @@ function uploadWithProgress(url, fd, onp) {
 }
 function styleNote(x) {
   const V2 = CAT.video;
-  return { v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.std === false ? V2.avatar?.proPrices?.[15] : V2.avatar?.prices?.[15]} ดาว · พูด ไทย/EN/中文/Melayu`,
+  return { v_remix: `เริ่ม ${V2.remix?.prices?.base?.[0]?.[1] || 9} ดาว · พรอมต์ Flow ทีละฉาก`, v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.std === false ? V2.avatar?.proPrices?.[15] : V2.avatar?.prices?.[15]} ดาว · พูด ไทย/EN/中文/Melayu`,
     v_show: `เริ่ม ${V2.prices[15]} ดาว · 2–8 รูป`, v_tips: `เริ่ม ${V2.prices[30]} ดาว · 3 หรือ 5 ทิป`, v_shop: `เริ่ม ${V2.prices[15]} ดาว · รูปร้าน+ข้อมูล`,
     v_pr_announce: `เริ่ม ${V2.prices[15]} ดาว · เสียงทางการ`, v_pr_recap: `เริ่ม ${V2.prices[15]} ดาว · จากรูปกิจกรรม` }[x.id] || `เริ่ม ${V2.prices[15]} ดาว · 9:16`;
 }
@@ -1604,7 +1707,7 @@ function bindDigest(fields) {
   };
 }
 const readInfo = () => { D.info = D.info || {}; app.querySelectorAll('[id^="info_"]').forEach((el) => { D.info[el.id.slice(5)] = el.value; }); };
-const payload = () => ({ ...D, hasPhotos: REFS.length > 0, hashtags: [...D.hashtags, ...String(D.extraTags || '').split(/[\s,]+/).filter(Boolean)] });
+const payload = () => ({ ...D, hasPhotos: REFS.length > 0, hasVoice: !!VOICEB, hashtags: [...D.hashtags, ...String(D.extraTags || '').split(/[\s,]+/).filter(Boolean)] });
 async function reviewStep() {
   stepShell('<p class="muted">กำลังคำนวณ…</p>', { next: 'ยืนยัน', disabled: true });
   const qt = await api('api/works/quote', { method: 'POST', body: payload() });
@@ -1621,32 +1724,34 @@ async function reviewStep() {
     <div class="list kv">
       ${row('เป้าหมาย', goal.label)}${D.style === 'model_show' ? row('นางแบบ/นายแบบ', `${CAT.modelWho.find((x) => x.id === D.modelWho)?.label} · ${CAT.modelLooks.find((x) => x.id === D.modelLook)?.label}`) : ''}${D.goal === 'agent' || st.agent ? row('สายงาน', CAT.agentTypes.find((x) => x.id === (D.agentType || 'insurance'))?.label) : ''}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
       ${row('คอนเซปต์', D.concepts.join(', '))}${vid ? '' : row('ขนาด', D.ratio) + row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
-      ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('โทนแคปชั่น', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
+      ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('สไตล์การเขียน', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
       ${INFO_IDS.includes(D.style) ? row('รูป', REFS.length ? `${REFS.length} รูป` : (D.style === 'v_pr_announce' ? 'AI วาดพื้นหลังให้ (+5 ดาว)' : '')) + (D.style === 'v_tips' ? row('จำนวนทิป', `${D.count} ทิป`) : '') + Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน/ร้าน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ', hours: 'เวลาเปิด' }[k] || k, v)).join('') + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + (D.style === 'v_tips' ? '' : row('ความยาว', `${D.length} วินาที`)) : ''}
       ${(!vid && (st.pr || st.agent)) || (vid && st.agent) ? Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: st.agent ? 'สังกัด' : 'หน่วยงาน', date: 'วันเวลา', place: st.agent ? 'ทำเล' : 'สถานที่', contact: 'ติดต่อ', license: 'ใบอนุญาต', hours: 'เวลาเปิด' }[k] || k, v)).join('') : ''}
       ${D.style === 'v_avatar' ? row('อวตาร', AVS.find((a) => a.id === D.avatarId)?.name) + row('ภาษา', CAT.video.avatar.langs.find((l) => l.id === D.lang)?.label) + row('บท', D.scriptMode === 'own' ? 'บทของฉัน' : `AI เขียนจาก: ${D.product}`) + row('ความยาว', `~${D.length} วิ`) + row('ซับ', D.subs ? CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label : 'ไม่ใส่') : ''}
+      ${D.style === 'v_remix' ? row('คลิปตัวอย่าง', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : '') + row('ได้รับ', 'พรอมต์ทีละฉาก + ภาพแต่ละฉาก + เคล็ดลับ') + row('ใส่อวตาร', D.remixAvatar ? `${AVS.find((a) => a.id === D.avatarId)?.name || ''} · ${CAT.video.remix.modes.find((m) => m.id === (D.avatarMode || 'replace'))?.label}` : '') + row('เปลี่ยนเสียง', D.remixVoice ? `เสียงของคุณ · เสียงเดิม${{ off: 'ปิด', low: 'เบาๆ', mid: 'ปานกลาง' }[D.bg || 'low']}` : '') + row('สำหรับ', D.product) : ''}
       ${D.style === 'v_motion' ? row('สินค้า / เรื่อง', D.product) + row('แนวช็อต', CAT.video.motionPresets.find((m) => m.id === D.preset)?.label) + row('ไอเดีย', D.plot) + row('รูปสินค้า', REFS.length ? '1 รูป' : '') : ''}
       ${D.style === 'v_series' ? row('เรื่อง', D.seriesInfo ? `${D.seriesInfo.title} EP.${(D.seriesInfo.ep || 1) + 1}` : D.product) + row('แนวเรื่อง', CAT.video.seriesGenres.find((g) => g.id === D.genre)?.label) + row('เรื่องย่อ', D.plot) + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('ความยาว', `${D.scenes} ฉาก`) : ''}
       ${D.style === 'v_drama' ? row('แนวเรื่อง', CAT.video.genres.find((g) => g.id === D.genre)?.label) + row('พล็อต', D.genre === 'free' ? D.plot : '') + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('จำนวนฉาก', `${D.scenes} ฉาก`) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) : ''}
       ${D.style === 'v_top' ? D.items.map((it, i) => row(`#${i + 1}`, `${it.name}${it.price ? ` · ${it.price}` : ''}${it.link ? ' · มีลิงก์' : ''}`)).join('') + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_top').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `~${D.length} วินาที`) : ''}
       ${D.style === 'v_show' ? row('รูปสินค้า', `${REFS.length} รูป`) + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_show').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : ''}
-      ${D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || D.style === 'v_series' || D.style === 'v_motion' || D.style === 'v_avatar' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
+      ${D.style === 'v_remix' || D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || D.style === 'v_series' || D.style === 'v_motion' || D.style === 'v_avatar' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
         : vid ? row('รูปสินค้า', REFS.length ? `${REFS.length} รูป` : '') + row('แคปรีวิว', REVS.length ? `${REVS.length} รูป` : '') + row('ลูกเล่นตอนเปิด', st.variants?.length ? (st.variants.find((x) => x.id === D.variant)?.label || 'สุ่มให้') : '') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname + (CAT.video.formulas.find((f) => f.id === D.formula)?.dialogue ? ' + คู่สนทนา' : '')) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : row('คุณภาพ', `${tier.label} ${tier.size} × ${qt.versions} แบบ`)}
     </div>
     <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">${qt.free ? 'ใช้ภาพฟรี' : 'ดาวที่ใช้'}</span>
       <b class="num" style="font-size:28px">${qt.free ? 'ฟรี' : `${ICON.star.replace('17', '24').replace('17', '24')} ${qt.cost}`}</b></div>
       <span class="muted">${qt.free ? `ภาพฟรีเหลือ ${qt.freeLeft.today + qt.freeLeft.welcome} ภาพ · ไม่มีลายน้ำ` : `ยอดคงเหลือหลังสร้าง ${num(qt.stars - qt.cost)} ดาว`} · สร้างไม่สำเร็จคืนให้อัตโนมัติ</span></section>
-    ${D.style === 'v_self' && VFILE ? '<p class="muted">อัปโหลดคลิปขณะใช้เน็ตมือถืออาจใช้เวลาสักครู่ ห้ามปิดหน้านี้จนขึ้นว่าส่งงานแล้ว</p>' : ''}
+    ${(D.style === 'v_self' || D.style === 'v_remix') && VFILE ? '<p class="muted">อัปโหลดคลิปขณะใช้เน็ตมือถืออาจใช้เวลาสักครู่ ห้ามปิดหน้านี้จนขึ้นว่าส่งงานแล้ว</p>' : ''}
     <p class="muted">ใช้เวลาประมาณ ${vid ? '2–5 นาที' : '20–60 วินาที'} · ไฟล์เก็บบนเซิร์ฟเวอร์ ${CAT.keepDays} วัน ดาวน์โหลดเก็บไว้ด้วย</p>`, { next: label, nextId: 'go', disabled: !!qt.blocked });
   $('#go').onclick = async () => {
     if (!qt.free && !qt.enough) return go('topup');
     const b = $('#go'); b.disabled = true; b.textContent = 'กำลังส่งงาน…';
     const fd = new FormData(); fd.append('data', JSON.stringify(payload())); REFS.forEach((f) => fd.append('refs', f)); if (D.kind === 'video') REVS.forEach((f) => fd.append('revs', f));
-    if (D.style === 'v_self' && VFILE) fd.append('video', VFILE);
+    if ((D.style === 'v_self' || D.style === 'v_remix') && VFILE) fd.append('video', VFILE);
+    if (D.style === 'v_remix' && D.remixVoice && VOICEB) fd.append('voice', VOICEB, VOICEB.name || 'voice.webm');
     if (D.style === 'v_top') ITEMF.slice(0, D.items.length).forEach((f) => fd.append('refs', f));
     try {
-      const r = D.style === 'v_self' && VFILE ? await uploadWithProgress('api/works', fd, (pc) => { b.textContent = `กำลังอัปโหลดคลิป ${pc}%`; }) : await api('api/works', { method: 'POST', body: fd });
-      ME = r.me; CAT = null; D = null; REFS = []; REVS = []; VFILE = null; ITEMF = []; try { sessionStorage.removeItem('mr_draft'); } catch {}
+      const r = (D.style === 'v_self' || D.style === 'v_remix') && VFILE ? await uploadWithProgress('api/works', fd, (pc) => { b.textContent = `กำลังอัปโหลดคลิป ${pc}%`; }) : await api('api/works', { method: 'POST', body: fd });
+      ME = r.me; CAT = null; D = null; REFS = []; REVS = []; VFILE = null; VOICEB = null; ITEMF = []; try { sessionStorage.removeItem('mr_draft'); } catch {}
       go(`work?id=${r.id}`);
     } catch (e) { toast(e.message); b.disabled = false; b.textContent = label; }
   };
@@ -1656,10 +1761,19 @@ async function reviewStep() {
 const PLAT = [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', 'TikTok'], ['shopee', 'Shopee'], ['lazada', 'Lazada'], ['line', 'LINE']];
 const daysLeft = (d) => Math.max(0, Math.ceil((new Date(d) - Date.now()) / 864e5));
 const WSTAT = { queued: ['รอคิว', 'b-lime'], working: ['กำลังสร้าง', 'b-lime'], review: ['รอตรวจซับ', 'b-warn'], done: ['เสร็จแล้ว', 'b-ok'], failed: ['ไม่สำเร็จ', 'b-warn'] };
+let WF = (() => { try { return { kind: 'all', old: false, ...JSON.parse(localStorage.getItem('mr_wf') || '{}') }; } catch { return { kind: 'all', old: false }; } })();
 async function worksView() {
   app.innerHTML = `${topbar()}<main><div class="row between" style="flex-wrap:wrap;gap:10px"><h1 style="font-size:22px;white-space:nowrap">ผลงานของฉัน</h1><span class="row" style="gap:8px"><a class="btn dark sm" href="#plan">ปฏิทิน</a><a class="btn dark sm" href="#auto">อัตโนมัติ</a><a class="btn sm" href="#create?new=1">+ สร้าง</a></span></div>
+    <div class="chips" id="wf" role="group" aria-label="กรองผลงาน" style="gap:6px">${[['all', 'ทั้งหมด'], ['image', '🖼️ ภาพ'], ['video', '🎬 วิดีโอ']].map(([k, l]) => `<button type="button" class="chip" data-wk="${k}" aria-pressed="${WF.kind === k}" style="min-height:32px;padding:4px 12px;font-size:13px">${l}</button>`).join('')}
+      <button type="button" class="chip" id="wsort" style="min-height:32px;padding:4px 12px;font-size:13px;margin-left:auto">${WF.old ? '📅 เก่า → ใหม่' : '📅 ใหม่ → เก่า'}</button></div>
     <div id="wl" class="grid2"><p class="muted">กำลังโหลด…</p></div></main>${nav('works')}`;
-  const { items } = await api('api/works');
+  app.querySelectorAll('[data-wk]').forEach((b) => b.onclick = () => { WF.kind = b.dataset.wk; try { localStorage.setItem('mr_wf', JSON.stringify(WF)); } catch {} worksView(); });
+  $('#wsort').onclick = () => { WF.old = !WF.old; try { localStorage.setItem('mr_wf', JSON.stringify(WF)); } catch {} worksView(); };
+  let { items } = await api('api/works');
+  const total = items.length;
+  if (WF.kind !== 'all') items = items.filter((w) => (WF.kind === 'video' ? w.kind === 'video' : w.kind !== 'video'));
+  items.sort((a, b) => (WF.old ? 1 : -1) * (new Date(a.createdAt || 0) - new Date(b.createdAt || 0)) || (WF.old ? a.id - b.id : b.id - a.id));
+  if (total && !items.length) { $('#wl').innerHTML = `<p class="muted">ยังไม่มีผลงาน${WF.kind === 'video' ? 'วิดีโอ' : 'ภาพ'}</p>`; return; }
   if (!items.length) { $('#wl').outerHTML = richState('create', 'ยังไม่มีผลงาน', `มีภาพฟรีให้ ${ME.freeImages.today + ME.freeImages.welcome} ภาพ ลองสร้างชิ้นแรกกับริชเลย`, '<a class="btn cta" href="#create?new=1">สร้างผลงานแรก</a>'); return; }
   $('#wl').innerHTML = items.map((w) => `<a class="wcard" href="#work?id=${w.id}">
     <div class="wthumb">${w.files[0] ? `<img src="${w.files[0].thumb}" alt="" loading="lazy">` : `<span class="muted">${w.purged ? 'ไฟล์ถูกลบแล้ว' : WSTAT[w.status]?.[0] || ''}</span>`}
@@ -1670,6 +1784,43 @@ async function worksView() {
   if (items.some((w) => ['queued', 'working'].includes(w.status))) setTimeout(() => { if (location.hash.startsWith('#works')) worksView().catch(() => {}); }, 5000);
 }
 
+// ผลแกะคลิป: พรอมต์ทีละฉาก (ฉบับเดิม / ฉบับมีอวตาร) + ภาพฉาก + เคล็ดลับ + ปุ่มไป Google Flow
+let RXV = 'orig';
+function remixHtml(w) {
+  const r = w.params.remix, hasAv = !!r.avatar && r.scenes.some((x) => x.avatarPrompt);
+  const ver = hasAv ? RXV : 'orig';
+  const pr = (x) => (ver === 'avatar' && x.avatarPrompt ? x.avatarPrompt : x.prompt) + (r.look ? `\nStyle: ${r.look}` : '');
+  const t = (x) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, '0')}`;
+  const fr = (x) => w.files.find((f) => f.name === x.frame);
+  return `<section class="hero" style="gap:8px"><b style="font-size:17px">🧩 ${esc(r.title || 'แกะคลิป')}</b><span>${esc(r.summary || '')}</span>
+      <span class="muted" style="font-size:13px">${r.scenes.length} ฉาก${r.difficulty ? ` · ความยาก${esc(r.difficulty)}` : ''}${r.music ? ` · เพลง: ${esc(r.music)}` : ''}</span>
+      <div class="grid2"><a class="btn" href="${esc(r.flow)}" target="_blank" rel="noopener">เปิด Google Flow ↗</a><button type="button" class="btn dark" id="rxall">คัดลอกพรอมต์ทั้งหมด</button></div>
+      <span class="muted" style="font-size:12px">ใช้บัญชี Google ของคุณเอง · วางพรอมต์ทีละฉากใน Flow (Text to Video) หรือแนบภาพฉากเป็นภาพเริ่ม (Frames to Video)</span></section>
+    ${r.voiceError ? `<p class="card" style="background:var(--warn-bg);color:var(--warn)">${esc(r.voiceError)}</p>` : ''}
+    ${hasAv ? `<section class="card" style="gap:8px"><b>🧑‍🎤 ใส่ ${esc(r.avatar.name)} ลงคลิป</b>
+      <div class="chips"><button type="button" class="chip" data-rxv="orig" aria-pressed="${ver === 'orig'}">พรอมต์ต้นฉบับ</button><button type="button" class="chip" data-rxv="avatar" aria-pressed="${ver === 'avatar'}">ฉบับมีอวตาร</button></div>
+      <div class="row" style="gap:10px;align-items:center"><img src="api/avatars/${r.avatar.id}/img" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:12px"><a class="btn dark sm" href="api/avatars/${r.avatar.id}/img" download="avatar.jpg" style="flex:1;min-width:0;white-space:normal">ดาวน์โหลดภาพอวตาร</a></div>
+      <span class="muted" style="font-size:12px">แนบภาพนี้เป็น Ingredient ใน Flow ให้หน้าตาเหมือนเดิมทุกฉาก</span>
+      ${(r.avatarPlan || []).length ? `<ul style="margin:0;padding-left:18px">${r.avatarPlan.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      <span class="muted" style="font-size:12px">ในพรอมต์ [AVATAR] = ตัวละครของคุณ</span></section>` : ''}
+    ${(r.characters || []).length ? `<details class="card"><summary style="font-weight:600;cursor:pointer">ตัวละครในคลิป (ใช้คำเดิมทุกฉากให้หน้าตาต่อเนื่อง)</summary>${r.characters.map((c) => `<p style="margin:6px 0"><b>${esc(c.name)}</b><br><span class="muted" style="font-size:13px">${esc(c.desc)}</span></p>`).join('')}</details>` : ''}
+    <h2>พรอมต์ทีละฉาก</h2>
+    ${r.scenes.map((x, i) => `<section class="card" style="gap:8px">
+      <div class="row" style="gap:10px;align-items:flex-start">${fr(x) ? `<img src="${fr(x).thumb}" alt="ฉาก ${i + 1}" style="width:72px;aspect-ratio:9/16;object-fit:cover;border-radius:10px;flex:none;background:#000">` : ''}
+        <span style="flex:1;min-width:0"><b>ฉาก ${i + 1}</b> <span class="muted" style="font-size:12px">${t(x.t0)}–${t(Math.max(x.t0, x.t1))}${x.camera ? ` · ${esc(x.camera)}` : ''}</span><br><span style="font-size:14px">${esc(x.th)}</span>
+        ${x.audio ? `<br><span class="muted" style="font-size:12px">🔊 ${esc(x.audio)}</span>` : ''}</span></div>
+      <textarea readonly rows="4" style="font-size:13px" aria-label="พรอมต์ฉาก ${i + 1}">${esc(pr(x))}</textarea>
+      <div class="grid2"><button type="button" class="btn dark sm" data-rxc="${i}">คัดลอกพรอมต์</button>${fr(x) ? `<a class="btn ghost sm" href="${fr(x).url}?dl=1" download>ภาพฉาก (ภาพเริ่ม)</a>` : '<span></span>'}</div></section>`).join('')}
+    ${(r.tips || []).length ? `<section class="card" style="gap:6px"><b>💡 ทำไมคลิปนี้ปัง / ทำตามยังไง</b><ul style="margin:0;padding-left:18px">${r.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}`;
+}
+function bindRemix(w) {
+  const r = w.params.remix;
+  const pr = (x) => ((RXV === 'avatar' && x.avatarPrompt ? x.avatarPrompt : x.prompt) + (r.look ? `\nStyle: ${r.look}` : ''));
+  const cp = async (t) => { try { await navigator.clipboard.writeText(t); toast('คัดลอกแล้ว'); } catch { toast('คัดลอกไม่ได้ · กดค้างที่กล่องข้อความแล้วคัดลอกเอง'); } };
+  app.querySelectorAll('[data-rxc]').forEach((b) => b.onclick = () => cp(pr(r.scenes[Number(b.dataset.rxc)])));
+  const all = $('#rxall'); if (all) all.onclick = () => cp(r.scenes.map((x, i) => `[ฉาก ${i + 1}] ${pr(x)}`).join('\n\n'));
+  app.querySelectorAll('[data-rxv]').forEach((b) => b.onclick = () => { RXV = b.dataset.rxv; workView(`id=${w.id}`); });
+}
 async function workView(qs) {
   const id = Number(new URLSearchParams(qs || '').get('id'));
   if (!id) return go('works');
@@ -1699,7 +1850,10 @@ async function workView(qs) {
     $('main').innerHTML = `<section class="card" style="background:var(--bad-bg)"><b style="color:var(--bad)">สร้างไม่สำเร็จ</b><span>${esc(w.error)}</span>${ME?.admin && w.params?.failDetail ? `<span class="muted" style="font-size:13px;overflow-wrap:anywhere">[แอดมิน] ${esc(w.params.failDetail)}</span>` : ''}</section>
       <button type="button" class="btn" id="again">ลองใหม่ (แก้รายละเอียดได้)</button><button type="button" class="btn ghost" id="del">ลบรายการนี้</button>`;
   } else {
-    const caps = PLAT.slice(0, 4).filter(([k]) => w.captions?.[k]);
+    let caps = PLAT.slice(0, 4).filter(([k]) => w.captions?.[k]);
+    // แคปชั่นเดียวทุกแพลตฟอร์ม → แสดงกล่องเดียว (งานเก่าที่แยกแพลตฟอร์มยังเลือกแท็บได้)
+    const oneCap = caps.length > 1 && caps.every(([k]) => String(w.captions[k]).replace(/https?:\/\/\S+/g, '') === String(w.captions[caps[0][0]]).replace(/https?:\/\/\S+/g, ''));
+    if (oneCap) caps = caps.slice(0, 1);
     const tags = (w.hashtags || []).join(' ');
     // แยกลิงก์ออกจากแคปชั่น (ลิงก์สั้นแยกตามแพลตฟอร์ม)
     const URL_RE = /https?:\/\/[^\s)]+/g;
@@ -1709,12 +1863,13 @@ async function workView(qs) {
     const capText = (k) => (hasLink ? stripLink(w.captions[k]) : w.captions[k]) + (tags ? '\n\n' + tags : '');
     $('main').innerHTML = `
       ${w.purged ? `<section class="card"><b>ไฟล์ถูกลบจากเซิร์ฟเวอร์แล้ว</b><span class="muted">ครบ ${CAT?.keepDays || 7} วัน · แคปชั่นยังคัดลอกได้ · กด "สร้างแบบนี้อีก" เพื่อทำใหม่</span></section>`
-        : `<div class="gallery">${w.files.map((f, i) => `<figure>${f.type === 'video' ? `<video src="${f.url}" ${f.thumb ? `poster="${f.thumb}"` : ''} controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;aspect-ratio:9/16"></video>` : `<img src="${f.url}" alt="ภาพที่ ${i + 1}" width="${f.w}" height="${f.h}">`}
+        : `<div class="gallery">${w.files.map((f, i) => w.params?.remix && f.type !== 'video' ? '' : `<figure>${f.type === 'video' ? `<video src="${f.url}" ${f.thumb ? `poster="${f.thumb}"` : ''} controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;aspect-ratio:9/16"></video>` : `<img src="${f.url}" alt="ภาพที่ ${i + 1}" width="${f.w}" height="${f.h}">`}
           <figcaption class="grid2"><button type="button" class="btn sm" data-save="${i}">บันทึกลงเครื่อง</button><a class="btn dark sm" href="${f.url}?dl=1" download>ดาวน์โหลด</a></figcaption></figure>`).join('')}</div>
         <p class="muted">ไฟล์อยู่บนเซิร์ฟเวอร์อีก ${daysLeft(w.expiresAt)} วัน · ${w.free ? 'ภาพฟรี' : `ใช้ ${w.cost} ดาว`}</p>
         ${w.params?.script?.length ? `<details class="card"><summary style="font-weight:600;cursor:pointer">บทพากย์</summary><p class="muted" style="margin:0">${esc(w.params.script.join(' '))}</p></details>` : ''}`}
+      ${w.params?.remix ? remixHtml(w) : ''}
       ${caps.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>แคปชั่น</h2>
-        <div class="chips" role="tablist">${caps.map(([k, l], i) => `<button type="button" class="chip" role="tab" data-cap="${k}" aria-pressed="${i === 0}">${l}</button>`).join('')}</div>
+        ${caps.length < 2 ? '' : `<div class="chips" role="tablist">${caps.map(([k, l], i) => `<button type="button" class="chip" role="tab" data-cap="${k}" aria-pressed="${i === 0}">${l}</button>`).join('')}</div>`}
         <textarea id="cap" rows="7" aria-label="แคปชั่น">${esc(capText(caps[0][0]))}</textarea>
         ${hasLink ? `<div class="grid2"><button type="button" class="btn dark" id="copyCap">คัดลอกแคปชั่น</button><button type="button" class="btn" id="copyLink">คัดลอกลิงก์</button></div>
           <div class="row" style="gap:8px"><input id="capLink" type="text" readonly value="${esc(linkOf(caps[0][0]))}" aria-label="ลิงก์ Affiliate" style="flex:1;min-width:0"></div>
@@ -1749,6 +1904,7 @@ async function workView(qs) {
       api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'copy', p: app.querySelector('[data-cap][aria-pressed="true"]')?.dataset.cap } }).catch(() => {});
     };
     app.querySelectorAll('[data-save]').forEach((b) => b.onclick = () => saveImage(w, Number(b.dataset.save)));
+    if (w.params?.remix) bindRemix(w);
     const td = $('#toDrive'); if (td) td.onclick = async () => {
       td.disabled = true; td.textContent = 'กำลังส่งเข้า Drive…';
       try { const r = await api(`api/works/${w.id}/drive`, { method: 'POST', body: {} }); toast(`ส่ง ${r.files} ภาพ + แคปชั่นเข้า Drive แล้ว`); td.textContent = 'ส่งเข้า Drive แล้ว ✓'; }
@@ -2402,13 +2558,16 @@ async function adminViral() {
   const groups = Object.keys(SRC).map((k) => [k, d.items.filter((x) => x.source === k).slice(0, 30)]);
   const cnt = Object.fromEntries((d.counts || []).map((c) => [c.source, c]));
   const mk = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 7);
-  $('main').innerHTML = `<section class="card"><b>เพิ่มคลิปไวรัลเอง</b><span class="muted">วางลิงก์ TikTok / YouTube (ดึงชื่อและภาพให้อัตโนมัติ) หรือ Facebook / IG (ใส่ชื่อเอง) · ปักหมุดขึ้นหน้าแรก 14 วัน</span>
-      <input type="url" id="vu" placeholder="https://www.tiktok.com/@.../video/..." aria-label="ลิงก์คลิป">
-      <input type="text" id="vt" maxlength="200" placeholder="ชื่อ/คำอธิบาย (ไม่บังคับสำหรับ TikTok/YouTube)" aria-label="ชื่อคลิป">
+  $('main').innerHTML = `<section class="card"><b>แนบคลิปไวรัลหน้าแรก</b><span class="muted">วางลิงก์ได้หลายลิงก์ (บรรทัดละ 1) · รับเฉพาะ <b>TikTok · YouTube Shorts · Reels (Instagram/Facebook)</b> · ระบบดึงชื่อ/ภาพปก และให้ AI คิดไอเดียต่อยอดให้</span>
+      <textarea id="vu" rows="4" placeholder="https://www.tiktok.com/@.../video/...&#10;https://youtube.com/shorts/...&#10;https://www.instagram.com/reel/..." aria-label="ลิงก์คลิป"></textarea>
+      <input type="text" id="vt" maxlength="200" placeholder="ชื่อ/คำอธิบาย (ไม่บังคับ · ใช้เมื่อวาง 1 ลิงก์)" aria-label="ชื่อคลิป">
+      <label class="f" for="vg">แสดงให้ลูกค้าสไตล์ (ไม่บังคับ)<select id="vg"><option value="">ทุกคน</option>${d.groups.map((g) => `<option value="${g.key}">${g.emoji} ${esc(g.label)}</option>`).join('')}</select></label>
       <button type="button" class="btn" id="vadd">เพิ่มคลิป</button></section>
+    <details class="card"><summary><b>ดึงคลิปอัตโนมัติ (เสียงบ)</b> · ตอนนี้ ${d.cfg.auto ? '<b style="color:var(--warn)">เปิด</b>' : 'ปิด'}</summary>
+      <label class="row" for="vauto" style="gap:10px;margin-top:8px"><input id="vauto" type="checkbox" class="sw-in" ${d.cfg.auto ? 'checked' : ''}><span>เปิดดึงอัตโนมัติ (Google Trends / YouTube / ScrapeCreators) · ปิดไว้ = หน้าแรกแสดงเฉพาะคลิปที่แนบเอง</span></label>
     <section class="card"><div class="row between"><b>สถานะการดึงข้อมูล</b><button type="button" class="btn dark sm" id="vref">ดึงใหม่ตอนนี้</button></div>
       <span class="muted">คลิปไวรัล TikTok/IG/YouTube Shorts/FB (ScrapeCreators) ${d.sc ? '✓' : '✗ ยังไม่ใส่ SCRAPECREATORS_API_KEY'} · Google Trends ✓ · YouTube มาแรง ${d.youtube ? '✓' : '✗'} · AI คัดกรอง+ไอเดีย ${d.ai ? '✓' : '✗'}</span>
-      <span class="muted">ล่าสุด ${d.lastRun ? new Date(d.lastRun).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '-'} · ดึงอัตโนมัติทุก 2 ชม.${d.lastErr ? ` · ⚠️ ${esc(d.lastErr)}` : ''}</span>
+      <span class="muted">ล่าสุด ${d.lastRun ? new Date(d.lastRun).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '-'}${d.cfg.auto ? ' · ดึงอัตโนมัติทุก 6 ชม.' : ''}${d.lastErr ? ` · ⚠️ ${esc(d.lastErr)}` : ''}</span>
       <div class="grid2">${kpi('เครดิตใช้วันนี้', `${num(d.usage.used)} / ${num(d.cfg.daily)}`)}${kpi('เครดิตใช้เดือนนี้', num(d.usage.month?.[mk] || 0), d.usage.remaining != null ? `เหลือในบัญชี ${num(d.usage.remaining)}` : '')}</div>
       <span class="muted" style="font-size:13px">7 วันล่าสุด: ${Object.entries(cnt).map(([k, c]) => `${SRC[k] || k} ${num(c.n)} (AI ซ่อน ${num(c.hidden)})`).join(' · ') || '-'}</span></section>
     <section class="card"><b>ตั้งค่าการดึงคลิปไวรัล</b>
@@ -2420,7 +2579,7 @@ async function adminViral() {
       <label class="f" for="vytd">ค้น YouTube ต่อวัน (สูงสุด 95)<input id="vytd" type="number" min="0" max="95" value="${d.cfg.ytDaily}"><span class="muted" style="font-size:12px">วันนี้ค้นไปแล้ว ${num(d.ytUsage?.day === new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10) ? d.ytUsage.used : 0)} ครั้ง</span></label>
       <details><summary class="muted">คำค้นของแต่ละสไตล์ (${d.groups.length} กลุ่ม)</summary><span class="muted" style="font-size:13px">${d.groups.map((g) => `${g.emoji} ${esc(g.label)}: ${g.q.map(esc).join(', ')}`).join('<br>')}</span></details>
       <button type="button" class="btn sm" id="vcfg">บันทึกการตั้งค่า</button>
-      ${Object.keys(d.samples || {}).length ? `<details><summary class="muted">ตัวอย่างข้อมูลดิบล่าสุด (สำหรับตรวจระบบ)</summary>${Object.entries(d.samples).map(([k, v]) => `<p class="muted" style="font-size:12px;overflow-wrap:anywhere"><b>${k}</b> "${esc(v.kw)}" · ${v.count} รายการ · keys: ${esc(v.keys.join(', '))}<br>${esc(v.first)}</p>`).join('')}</details>` : ''}</section>
+      ${Object.keys(d.samples || {}).length ? `<details><summary class="muted">ตัวอย่างข้อมูลดิบล่าสุด (สำหรับตรวจระบบ)</summary>${Object.entries(d.samples).map(([k, v]) => `<p class="muted" style="font-size:12px;overflow-wrap:anywhere"><b>${k}</b> "${esc(v.kw)}" · ${v.count} รายการ · keys: ${esc(v.keys.join(', '))}<br>${esc(v.first)}</p>`).join('')}</details>` : ''}</section></details>
     ${groups.map(([k, xs]) => xs.length ? `<h2>${SRC[k]} (${xs.length})</h2><div class="list">${xs.map((x) => `<div style="display:flex;gap:10px;align-items:flex-start">
       ${x.thumb ? `<img src="${x.thumb}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px">` : ''}
       <span style="flex:1;min-width:0"><b style="font-size:14px">${esc(x.title)}</b>${!x.safe ? ' <span class="badge b-warn">AI ซ่อน: ไม่เหมาะ</span>' : ''}${!x.active ? ' <span class="badge b-warn">ปิดแล้ว</span>' : ''}<br>
@@ -2433,13 +2592,13 @@ async function adminViral() {
           ${k === 'curated' ? `<button type="button" class="btn ghost sm" data-vd="${x.id}">ลบ</button>` : ''}</span></span></div>`).join('')}</div>` : '').join('') || '<p class="muted">ยังไม่มีข้อมูล กด "ดึงใหม่ตอนนี้"</p>'}`;
   $('#vadd').onclick = async (e) => {
     e.target.disabled = true;
-    try { const r = await api('api/admin/viral', { method: 'POST', body: { url: $('#vu').value.trim(), title: $('#vt').value.trim() } }); toast(`เพิ่มแล้ว: ${r.title}`); adminViral(); }
+    try { const r = await api('api/admin/viral', { method: 'POST', body: { urls: $('#vu').value, title: $('#vt').value.trim(), group: $('#vg').value } }); const bad = (r.results || []).filter((x) => x.error); toast(`เพิ่มแล้ว ${r.added} คลิป${bad.length ? ` · ข้าม ${bad.length} ลิงก์ (ไม่ใช่ Reels/Shorts/TikTok)` : ''}`); adminViral(); }
     catch (x) { toast(x.message); e.target.disabled = false; }
   };
   app.querySelectorAll('[data-vpl]').forEach((b) => b.onclick = () => b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')));
   $('#vcfg').onclick = async () => {
     const platforms = Object.fromEntries([...app.querySelectorAll('[data-vpl]')].map((b) => [b.dataset.vpl, b.getAttribute('aria-pressed') === 'true']));
-    try { await api('api/admin/viral/cfg', { method: 'PUT', body: { daily: Number($('#vday').value), perQuery: Number($('#vpq').value), platforms, ytShorts: $('#vyt').checked, ytDaily: Number($('#vytd').value) } }); toast('บันทึกแล้ว'); } catch (x) { toast(x.message); }
+    try { await api('api/admin/viral/cfg', { method: 'PUT', body: { auto: $('#vauto').checked, daily: Number($('#vday').value), perQuery: Number($('#vpq').value), platforms, ytShorts: $('#vyt').checked, ytDaily: Number($('#vytd').value) } }); toast('บันทึกแล้ว'); } catch (x) { toast(x.message); }
   };
   $('#vref').onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'กำลังดึง…'; try { await api('api/admin/viral/refresh', { method: 'POST', body: {} }); toast('ดึงข้อมูลแล้ว'); } catch (x) { toast(x.message); } adminViral(); };
   app.querySelectorAll('[data-vp]').forEach((b) => b.onclick = async () => { const o = JSON.parse(b.dataset.vp); await api(`api/admin/viral/${o.id}`, { method: 'PATCH', body: o }).catch((x) => toast(x.message)); adminViral(); });

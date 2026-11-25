@@ -9,6 +9,7 @@ import { VIDEO_STYLES, VIDEO_PRICE, DRAMA_PRICE, MOTION_PRICE, AVATAR_PRICE } fr
 
 const API = () => (process.env.GEMINI_URL || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
 const KEY = () => process.env.GEMINI_API_KEY || '';
+const CHAT_KEY = () => process.env.GEMINI_CHAT_KEY || ''; // คีย์ฟรีเฉพาะแชท (โปรเจกต์ไม่ผูกบิล)
 const MODEL = process.env.MCRICH_CHAT_MODEL || process.env.MCRICH_TEXT_MODEL || 'gemini-flash-latest';
 const OA_SECRET = () => process.env.LINEOA_SECRET || '';
 const OA_TOKEN = () => process.env.LINEOA_TOKEN || '';
@@ -82,29 +83,36 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
     const contents = [...hist.map((h) => ({ role: h.role === 'model' ? 'model' : 'user', parts: [{ text: h.content.slice(0, 400) }] })), { role: 'user', parts: [{ text }] }];
     let out = { reply: 'แง ริชค้างแป๊บ ลองพิมพ์ใหม่อีกทีน้า 🥺', draft: null, chips: [] };
     try {
-      if (!KEY()) throw new Error('ไม่มี GEMINI_API_KEY');
+      if (!KEY() && !CHAT_KEY()) throw new Error('ไม่มี GEMINI_API_KEY');
+      // คีย์ฟรี (โปรเจกต์ไม่ผูกบิล) ก่อน → โควตาฟรีหมด/ใช้ไม่ได้ ค่อยใช้คีย์จ่ายเงิน
       // ลองโมเดลหลัก → สำรอง · เจอคิวเต็ม/ล่ม (429/5xx/หมดเวลา) รอแล้วลองใหม่ · 400 ลองแบบไม่บังคับ schema
       const models = [...new Set([MODEL, ...(process.env.MCRICH_CHAT_FALLBACK || 'gemini-2.5-flash,gemini-2.5-flash-lite').split(',').map((x) => x.trim()).filter(Boolean)])];
+      const keys = [...new Set([CHAT_KEY(), KEY()].filter(Boolean))];
       let j = null, lastErr = null;
-      for (const [mi, model] of models.entries()) {
-        for (let t = 0; t < 2 && !j; t++) {
-          try {
-            const plain = t > 0 && lastErr?.status === 400; // 400 → ลองแบบเรียบง่าย (ไม่บังคับ schema/ระดับการคิด)
-            const gc = { responseMimeType: 'application/json', temperature: 0.9, ...(plain ? {} : { responseSchema: CHAT_SCHEMA, ...thinkLow(model) }) };
-            const r = await fetch(`${API()}/v1beta/models/${model}:generateContent`, {
-              method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY() },
-              body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: gc }),
-              signal: AbortSignal.timeout(mi === 0 ? 45000 : 30000),
-            });
-            const jj = await r.json().catch(() => ({}));
-            if (!r.ok) { const e = new Error(`gemini ${model} ${r.status} ${jj.error?.message || ''}`); e.status = r.status; throw e; }
-            if (!(jj.candidates?.[0]?.content?.parts || []).some((p) => p.text && !p.thought)) { const e = new Error(`gemini ${model} ว่าง ${jj.candidates?.[0]?.finishReason || jj.promptFeedback?.blockReason || ''}`); e.status = 0; throw e; }
-            j = jj; if (mi || t) log('chat recovered', model, t);
-          } catch (e) {
-            lastErr = e; log('chat try fail', uid, e.message.slice(0, 200));
-            if ([401, 403].includes(e.status)) break; // คีย์ผิด/ไม่มีสิทธิ์: ลองโมเดลอื่นต่อ
-            if (e.status === 429 || e.status >= 500 || e.name === 'TimeoutError') await new Promise((ok) => setTimeout(ok, 1200));
+      for (const key of keys) {
+        const free = key === CHAT_KEY() && key !== KEY();
+        for (const [mi, model] of models.entries()) {
+          for (let t = 0; t < 2 && !j; t++) {
+            try {
+              const plain = t > 0 && lastErr?.status === 400; // 400 → ลองแบบเรียบง่าย (ไม่บังคับ schema/ระดับการคิด)
+              const gc = { responseMimeType: 'application/json', temperature: 0.9, ...(plain ? {} : { responseSchema: CHAT_SCHEMA, ...thinkLow(model) }) };
+              const r = await fetch(`${API()}/v1beta/models/${model}:generateContent`, {
+                method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+                body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt(m, works) }] }, contents, generationConfig: gc }),
+                signal: AbortSignal.timeout(mi === 0 ? 45000 : 30000),
+              });
+              const jj = await r.json().catch(() => ({}));
+              if (!r.ok) { const e = new Error(`gemini ${model} ${r.status} ${jj.error?.message || ''}`); e.status = r.status; throw e; }
+              if (!(jj.candidates?.[0]?.content?.parts || []).some((p) => p.text && !p.thought)) { const e = new Error(`gemini ${model} ว่าง ${jj.candidates?.[0]?.finishReason || jj.promptFeedback?.blockReason || ''}`); e.status = 0; throw e; }
+              j = jj; if (mi || t || !free && keys.length > 1) log('chat ok', free ? 'free' : 'paid', model, t);
+            } catch (e) {
+              lastErr = e; log('chat try fail', free ? 'free' : 'paid', uid, e.message.slice(0, 200));
+              if ([401, 402, 403].includes(e.status)) break; // คีย์ผิด/เครดิตหมด: ข้ามไปโมเดล/คีย์ถัดไป
+              if (free && e.status === 429) break; // โควตาฟรีของรุ่นนี้หมด → รุ่นถัดไปทันที
+              if (e.status === 429 || e.status >= 500 || e.name === 'TimeoutError') await new Promise((ok) => setTimeout(ok, 1200));
+            }
           }
+          if (j || [401, 402, 403].includes(lastErr?.status) && !free) break;
         }
         if (j) break;
       }
@@ -147,7 +155,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
   app.get('/api/chat', auth, wrap(async (req, res) => {
     const rows = (await q('SELECT id, role, content, draft, channel, chips, created_at FROM chat_messages WHERE user_id=$1 ORDER BY id DESC LIMIT 60', [req.uid])).rows.reverse()
       .map((r) => (r.draft && !r.draft.est ? { ...r, draft: { ...r.draft, est: estStars(r.draft) } } : r));
-    res.json({ items: rows, quota: await quota(req.uid), oa: oaReady() && OA_ID() ? { id: OA_ID(), url: `https://line.me/R/ti/p/${encodeURIComponent(OA_ID())}` } : null, ready: !!KEY() });
+    res.json({ items: rows, quota: await quota(req.uid), oa: oaReady() && OA_ID() ? { id: OA_ID(), url: `https://line.me/R/ti/p/${encodeURIComponent(OA_ID())}` } : null, ready: !!(KEY() || CHAT_KEY()) });
   }));
   app.post('/api/chat', auth, wrap(async (req, res) => {
     const text = String(req.body?.text || '').trim().slice(0, 1000);
@@ -157,7 +165,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
       const m = await me(req.uid);
       return res.json({ reply: `⭐ ดาวคงเหลือ ${m.stars} ดาว\nภาพฟรีเหลือ ${m.freeImages.today + m.freeImages.welcome} ภาพ`, draft: null, chips: [], links: [{ label: 'เติมดาว', href: '#topup' }], local: true, quota: await quota(req.uid) });
     }
-    if (!KEY()) return res.status(503).json({ error: 'ผู้ช่วย AI กำลังตั้งค่า' });
+    if (!KEY() && !CHAT_KEY()) return res.status(503).json({ error: 'ผู้ช่วย AI กำลังตั้งค่า' });
     const qu = await quota(req.uid);
     if (qu.left <= 0) return res.status(429).json({ error: qu.burst ? 'พิมพ์เร็วไปนิด รอสักครู่แล้วส่งใหม่นะ' : `วันนี้คุยครบ ${qu.max} ข้อความแล้ว พรุ่งนี้มาคุยกันใหม่นะ` });
     const out = await ask(req.uid, text, 'web');

@@ -610,6 +610,7 @@ async function adminDash() {
   const d = await api('api/admin/stats');
   const max = Math.max(1, ...d.days.map((x) => x.baht));
   $('main').innerHTML = `
+    ${d.works.ai_broke ? `<div class="card" style="border-color:var(--bad);background:var(--bad-bg)"><b style="color:var(--bad)">⛔ เครดิต Gemini หมด — ลูกค้าสร้างงานไม่ได้ (${d.works.ai_broke} งานใน 6 ชม.)</b><span>เติมเงินที่ ai.studio/projects โปรเจกต์ mc-rich-515413 แล้วตั้งเติมอัตโนมัติ</span></div>` : ''}
     ${d.works.stuck ? `<div class="card" style="border-color:var(--warn)"><b>⚠️ งานค้างเกิน 30 นาที ${d.works.stuck} ชิ้น</b><a href="#admin?t=works&s=working">ดูรายการ ›</a></div>` : ''}
     ${d.money.review ? `<a class="card" href="#admin?t=topups" style="text-decoration:none;color:inherit;border-color:var(--lime-text)"><b>สลิปรอตรวจ ${d.money.review} รายการ ›</b></a>` : ''}
     <h2>รายได้ (เติมดาว)</h2>

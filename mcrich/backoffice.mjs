@@ -30,7 +30,8 @@ export function registerBackoffice(app, { q, pool, auth, wrap, log, banned }) {
       count(*) FILTER (WHERE status='queued')::int queued, count(*) FILTER (WHERE status='working')::int working, count(*) FILTER (WHERE status='review')::int review,
       count(*) FILTER (WHERE status='failed' AND created_at >= now() - interval '24 hours')::int failed24,
       count(*) FILTER (WHERE status='done' AND created_at >= now() - interval '24 hours')::int done24,
-      count(*) FILTER (WHERE status='working' AND created_at < now() - interval '30 minutes')::int stuck FROM works`);
+      count(*) FILTER (WHERE status='working' AND created_at < now() - interval '30 minutes')::int stuck,
+      count(*) FILTER (WHERE status='failed' AND done_at >= now() - interval '6 hours' AND params->>'failDetail' ~* 'gemini 402|prepayment|depleted')::int ai_broke FROM works`);
     const days = (await q(`SELECT to_char(d,'DD/MM') d, COALESCE((SELECT sum(amount) FROM topups WHERE status='paid' AND (paid_at ${TH})::date = d),0)::int baht,
       COALESCE((SELECT count(*) FROM works WHERE (created_at ${TH})::date = d),0)::int works
       FROM generate_series((now() ${TH})::date - 13, (now() ${TH})::date, '1 day') d ORDER BY d`)).rows;

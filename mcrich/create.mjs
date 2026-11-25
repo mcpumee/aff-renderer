@@ -192,6 +192,7 @@ export async function gpost(url, body, timeoutMs) {
 // แปลสาเหตุ Gemini ล่มเป็นภาษาคน (ให้แอดมินเห็นในหลังบ้าน/หน้าผลงาน)
 export function aiWhy(e) {
   const m = String(e?.message || ''), st = e?.status || Number((m.match(/gemini (\d{3})/) || [])[1]) || 0;
+  if (st === 402 || /prepayment|depleted/i.test(m)) return 'เครดิตเติมล่วงหน้าของ Gemini หมด → เติมเงินที่ ai.studio/projects (โปรเจกต์ mc-rich-515413)';
   if (st === 429 && /quota|exhaust|billing|credit|spend|limit/i.test(m)) return 'โควตา/เครดิต Gemini ของระบบเต็มหรือหมด → เช็กบิลและโควตาใน Google AI Studio โปรเจกต์ mc-rich-515413';
   if (st === 429) return 'Gemini คิวเต็ม (ยิงถี่เกิน) ลองใหม่อีกครู่';
   if (st === 401 || st === 403 || /API key|permission|billing account/i.test(m)) return 'คีย์ Gemini ใช้ไม่ได้ (คีย์ผิด/ถูกปิด/บัญชีบิลมีปัญหา)';

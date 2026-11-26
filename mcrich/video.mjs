@@ -463,6 +463,10 @@ export const SERIES_GENRES = [
 ];
 export const SERIES_PRICE = { 4: 25, 6: 35, 8: 45 };
 export const SERIES_LEN = { 4: 30, 6: 45, 8: 60 };
+// ตัวละครขยับจริงในฉากเด่น (Kling std ~$0.21/ฉาก) — n = จำนวนฉากที่ขยับ, price = ดาวที่บวกเพิ่ม
+export const SERIES_MOTION = { 4: { n: 2, price: 25 }, 6: { n: 2, price: 25 }, 8: { n: 3, price: 35 } };
+// เลือกฉากเด่น: ฉากเปิด ฉากจบ แล้วฉากกลางเรื่อง
+export const motionPick = (count, n) => [...new Set([0, count - 1, Math.floor(count / 2), 1, count - 2].filter((i) => i >= 0 && i < count))].slice(0, Math.min(n, count));
 export async function writeSeries(p, prev) {
   const genre = SERIES_GENRES.find((g) => g.id === p.genre) || SERIES_GENRES[0];
   const n = SERIES_LEN[p.scenes] ? p.scenes : 4;

@@ -1202,10 +1202,12 @@ function drawStep() {
           <label class="f" for="plot">เรื่องย่อ${D.genre === 'free' ? '' : ' (ไม่บังคับ ให้ AI คิดเองได้)'}<textarea id="plot" rows="3" maxlength="600" placeholder="เช่น พนักงานออฟฟิศหลับไปตื่นมาอยู่ในวังสมัยอยุธยา ต้องเอาตัวรอดด้วยความรู้ยุคใหม่">${esc(D.plot)}</textarea></label></section>
         <section style="display:flex;flex-direction:column;gap:10px"><h2>สไตล์ภาพ</h2>${chipRow(V2.art, D.art, 'art', false)}</section>`}
       <section style="display:flex;flex-direction:column;gap:10px"><h2>ความยาวตอนนี้</h2>${chipRow(Object.keys(V2.seriesPrices).map((n) => ({ id: n, label: `${n} ฉาก ~${V2.seriesLen[n]} วิ · ${V2.seriesPrices[n]} ดาว` })), String(D.scenes), 'scenes', false)}</section>
+      ${V2.seriesMotion ? `<label class="card" for="smot" style="flex-direction:row;align-items:center;gap:12px;cursor:pointer"><span style="flex:1"><b>🎬 ให้ตัวละครขยับจริงในฉากเด่น</b> <span class="muted">+${V2.seriesMotion[D.scenes]?.price || V2.seriesMotion[4].price} ดาว</span><br><span class="muted" style="font-size:13px">${V2.seriesMotion[D.scenes]?.n || 2} ฉาก (ฉากเปิด ฉากจบ ฉากกลางเรื่อง) ตัวละครขยับ ทำงาน แสดงสีหน้า · ฉากอื่นเป็นภาพกล้องเคลื่อน</span></span><input id="smot" type="checkbox" class="sw-in" ${D.motion ? 'checked' : ''}></label>` : ''}
       <span class="muted">AI เขียนบท วาดทุกฉาก พากย์หลายเสียงตามตัวละคร จบแบบค้างคาให้ทำตอนต่อไปได้ · ไม่ต้องใช้รูปสินค้า</span>`);
     const fields = ['product', 'plot'];
     bindChips([], (k) => { if (k === 'scenes') D.scenes = Number(D.scenes); });
     app.querySelectorAll('[data-sgenre]').forEach((b) => b.onclick = () => { readInputs(fields); D.genre = b.dataset.sgenre; drawStep(); });
+    const sm = $('#smot'); if (sm) sm.onchange = (e) => { readInputs(fields); D.motion = e.target.checked; drawStep(); };
     const ns = $('#newSeries'); if (ns) ns.onclick = () => { D.seriesFrom = 0; D.seriesInfo = null; D.plot = ''; drawStep(); };
     if (!cont) {
       api('api/works').then((r) => {
@@ -1575,11 +1577,11 @@ function drawStep() {
       <p class="muted">ยอดดาวคุณ ${num(CAT.stars)} ดาว · ยังไม่ตัดดาวจนกว่าจะยืนยัน</p>`);
     $('#next').onclick = () => { D.step = 5; drawStep(); };
   } else if (s === 4 && D.style === 'v_series') {
-    const total = CAT.video.seriesPrices[D.scenes] || CAT.video.seriesPrices[4];
+    const total = (CAT.video.seriesPrices[D.scenes] || CAT.video.seriesPrices[4]) + (D.motion && CAT.video.seriesMotion ? (CAT.video.seriesMotion[D.scenes] || CAT.video.seriesMotion[4]).price : 0);
     stepShell(`<h1 style="font-size:22px">ราคา</h1>
       <div class="list kv"><div><span class="muted">เรื่อง</span><span>${esc(D.seriesInfo ? `${D.seriesInfo.title} EP.${(D.seriesInfo.ep || 1) + 1}` : (D.product || 'ให้ AI ตั้งชื่อ'))}</span></div>
         <div><span class="muted">แนว</span><span>${esc(CAT.video.seriesGenres.find((g) => g.id === D.genre)?.label || '')}</span></div>
-        <div><span class="muted">สไตล์ภาพ</span><span>${esc(CAT.video.art.find((a) => a.id === D.art)?.label || '')}</span></div>
+        <div><span class="muted">สไตล์ภาพ</span><span>${esc(CAT.video.art.find((a) => a.id === D.art)?.label || '')}</span></div>${D.motion && CAT.video.seriesMotion ? `<div><span class="muted">ตัวละครขยับ</span><span>${(CAT.video.seriesMotion[D.scenes] || CAT.video.seriesMotion[4]).n} ฉากเด่น (+${(CAT.video.seriesMotion[D.scenes] || CAT.video.seriesMotion[4]).price} ดาว)</span></div>` : ''}
         <div><span class="muted">ความยาว</span><span>${D.scenes} ฉาก (~${CAT.video.seriesLen[D.scenes]} วิ)</span></div></div>
       <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">รวม</span><b class="num" style="font-size:28px">${ICON.star}${total} ดาว</b></div>
         <span class="muted">AI เขียนบท วาดทุกฉาก พากย์หลายเสียง ใส่ซับชื่อตัวละคร ใช้เวลา 4–10 นาที</span></section>

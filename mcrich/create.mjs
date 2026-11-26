@@ -447,7 +447,8 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       p.goal = 'content';
       p.length = V.SERIES_LEN[p.scenes];
       const cS = checkContent({ product: p.product, plot: p.plot });
-      const cost = V.SERIES_PRICE[p.scenes];
+      p.motion = !!b.motion && V.klingReady() && !!pubUrl;
+      const cost = V.SERIES_PRICE[p.scenes] + (p.motion ? V.SERIES_MOTION[p.scenes].price : 0);
       return { video: true, style, tier: { id: 'series', free: false, stars: cost }, versions: 1, p, cost, ...cS };
     }
     if (style.id === 'v_drama') {
@@ -499,7 +500,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         music: V.MUSIC,
         remix: { prices: RX.REMIX_PRICE, modes: RX.AVATAR_MODES, maxSec: RX.REMIX_MAX_SEC, flow: RX.FLOW_URL },
         lengths: V.LENGTHS, prices: V.VIDEO_PRICE, premiumExtra: V.PREMIUM_VOICE_EXTRA,
-        genres: V.GENRES, art: V.ART.map(({ id, label }) => ({ id, label })), dramaPrices: V.DRAMA_PRICE, seriesGenres: V.SERIES_GENRES, seriesPrices: V.SERIES_PRICE, seriesLen: V.SERIES_LEN,
+        genres: V.GENRES, art: V.ART.map(({ id, label }) => ({ id, label })), dramaPrices: V.DRAMA_PRICE, seriesGenres: V.SERIES_GENRES, seriesPrices: V.SERIES_PRICE, seriesMotion: V.klingReady() && pubUrl ? V.SERIES_MOTION : null, seriesLen: V.SERIES_LEN,
         motionPresets: V.MOTION_PRESETS.map(({ id, label, desc }) => ({ id, label, desc })), motionPrice: V.MOTION_PRICE.std,
         film: { ready: FM.filmReady(), prices: FM.FILM_PRICE },
         avatar: { ready: V.avatarReady(), std: V.klingReady(), pro: V.heygenReady(), prices: V.AVATAR_PRICE, proPrices: V.AVATAR_PRO_PRICE, langs: V.AVATAR_LANGS.map(({ id, label, cps }) => ({ id, label, cps })), designPrice: V.AVATAR_DESIGN_PRICE.std },
@@ -1517,6 +1518,20 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     let next = 1;
     await Promise.all([0, 1].map(async () => { while (next < d.scenes.length) { const i = next++; files[i] = await sceneImg(i); } }));
     for (let i = 1; i < files.length; i++) if (!files[i]) files[i] = files[i - 1];
+    // ตัวละครขยับจริงในฉากเด่น (ทำคู่ขนานกับพากย์เสียง) — ล้มฉากไหนก็ใช้ภาพนิ่งแทน
+    const moving = new Array(files.length).fill(null);
+    const motionJob = !p.motion ? Promise.resolve() : Promise.all(V.motionPick(files.length, V.SERIES_MOTION[p.scenes]?.n || 2).map(async (i) => {
+      try {
+        const o = await V.falRun(process.env.FILM_I2V_STD || 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video', {
+          image_url: pubUrl(files[i]), duration: '5',
+          prompt: `${art.prompt}. ${d.scenes[i].scene}. The characters move naturally and expressively doing the action in the scene (hands working, small gestures, facial expression changes), subtle ambient motion, gentle slow camera push-in. Keep exactly the same art style, characters and background. No text.`,
+          negative_prompt: 'text, subtitles, watermark, style change, morphing faces, extra limbs',
+        });
+        const f = path.join(WORK_DIR, `tmp-${w.id}-mv${i}.mp4`);
+        await V.download(o.video.url, f);
+        moving[i] = f;
+      } catch (e) { log('series motion fail', w.id, i, e.message.slice(0, 160)); }
+    }));
     const lines = [];
     try {
       const all = d.scenes.flatMap((sc, si) => sc.lines.map((l) => ({ ...l, shot: si })));
@@ -1530,7 +1545,8 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
           stage(`กำลังพากย์เสียง ${lines.filter(Boolean).length}/${all.length}`, 45 + Math.round((lines.filter(Boolean).length / all.length) * 10));
         }
       }));
-    } catch (e) { log('series voice fail', w.id, e.message); files.forEach((f) => f && fs.rm(f, () => {})); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    } catch (e) { log('series voice fail', w.id, e.message); await motionJob; [...files, ...moving].forEach((f) => f && fs.rm(f, () => {})); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    if (p.motion) { stage('ให้ตัวละครขยับฉากเด่น', 56); await motionJob; }
     // เก็บภาพฉากแรกไว้ถาวร ใช้เป็นต้นแบบหน้าตาตัวละครของตอนถัดไป
     const frame = `w${w.id}-${rand(6).toLowerCase()}.jpg`;
     try { fs.copyFileSync(files[0], path.join(SERIES_DIR, frame)); } catch { /* ไม่มีต้นแบบก็ยังต่อได้ */ }
@@ -1538,12 +1554,12 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     try {
       stage('กำลังตัดต่อ', 58);
       out = await V.render({
-        type: 'story', lines, shots: files.map((f, i) => ({ url: V.fileUrl(f), kind: 'image', onscreen: i === 0 ? (d.hookText || `EP.${d.ep} ${d.epTitle}`) : d.scenes[i].onscreen })),
+        type: 'story', lines, shots: files.map((f, i) => ({ url: V.fileUrl(moving[i] || f), kind: moving[i] ? 'video' : 'image', onscreen: i === 0 ? (d.hookText || `EP.${d.ep} ${d.epTitle}`) : d.scenes[i].onscreen })),
         endImage: V.fileUrl(files[files.length - 1]), price: `EP.${d.ep}`, cta: 'ติดตามตอนต่อไป', music: V.pickMusic(p.music, { reveal: 'none' }, p.tone || 'ตื่นเต้น') || undefined, musicVolume: 0.1,
         metadata: { mcrich: w.id },
       }, (s) => stage(s.status === 'queued' ? 'รอคิวตัดต่อ' : s.stage || 'กำลังตัดต่อ', 58 + Math.round((s.progress || 0) * 0.38)));
     } catch (e) { log('series render fail', w.id, e.message); fs.rm(path.join(SERIES_DIR, frame), () => {}); return fail('ตัดต่อคลิปไม่สำเร็จ · คืนดาวแล้ว'); }
-    finally { setTimeout(() => [...new Set(files)].forEach((f) => f && fs.rm(f, () => {})), 1000); }
+    finally { setTimeout(() => [...new Set([...files, ...moving])].forEach((f) => f && fs.rm(f, () => {})), 1000); }
     stage('เกือบเสร็จ', 97);
     const base = `${w.user_id}-${w.id}-s-${rand(6).toLowerCase()}`;
     V.moveFile(out.mp4, path.join(WORK_DIR, `${base}.mp4`));

@@ -1194,12 +1194,12 @@ function drawStep() {
       ${cont ? `<section class="card"><b>เรื่องย่อที่ผ่านมา</b><span class="muted">${esc(cont.summary || '')}</span>${cont.cliff ? `<span class="muted">ตอนที่แล้วค้างไว้ที่: ${esc(cont.cliff)}</span>` : ''}
           <span class="muted">ตัวละครเดิม: ${(cont.chars || []).map((c) => esc(c.name)).join(', ')} · หน้าตา เสียง และลายเส้นเดิมทุกตอน</span>
           <button type="button" class="btn ghost sm" id="newSeries">เริ่มเรื่องใหม่แทน</button></section>
-        <label class="f" for="plot">อยากให้ตอนนี้เกิดอะไร (ไม่บังคับ)<textarea id="plot" rows="3" maxlength="600" placeholder="เช่น พระเอกค้นพบว่าคาถาใช้ได้แค่ตอนเที่ยงคืน">${esc(D.plot)}</textarea></label>`
+        <label class="f" for="plot">อยากให้ตอนนี้เกิดอะไร (ไม่บังคับ)<textarea id="plot" rows="6" maxlength="5000" placeholder="เช่น พระเอกค้นพบว่าคาถาใช้ได้แค่ตอนเที่ยงคืน">${esc(D.plot)}</textarea></label>`
       : `<div id="mySeries"></div>
         <h2>แนวเรื่อง</h2>
         <div class="grid2">${V2.seriesGenres.map((g) => `<button type="button" class="card opt" data-sgenre="${g.id}" aria-pressed="${D.genre === g.id}"><b>${esc(g.label)}</b><span class="muted">${esc(g.desc)}</span></button>`).join('')}</div>
         <section class="card"><label class="f" for="product">ชื่อเรื่อง / แนวคิด${D.genre === 'free' ? '' : ' (ไม่บังคับ)'}<input id="product" type="text" maxlength="120" placeholder="เช่น เด็กส่งของที่ได้พลังเวทมนตร์" value="${esc(D.product)}"></label>
-          <label class="f" for="plot">เรื่องย่อ${D.genre === 'free' ? '' : ' (ไม่บังคับ ให้ AI คิดเองได้)'}<textarea id="plot" rows="3" maxlength="600" placeholder="เช่น พนักงานออฟฟิศหลับไปตื่นมาอยู่ในวังสมัยอยุธยา ต้องเอาตัวรอดด้วยความรู้ยุคใหม่">${esc(D.plot)}</textarea></label></section>
+          <label class="f" for="plot">เรื่องย่อ${D.genre === 'free' ? '' : ' (ไม่บังคับ ให้ AI คิดเองได้)'}<textarea id="plot" rows="6" maxlength="5000" placeholder="เช่น พนักงานออฟฟิศหลับไปตื่นมาอยู่ในวังสมัยอยุธยา ต้องเอาตัวรอดด้วยความรู้ยุคใหม่">${esc(D.plot)}</textarea></label></section>
         <section style="display:flex;flex-direction:column;gap:10px"><h2>สไตล์ภาพ</h2>${chipRow(V2.art, D.art, 'art', false)}</section>`}
       <section style="display:flex;flex-direction:column;gap:10px"><h2>ความยาวตอนนี้</h2>${chipRow(Object.keys(V2.seriesPrices).map((n) => ({ id: n, label: `${n} ฉาก ~${V2.seriesLen[n]} วิ · ${V2.seriesPrices[n]} ดาว` })), String(D.scenes), 'scenes', false)}</section>
       ${V2.seriesMotion ? `<label class="card" for="smot" style="flex-direction:row;align-items:center;gap:12px;cursor:pointer"><span style="flex:1"><b>🎬 ให้ตัวละครขยับจริงในฉากเด่น</b> <span class="muted">+${V2.seriesMotion[D.scenes]?.price || V2.seriesMotion[4].price} ดาว</span><br><span class="muted" style="font-size:13px">${V2.seriesMotion[D.scenes]?.n || 2} ฉาก (ฉากเปิด ฉากจบ ฉากกลางเรื่อง) ตัวละครขยับ ทำงาน แสดงสีหน้า · ฉากอื่นเป็นภาพกล้องเคลื่อน</span></span><input id="smot" type="checkbox" class="sw-in" ${D.motion ? 'checked' : ''}></label>` : ''}
@@ -1230,7 +1230,7 @@ function drawStep() {
     const V2 = CAT.video;
     stepShell(`<h1 style="font-size:22px">ละครแนวไหน?</h1>
       <div class="grid2">${V2.genres.map((g) => `<button type="button" class="card opt" data-genre="${g.id}" aria-pressed="${D.genre === g.id}"><b>${esc(g.label)}</b><span class="muted">${esc(g.desc)}</span></button>`).join('')}</div>
-      ${D.genre === 'free' ? `<label class="f" for="plot">พล็อตเรื่อง<textarea id="plot" rows="3" maxlength="400" placeholder="เช่น ยายไปตลาดเจอขนมแปลกใหม่ หลานไม่เชื่อว่าอร่อย">${esc(D.plot)}</textarea></label>` : ''}
+      ${D.genre === 'free' ? `<label class="f" for="plot">พล็อตเรื่อง<textarea id="plot" rows="6" maxlength="5000" placeholder="เช่น ยายไปตลาดเจอขนมแปลกใหม่ หลานไม่เชื่อว่าอร่อย">${esc(D.plot)}</textarea></label>` : ''}
       <section style="display:flex;flex-direction:column;gap:10px"><h2>สไตล์ภาพ</h2>${chipRow(V2.art, D.art, 'art', false)}</section>
       <section style="display:flex;flex-direction:column;gap:10px"><h2>จำนวนฉาก</h2>${chipRow([{ id: '4', label: `4 ฉาก ~30 วิ · ${V2.dramaPrices[4]} ดาว` }, { id: '6', label: `6 ฉาก ~45 วิ · ${V2.dramaPrices[6]} ดาว` }], String(D.scenes), 'scenes', false)}</section>
       <section class="card"><b>รูปสินค้า (1 รูป)</b><span class="muted">AI จะวาดสินค้านี้ลงในฉาก และใช้ปิดท้ายคลิปพร้อมราคา</span>
@@ -2047,7 +2047,7 @@ async function filmNew() {
       <button type="button" class="btn dark" id="ideas">✨ ให้ AI เสนอพล็อต 3 แบบ (ฟรี)</button>
       ${FD.ideas ? FD.ideas.map((x, i) => `<button type="button" class="card" data-idea="${i}" style="text-align:left;${FD.pick === i ? 'border-color:var(--lime-text);background:var(--acc-card)' : ''}"><b>${esc(x.title)}</b><span>${esc(x.logline)}</span><span class="muted">ฮุค: ${esc(x.hook)}</span><span class="muted">หักมุม: ${esc(x.twist)}</span></button>`).join('') : ''}
       <label class="f" for="ftitle">ชื่อเรื่อง<input id="ftitle" type="text" maxlength="60" value="${esc(FD.title)}"></label>
-      <label class="f" for="flog">เรื่องย่อ<textarea id="flog" rows="3" maxlength="600">${esc(FD.logline)}</textarea></label></section>
+      <label class="f" for="flog">เรื่องย่อ<textarea id="flog" rows="6" maxlength="5000">${esc(FD.logline)}</textarea></label></section>
     <button type="button" class="btn" id="fcreate">สร้างโปรเจกต์ + ให้ AI วางโครงทุกตอน (ฟรี)</button>
     <p class="muted">เขียนเรื่องและสคริปต์ฟรี · เสียดาวตอนกด "ถ่ายทำ" แต่ละตอนเท่านั้น</p>
   </main>${nav('create')}`;

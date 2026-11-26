@@ -296,6 +296,8 @@ async function finish(buf, { logo }) {
   return { out, w: W, h: H };
 }
 
+// เรื่องย่อ/พล็อต: ยาวได้ (เล่าเรื่องหลายตอน)
+const PLOT_MAX = 5000;
 export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl, films, hooks = {} }) {
   const WORK_DIR = path.join(DATA_DIR, 'works');
   const REF_DIR = path.join(DATA_DIR, 'refs');
@@ -440,7 +442,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (style.id === 'v_series') {
       Object.assign(p, {
         genre: V.SERIES_GENRES.some((g) => g.id === b.genre) ? b.genre : 'magic', art: V.ART.some((a) => a.id === b.art) ? b.art : 'cartoon3d',
-        scenes: V.SERIES_PRICE[Number(b.scenes)] ? Number(b.scenes) : 4, plot: clean(b.plot, 600), seriesFrom: Math.max(0, Number(b.seriesFrom) || 0), dialogue: false, premium: false,
+        scenes: V.SERIES_PRICE[Number(b.scenes)] ? Number(b.scenes) : 4, plot: clean(b.plot, PLOT_MAX), seriesFrom: Math.max(0, Number(b.seriesFrom) || 0), dialogue: false, premium: false,
       });
       if (!p.seriesFrom && !p.product && !p.plot) return { error: 'ตั้งชื่อเรื่องหรือพิมพ์เรื่องย่อก่อน' };
       if (!p.seriesFrom && p.genre === 'free' && !p.plot) return { error: 'พิมพ์เรื่องย่อที่อยากได้' };
@@ -454,7 +456,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     if (style.id === 'v_drama') {
       Object.assign(p, {
         genre: V.GENRES.some((g) => g.id === b.genre) ? b.genre : 'inlaw', art: V.ART.some((a) => a.id === b.art) ? b.art : 'cartoon3d',
-        scenes: Number(b.scenes) === 6 ? 6 : 4, plot: clean(b.plot, 400), dialogue: false, premium: false,
+        scenes: Number(b.scenes) === 6 ? 6 : 4, plot: clean(b.plot, PLOT_MAX), dialogue: false, premium: false,
       });
       if (!p.product) return { error: 'ใส่ชื่อสินค้าก่อน' };
       if (p.genre === 'free' && !p.plot) return { error: 'พิมพ์พล็อตเรื่องที่อยากได้' };

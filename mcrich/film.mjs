@@ -101,7 +101,7 @@ ${castText(f.cast)}
 กฎ: ทุกตอนต้องมีเหตุการณ์สำคัญ 1 อย่าง และจบด้วยการค้างคา (cliffhanger) ให้อยากดูตอนต่อไป ตอนสุดท้ายปิดเรื่องให้สะใจ/ซึ้ง · ตัวละครมีนิสัยคงที่ · ฉากถ่ายทำได้จริง
 ตอบ JSON ภาษาไทย: {"bible":{"world":"โลก/ฉากหลัก 1-2 ประโยค","tone":"โทนเรื่อง","rules":"สิ่งที่ต้องคงที่ทั้งเรื่อง"},"episodes":[{"n":1,"title":"ชื่อตอน","summary":"เกิดอะไรขึ้น 2-3 ประโยค","cliff":"ค้างคาท้ายตอน"}]}`, 0.8);
   const n = f.n || f.episodes.length;
-  const eps = (o.episodes || []).slice(0, n).map((e, i) => ({ n: i + 1, title: clean(e.title, 60), summary: clean(e.summary, 500), cliff: clean(e.cliff, 200), script: null, workId: null }));
+  const eps = (o.episodes || []).slice(0, n).map((e, i) => ({ n: i + 1, title: clean(e.title, 60), summary: clean(e.summary, 1500), cliff: clean(e.cliff, 200), script: null, workId: null }));
   return { bible: { world: clean(o.bible?.world, 300), tone: clean(o.bible?.tone, 120), rules: clean(o.bible?.rules, 300) }, episodes: eps };
 }
 /** สคริปต์ 1 ตอน: ช็อตละ 5 วิ + บทพูดตัวละคร (ยาวพอดีเวลา) */
@@ -362,7 +362,7 @@ export function registerFilm(app, { q, auth, wrap, log }) {
     const b = req.body || {};
     const cast = await castFrom(req.uid, b.cast);
     if (!cast.length) return res.status(400).json({ error: 'เลือกนักแสดงอย่างน้อย 1 คน' });
-    const title = clean(b.title, 60), logline = clean(b.logline, 600);
+    const title = clean(b.title, 60), logline = clean(b.logline, 5000);
     if (!title || !logline) return res.status(400).json({ error: 'ใส่ชื่อเรื่องและเรื่องย่อ (หรือให้ AI เสนอพล็อต)' });
     const c = checkContent({ product: title, plot: [logline, b.premise].join(' ') }); if (c.blocked) return res.status(400).json({ error: c.blocked });
     if ((await q('SELECT count(*)::int n FROM films WHERE user_id=$1', [req.uid])).rows[0].n >= 30) return res.status(429).json({ error: 'มีโปรเจกต์ครบ 30 เรื่องแล้ว ลบเรื่องที่ไม่ใช้ก่อน' });
@@ -378,7 +378,7 @@ export function registerFilm(app, { q, auth, wrap, log }) {
   app.patch('/api/films/:id', auth, wrap(async (req, res) => {
     const f = await get(req.uid, req.params.id); if (!f) return res.status(404).json({ error: 'ไม่พบโปรเจกต์' });
     const b = req.body || {}; const eps = norm(f).episodes;
-    if (Array.isArray(b.episodes)) for (const e of b.episodes) { const x = eps.find((y) => y.n === Number(e.n)); if (x) { if (e.title != null) x.title = clean(e.title, 60); if (e.summary != null) x.summary = clean(e.summary, 500); if (e.cliff != null) x.cliff = clean(e.cliff, 200); } }
+    if (Array.isArray(b.episodes)) for (const e of b.episodes) { const x = eps.find((y) => y.n === Number(e.n)); if (x) { if (e.title != null) x.title = clean(e.title, 60); if (e.summary != null) x.summary = clean(e.summary, 2000); if (e.cliff != null) x.cliff = clean(e.cliff, 200); } }
     let len = f.ep_len;
     if (b.epLen != null && FILM_LENS.includes(Number(b.epLen)) && Number(b.epLen) !== f.ep_len) {
       len = Number(b.epLen);

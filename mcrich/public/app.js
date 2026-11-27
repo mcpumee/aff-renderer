@@ -400,6 +400,7 @@ const AV_LABEL = {
   hair: { short: 'ผมสั้น', long: 'ผมยาวตรง', wavy: 'ผมลอนประบ่า', bun: 'มัดมวย', bob: 'บ๊อบ', bald: 'โกนหัว', hijab: 'คลุมฮิญาบ' },
   outfit: { business: 'สูททำงาน', casual: 'เสื้อลำลอง', smart: 'สมาร์ทแคชชวล', thai: 'ชุดไทยประยุกต์', chef: 'ชุดเชฟ', doctor: 'เสื้อกาวน์', apron: 'ผ้ากันเปื้อนเจ้าของร้าน', sport: 'ชุดกีฬา', swim: 'ชุดว่ายน้ำ', bodycon: 'ชุดรัดรูป', gown: 'ชุดราตรีเซ็กซี่', crop: 'เสื้อครอป + ยีนส์รัดรูป', gymfit: 'ชุดออกกำลังกายรัดรูป' },
   sexy: { no: 'ปกติ', yes: 'เซ็กซี่ มั่นใจ (ไม่โป๊)' },
+  bust: { auto: 'ตามธรรมชาติ', small: 'เล็ก', medium: 'กลาง', full: 'ใหญ่ (โค้งเว้า)' },
   body: { normal: 'ปกติ', chubby: 'อวบ', fit: 'หุ่นดี', slim: 'ผอม', muscle: 'เพาะกาย', athletic: 'หุ่นดีมาก', skinny: 'ผอมมาก', worn: 'โทรม' },
   bg: { studio: 'สตูดิโอเรียบ', shop: 'ในร้าน', office: 'ออฟฟิศ', cafe: 'คาเฟ่', home: 'ในบ้าน', outdoor: 'ถนนกลางแจ้ง', kitchen: 'ห้องครัว' },
   mood: { smile: 'ยิ้มอบอุ่น', confident: 'มั่นใจ', calm: 'สุขุมน่าเชื่อถือ', sad: 'หดหู่', sick: 'ป่วย', hyper: 'บ้าพลัง' },
@@ -431,11 +432,12 @@ function drawAvatars(qs) {
     if (minor && ADULT.includes(AVD.outfit)) AVD.outfit = 'casual';
     if (minor) AVD.sexy = 'no';
     AVD.sexy = AVD.sexy || 'no';
+    if (minor || AVD.gender !== 'female') AVD.bust = 'auto'; AVD.bust = AVD.bust || 'auto';
     const off = (k, v) => minor && ((k === 'outfit' && ADULT.includes(v)) || k === 'sexy' && v === 'yes' || (k === 'body' && ['fit', 'muscle', 'athletic'].includes(v)));
     const grp = (k, t) => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${t}</h2><div class="chips">${(r.options[k] || []).filter((v) => !off(k, v)).map((v) => `<button type="button" class="chip" data-ak="${k}" data-v="${v}" aria-pressed="${AVD[k] === v}">${esc(AV_LABEL[k]?.[v] || v)}</button>`).join('')}</div>${k === 'age' && minor ? '<span class="muted">อวตารเด็ก/วัยรุ่น: แต่งกายมิดชิดตามวัยเสมอ</span>' : ''}</section>`;
     body = `${r.ready ? '' : '<p class="muted">ระบบวิดีโออวตารกำลังตั้งค่า ออกแบบเก็บไว้ก่อนได้</p>'}
       <section style="display:flex;flex-direction:column;gap:8px"><h2>สไตล์ภาพ</h2><div class="chips">${[['real', 'เหมือนจริง'], ['anime', 'อนิเมะ'], ['3d', 'การ์ตูน 3D'], ['paint', 'ภาพวาด']].map(([k, l]) => `<button type="button" class="chip" data-ak="art" data-v="${k}" aria-pressed="${(AVD.art || 'real') === k}">${l}</button>`).join('')}</div>${from === 'film' ? '<span class="muted">ตัวละครหนัง: เลือกสไตล์ให้ตรงกับสไตล์ภาพของเรื่อง · ใส่ชุด/ลักษณะเฉพาะในรายละเอียดเพิ่ม เช่น ชุดเจ้าสาว, ชุดนักธุรกิจหรู</span>' : ''}</section>
-      ${grp('gender', 'เพศ')}${grp('age', 'ช่วงอายุ')}${grp('look', 'หน้าตา')}${grp('body', 'รูปร่าง')}${grp('hair', 'ทรงผม')}${grp('outfit', 'ชุด')}${minor ? '' : grp('sexy', 'ลุค')}${grp('bg', 'ฉากหลัง')}${grp('mood', 'สีหน้า')}
+      ${grp('gender', 'เพศ')}${grp('age', 'ช่วงอายุ')}${grp('look', 'หน้าตา')}${grp('body', 'รูปร่าง')}${grp('hair', 'ทรงผม')}${grp('outfit', 'ชุด')}${minor || AVD.gender !== 'female' ? '' : grp('bust', 'สัดส่วนหน้าอก')}${minor ? '' : grp('sexy', 'ลุค')}${grp('bg', 'ฉากหลัง')}${grp('mood', 'สีหน้า')}
       <label class="f" for="extra">รายละเอียดเพิ่ม (ไม่บังคับ)<input id="extra" type="text" maxlength="200" placeholder="เช่น ใส่แว่นกรอบบาง ต่างหูมุก" value="${esc(AVD.extra)}"></label>
       <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">ออกแบบ 1 ครั้ง ได้ 2 แบบให้เลือก</span><b class="num" style="font-size:22px">${ICON.star}${r.designPrice} ดาว</b></div>
         <span class="muted">ภาพคนเหมือนจริง (บุคคลสมมติ) · บันทึกแล้วใช้ได้ทุกงาน ไม่เสียดาวซ้ำ</span></section>

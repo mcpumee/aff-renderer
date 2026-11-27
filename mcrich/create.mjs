@@ -490,6 +490,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       });
       if (!p.seriesFrom && !p.product && !p.plot) return { error: 'ตั้งชื่อเรื่องหรือพิมพ์เรื่องย่อก่อน' };
       if (!p.seriesFrom && p.genre === 'free' && !p.plot) return { error: 'พิมพ์เรื่องย่อที่อยากได้' };
+      if (!p.seriesFrom && p.genre === 'law' && p.plot.length < 40) return { error: 'วางสรุปคำพิพากษา (ข้อเท็จจริง + ผลคดี) ก่อน — AI จะเล่าตามนี้ ไม่แต่งคดีขึ้นเอง' };
       p.goal = 'content';
       p.length = V.SERIES_LEN[p.scenes];
       const cS = checkContent({ product: p.product, plot: p.plot });

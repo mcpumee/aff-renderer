@@ -1071,14 +1071,21 @@ function drawStep() {
           ${im ? `<span class="sx"><img src="${im}" alt="ตัวอย่าง ${esc(x.label)}" loading="lazy">${pl ? `<i data-play="${x.id}">${vid ? '▶ ดูตัวอย่าง' : '🔍 ดูภาพ'}</i>` : ''}</span>`
             : pl ? `<span class="sx"><video src="${pl}#t=0.6" muted playsinline preload="metadata"></video><i data-play="${x.id}">▶ ดูตัวอย่าง</i></span>` : `<span class="sx sxe" style="background:${esc(x.color)}">${x.emoji}</span>`}<b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`; };
         const AFFX = ['v_gift', 'v_mystery', 'v_egg', 'v_gacha', 'v_chest', 'v_scratch', 'v_claw', 'v_rocket'];
-        const biz = list.filter((x) => !x.pr && !x.agent && !AFFX.includes(x.id)), affx = list.filter((x) => AFFX.includes(x.id)), pr = list.filter((x) => x.pr), ag = list.filter((x) => x.agent);
+        const STORY = ['v_series', 'v_law', 'v_horror', 'v_pixel', 'v_stick', 'v_film', 'v_drama'];
+        const story = vid ? STORY.map((id) => list.find((x) => x.id === id)).filter(Boolean) : [];
+        const gS = story.length ? `<h2>วิดีโอเล่าเรื่อง</h2><div class="grid2">${story.map(card).join('')}</div>` : '';
+        const biz = list.filter((x) => !x.pr && !x.agent && !AFFX.includes(x.id) && !STORY.includes(x.id)), affx = list.filter((x) => AFFX.includes(x.id)), pr = list.filter((x) => x.pr), ag = list.filter((x) => x.agent);
         const g0 = affx.length ? `<h2>สาย Affiliate: ลุ้นเปิดของ</h2><div class="grid2">${affx.map(card).join('')}</div>` : '';
-        const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>` + (D.goal === 'aff' ? '' : g0);
+        const g1b = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>`;
+        const g1 = (D.goal === 'content' ? gS + g1b : g1b + gS) + (D.goal === 'aff' ? '' : g0);
         const g2 = pr.length ? `<h2>ประชาสัมพันธ์องค์กร</h2><div class="grid2">${pr.map(card).join('')}</div>` : '';
         const g3 = ag.length ? `<h2>ตัวแทน / นายหน้า (ประกัน อสังหา รถ สินเชื่อ)</h2><div class="grid2">${ag.map(card).join('')}</div>` : '';
         if (!D.showAllStyles) {
           const [title, mine] = goalStyles(list);
-          return `<h2>${title}</h2><div class="grid2">${mine.map(card).join('')}</div><button type="button" class="btn ghost sm" id="showAll">ดูแนวอื่นทั้งหมด</button>`;
+          const sM = mine.filter((x) => STORY.includes(x.id)), oM = mine.filter((x) => !STORY.includes(x.id));
+          const a = oM.length ? `<h2>${title}</h2><div class="grid2">${oM.map(card).join('')}</div>` : '';
+          const b2 = sM.length ? `<h2>วิดีโอเล่าเรื่อง</h2><div class="grid2">${sM.map(card).join('')}</div>` : '';
+          return `${D.goal === 'content' ? b2 + a : a + b2}<button type="button" class="btn ghost sm" id="showAll">ดูแนวอื่นทั้งหมด</button>`;
         }
         return D.goal === 'pr' ? g2 + g1 + g3 : D.goal === 'agent' ? g3 + g1 + g2 : D.goal === 'aff' ? g0 + g1 + g3 + g2 : g1 + g3 + g2;
       })()}`, { disabled: !D.style || !(D.showAllStyles ? list : goalStyles(list)[1]).some((x) => x.id === D.style) });
@@ -1235,7 +1242,7 @@ function drawStep() {
   } else if (s === 2 && D.style === 'v_series') {
     const V2 = CAT.video;
     const cont = D.seriesInfo;
-    stepShell(`<h1 style="font-size:22px">${cont ? `ตอนต่อไป · ${esc(cont.title)} EP.${(cont.ep || 1) + 1}` : 'ซีรีส์แนวตั้ง'}</h1>
+    stepShell(`<h1 style="font-size:22px">${cont ? `ตอนต่อไป · ${esc(cont.title)} EP.${(cont.ep || 1) + 1}` : D.genre === 'law' ? 'เล่าคดี / ฎีกา' : D.genre === 'horror' && D.alias === 'v_horror' ? 'เล่าเรื่องสยองขวัญ' : 'ซีรีส์แนวตั้ง'}</h1>
       ${cont ? `<section class="card"><b>เรื่องย่อที่ผ่านมา</b><span class="muted">${esc(cont.summary || '')}</span>${cont.cliff ? `<span class="muted">ตอนที่แล้วค้างไว้ที่: ${esc(cont.cliff)}</span>` : ''}
           <span class="muted">ตัวละครเดิม: ${(cont.chars || []).map((c) => esc(c.name)).join(', ')} · หน้าตา เสียง และลายเส้นเดิมทุกตอน</span>
           <button type="button" class="btn ghost sm" id="newSeries">เริ่มเรื่องใหม่แทน</button></section>
@@ -1244,7 +1251,7 @@ function drawStep() {
         <h2>แนวเรื่อง</h2>
         <div class="grid2">${V2.seriesGenres.map((g) => `<button type="button" class="card opt" data-sgenre="${g.id}" aria-pressed="${D.genre === g.id}"><b>${esc(g.label)}</b><span class="muted">${esc(g.desc)}</span></button>`).join('')}</div>
         <section class="card"><label class="f" for="product">ชื่อเรื่อง / แนวคิด${D.genre === 'free' ? '' : ' (ไม่บังคับ)'}<input id="product" type="text" maxlength="120" placeholder="เช่น เด็กส่งของที่ได้พลังเวทมนตร์" value="${esc(D.product)}"></label>
-          <label class="f" for="plot">เรื่องย่อ${D.genre === 'free' ? '' : ' (ไม่บังคับ ให้ AI คิดเองได้)'}<textarea id="plot" rows="6" maxlength="5000" placeholder="เช่น พนักงานออฟฟิศหลับไปตื่นมาอยู่ในวังสมัยอยุธยา ต้องเอาตัวรอดด้วยความรู้ยุคใหม่">${esc(D.plot)}</textarea></label></section>
+          <label class="f" for="plot">${D.genre === 'law' ? 'สรุปคำพิพากษา (แนะนำให้ใส่)' : `เรื่องย่อ${D.genre === 'free' ? '' : ' (ไม่บังคับ ให้ AI คิดเองได้)'}`}<textarea id="plot" rows="6" maxlength="5000" placeholder="${D.genre === 'law' ? 'วางสรุปฎีกา: เลขฎีกา ข้อเท็จจริง ศาลแต่ละชั้นตัดสินว่าอะไร บทมาตรา และหลักกฎหมาย — AI จะเล่าตามนี้เท่านั้น ไม่แต่งเพิ่ม' : 'เช่น พนักงานออฟฟิศหลับไปตื่นมาอยู่ในวังสมัยอยุธยา ต้องเอาตัวรอดด้วยความรู้ยุคใหม่'}">${esc(D.plot)}</textarea></label></section>
         <section style="display:flex;flex-direction:column;gap:10px"><h2>สไตล์ภาพ</h2>${chipRow(V2.art, D.art, 'art', false)}</section>`}
       <section style="display:flex;flex-direction:column;gap:10px"><h2>ความยาวตอนนี้</h2>${chipRow(Object.keys(V2.seriesPrices).map((n) => ({ id: n, label: `${n} ฉาก ~${V2.seriesLen[n]} วิ · ${V2.seriesPrices[n]} ดาว` })), String(D.scenes), 'scenes', false)}</section>
       ${V2.seriesMotion ? `<label class="card" for="smot" style="flex-direction:row;align-items:center;gap:12px;cursor:pointer"><span style="flex:1"><b>🎬 ให้ตัวละครขยับจริงในฉากเด่น</b> <span class="muted">+${V2.seriesMotion[D.scenes]?.price || V2.seriesMotion[4].price} ดาว</span><br><span class="muted" style="font-size:13px">${V2.seriesMotion[D.scenes]?.n || 2} ฉาก (ฉากเปิด ฉากจบ ฉากกลางเรื่อง) ตัวละครขยับ ทำงาน แสดงสีหน้า · ฉากอื่นเป็นภาพกล้องเคลื่อน</span></span><input id="smot" type="checkbox" class="sw-in" ${D.motion ? 'checked' : ''}></label>` : ''}

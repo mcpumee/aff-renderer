@@ -1004,7 +1004,10 @@ function goalStyles(list) {
   const vid = D.kind === 'video';
   if (D.goal === 'agent') return ['ตัวแทน / นายหน้า', [...list.filter((x) => x.agent), ...list.filter((x) => x.id === 'v_avatar')]];
   if (D.goal === 'pr') return ['ประชาสัมพันธ์องค์กร', list.filter((x) => x.pr)];
-  const biz = list.filter((x) => !x.pr && !x.agent);
+  // คลิปลุ้นเปิดของ (ระเบิดกล่อง/กล่องสุ่ม/ไข่/กาชา/หีบ/ขูดบัตร/ตู้คีบ/จรวด) = สาย Affiliate · เป้าหมายอื่นเห็นเมื่อกด "ดูแนวอื่นเพิ่มเติม"
+  const AFF_ONLY = ['v_gift', 'v_mystery', 'v_egg', 'v_gacha', 'v_chest', 'v_scratch', 'v_claw', 'v_rocket'];
+  let biz = list.filter((x) => !x.pr && !x.agent && (D.goal === 'aff' || !AFF_ONLY.includes(x.id)));
+  if (D.goal === 'aff') biz = [...biz.filter((x) => AFF_ONLY.includes(x.id)), ...biz.filter((x) => !AFF_ONLY.includes(x.id))];
   const label = { sell: 'โปรโมตสินค้า', aff: 'Affiliate', promo: 'โปรโมตร้าน', content: 'ทำคอนเทนต์' }[D.goal] || 'ขายของ / คอนเทนต์';
   return [`${vid ? 'คลิป' : 'ภาพ'}สำหรับ${label}`, biz];
 }
@@ -1067,15 +1070,17 @@ function drawStep() {
         const card = (x) => { const im = (vid ? SAMPLES?.video : SAMPLES?.image)?.[x.id]; const pl = vid ? SAMPLES?.play?.[x.id] : im; return `<button type="button" class="stylecard has-img" data-style="${x.id}" aria-pressed="${(D.alias || D.style) === x.id}">
           ${im ? `<span class="sx"><img src="${im}" alt="ตัวอย่าง ${esc(x.label)}" loading="lazy">${pl ? `<i data-play="${x.id}">${vid ? '▶ ดูตัวอย่าง' : '🔍 ดูภาพ'}</i>` : ''}</span>`
             : pl ? `<span class="sx"><video src="${pl}#t=0.6" muted playsinline preload="metadata"></video><i data-play="${x.id}">▶ ดูตัวอย่าง</i></span>` : `<span class="sx sxe" style="background:${esc(x.color)}">${x.emoji}</span>`}<b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`; };
-        const biz = list.filter((x) => !x.pr && !x.agent), pr = list.filter((x) => x.pr), ag = list.filter((x) => x.agent);
-        const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>`;
+        const AFFX = ['v_gift', 'v_mystery', 'v_egg', 'v_gacha', 'v_chest', 'v_scratch', 'v_claw', 'v_rocket'];
+        const biz = list.filter((x) => !x.pr && !x.agent && !AFFX.includes(x.id)), affx = list.filter((x) => AFFX.includes(x.id)), pr = list.filter((x) => x.pr), ag = list.filter((x) => x.agent);
+        const g0 = affx.length ? `<h2>สาย Affiliate: ลุ้นเปิดของ</h2><div class="grid2">${affx.map(card).join('')}</div>` : '';
+        const g1 = `<h2>${vid ? 'คลิปขายของ / คอนเทนต์' : 'ภาพขายของ / คอนเทนต์'}</h2><div class="grid2">${biz.map(card).join('')}</div>` + (D.goal === 'aff' ? '' : g0);
         const g2 = pr.length ? `<h2>ประชาสัมพันธ์องค์กร</h2><div class="grid2">${pr.map(card).join('')}</div>` : '';
         const g3 = ag.length ? `<h2>ตัวแทน / นายหน้า (ประกัน อสังหา รถ สินเชื่อ)</h2><div class="grid2">${ag.map(card).join('')}</div>` : '';
         if (!D.showAllStyles) {
           const [title, mine] = goalStyles(list);
           return `<h2>${title}</h2><div class="grid2">${mine.map(card).join('')}</div><button type="button" class="btn ghost sm" id="showAll">ดูแนวอื่นทั้งหมด</button>`;
         }
-        return D.goal === 'pr' ? g2 + g1 + g3 : D.goal === 'agent' ? g3 + g1 + g2 : g1 + g3 + g2;
+        return D.goal === 'pr' ? g2 + g1 + g3 : D.goal === 'agent' ? g3 + g1 + g2 : D.goal === 'aff' ? g0 + g1 + g3 + g2 : g1 + g3 + g2;
       })()}`, { disabled: !D.style || !(D.showAllStyles ? list : goalStyles(list)[1]).some((x) => x.id === D.style) });
     app.querySelectorAll('[data-kind]').forEach((b) => b.onclick = () => { if (D.kind !== b.dataset.kind) { D.kind = b.dataset.kind; D.style = ''; } drawStep(); });
     const sa = $('#showAll'); if (sa) sa.onclick = () => { D.showAllStyles = true; drawStep(); };

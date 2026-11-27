@@ -162,7 +162,7 @@ async function homeView() {
       <a class="btn cta" href="#create?new=1">${ICON.plus}สร้างผลงานใหม่</a>
       <div class="quota"><span>ภาพฟรีวันนี้ <b>${ME.freeImages.today}</b></span><span>ภาพฟรีต้อนรับ <b>${ME.freeImages.welcome}/10</b></span></div>
     </section>
-    <section id="vBox" style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2>ไวรัลสไตล์คุณ</h2></div><p class="muted">กำลังโหลด…</p></section>
+    <section id="vBox" style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2>คลิปไวรัลแนะนำ</h2></div><p class="muted">กำลังโหลด…</p></section>
     <section style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2 id="th">แนวงานฮิต</h2><a href="#interests">ปรับความสนใจ</a></div>
       <div class="grid3" id="trends"><p class="muted">กำลังโหลด…</p></div></section>
     ${promo}
@@ -204,7 +204,7 @@ async function viralBox(el, o = {}) {
     const google = st.pf === 'google';
     const tab = (t) => `<button type="button" class="chip" data-vpf="${t.key}" aria-pressed="${t.key === st.pf}" style="white-space:nowrap;flex:none">${esc(t.label)}</button>`;
     const chip = (k, label) => `<button type="button" class="chip" data-vg="${k}" aria-pressed="${st.g === k}" style="white-space:nowrap;flex:none;min-height:32px;padding:4px 12px;font-size:13px">${label}</button>`;
-    el.innerHTML = `${o.home ? `<div class="sec-h"><h2>ไวรัลสไตล์คุณ</h2><a href="#viral?pf=${st.pf}&g=${st.g}">ดูทั้งหมด</a></div>` : ''}
+    el.innerHTML = `${o.home ? `<div class="sec-h"><h2>คลิปไวรัลแนะนำ</h2><a href="#viral?pf=${st.pf}&g=${st.g}">ดูทั้งหมด</a></div>` : ''}
       <div class="hs" role="tablist" aria-label="แพลตฟอร์ม" style="padding-bottom:0">${d.tabs.map(tab).join('')}</div>
       ${d.myChips.length ? `<div class="hs" style="padding-bottom:0">${d.myChips.length > 1 ? chip('mine', '✨ ทุกสไตล์ของฉัน') : ''}${d.myChips.map((c) => chip(c.key, `${c.emoji} ${esc(c.label)}`)).join('')}</div>` : ''}
       ${d.fallback ? '<span class="muted" style="font-size:13px">สไตล์นี้กำลังอัปเดต · ระหว่างนี้ดูคลิปมาแรงบนแพลตฟอร์มนี้ไปก่อน</span>' : ''}
@@ -228,7 +228,7 @@ async function viralBox(el, o = {}) {
 }
 async function viralView(qs) {
   const ps = new URLSearchParams(qs || '');
-  app.innerHTML = `${topbar('ไวรัลสไตล์คุณ', 'home')}<main><section id="vAll" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></section></main>${nav('home')}`;
+  app.innerHTML = `${topbar('คลิปไวรัลแนะนำ', 'home')}<main><section id="vAll" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></section></main>${nav('home')}`;
   if (ps.get('pf')) savePf(ps.get('pf'));
   await viralBox($('#vAll'), { pf: ps.get('pf') || '', g: ps.get('g') || 'mine' });
 }
@@ -1064,6 +1064,7 @@ function drawStep() {
         if (r.price) D.price = r.price;
         if (r.headline) D.headline = r.headline;
         if (r.details) D.details = [D.details, r.details].filter(Boolean).join('\n').slice(0, 600);
+        D.info = D.info || {}; for (const [k, v] of Object.entries(r.info || {})) if (v && !D.info[k]) D.info[k] = v;
         toast(`AI อ่านแล้ว: ${r.styleLabel}${r.ratio ? ` · ${r.ratio}` : ''} · ตรวจทาน/แก้ได้`);
         REFBUSY = false; D.step = 2; drawStep();
       } catch (x) { REFBUSY = false; toast(x.message); const b = $('#refbusy'); if (b) b.textContent = 'อัปโหลด'; }
@@ -1487,6 +1488,7 @@ function drawStep() {
         <div id="warn"></div>
       </section>
       ${st.pr ? `<section class="card"><b>ข้อมูลบนภาพ</b>${infoFields(['org', 'date', 'place', 'contact'])}</section>` : ''}
+      ${st.ad ? `<section class="card"><b>ข้อมูลบนโปสเตอร์</b><span class="muted">ใส่รูปสินค้าจริง/โปสเตอร์เดิมด้านล่าง AI จะทำให้ดูพรีเมียมขึ้น · สาขาและเบอร์โทรระบบพิมพ์เอง สะกดถูกแน่นอน</span>${infoFields(['sub', 'feats', 'place', 'contact'])}</section>` : ''}
       ${st.id === 'model_show' ? `<section class="card"><b>นางแบบ / นายแบบ</b>${chipRow(CAT.modelWho, D.modelWho, 'modelWho', false)}
         <b>ลุค</b>${chipRow(CAT.modelLooks, D.modelLook, 'modelLook', false)}
         <span class="muted">${D.modelLook === 'glam' ? 'เซ็กซี่ระดับแคตตาล็อกชุดว่ายน้ำ/ชุดชั้นใน ไม่โป๊ ไม่ส่อเพศ · TikTok/Facebook/Shopee อาจจำกัดการมองเห็นโพสต์ที่เซ็กซี่มาก ถ้าใช้ยิงแอด เลือก "สุภาพ" จะผ่านง่ายกว่า' : 'เหมาะทุกแพลตฟอร์ม และยิงแอดได้'} · นางแบบ/นายแบบเป็นบุคคลสมมติ (ผู้ใหญ่) สร้างโดย AI</span></section>` : ''}
@@ -1689,7 +1691,10 @@ const INFO_IDS = ['v_tips', 'v_shop', 'v_pr_announce', 'v_pr_recap', 'v_agent_pl
 const infoFields = (keys) => {
   const L = { org: ['ชื่อหน่วยงาน / ร้าน', ME.brand?.shopName || ''], date: ['วัน เวลา', 'เช่น 5 ธ.ค. 69 เวลา 09.00 น.'], place: ['สถานที่', 'เช่น หอประชุม อบต.บ้านพรุ'], contact: ['ติดต่อ', 'เช่น โทร 074-xxx-xxx / LINE @...'], hours: ['เวลาเปิด', 'เช่น ทุกวัน 07.00–19.00'], license: ['เลขที่ใบอนุญาตตัวแทน/นายหน้า', 'ใส่แล้วจะขึ้นท้ายแคปชั่น'] };
   if (D.goal === 'agent') { L.org = ['สังกัด / บริษัท / ทีม', 'ใส่เฉพาะที่ได้รับอนุญาตให้ใช้ชื่อ']; L.place = ['ทำเล / ที่ตั้ง', 'เช่น ใกล้ ม.อ. หาดใหญ่']; L.contact = ['ติดต่อ', 'เช่น โทร 08x-xxx-xxxx / LINE @...']; }
+  L.sub = ['ข้อความรองใต้หัวข้อ', 'เช่น หอม เข้มข้น สะใจกว่าเดิม!']; L.feats = ['จุดเด่นข้างไอคอน (คั่นด้วย , ไม่เกิน 3)', 'เช่น หิ้วง่าย, ละลายช้า, พกสะดวก'];
+  if (D.style === 'ad_poster') { L.place = ['สาขา / ที่อยู่ (ระบบพิมพ์ให้คมชัด)', 'เช่น สาขาท่าสะอ้าน']; L.contact = ['เบอร์โทร (ระบบพิมพ์ให้คมชัด)', 'เช่น 080-516-1462']; }
   D.info = D.info || {};
+  if (keys.includes('contact') && D.style === 'ad_poster' && !D.info.contact && ME.brand?.phone) D.info.contact = ME.brand.phone;
   if (keys.includes('org') && !D.info.org && ME.brand?.shopName && D.goal !== 'agent') D.info.org = ME.brand.shopName;
   return keys.map((k) => `<label class="f" for="info_${k}">${L[k][0]}<input id="info_${k}" type="text" maxlength="100" placeholder="${esc(L[k][1])}" value="${esc(D.info[k] || '')}"></label>`).join('');
 };
@@ -1746,7 +1751,7 @@ async function reviewStep() {
       ${row('คอนเซปต์', D.concepts.join(', '))}${vid ? '' : row('ขนาด', D.ratio) + row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
       ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('สไตล์การเขียน', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
       ${INFO_IDS.includes(D.style) ? row('รูป', REFS.length ? `${REFS.length} รูป` : (D.style === 'v_pr_announce' ? 'AI วาดพื้นหลังให้ (+5 ดาว)' : '')) + (D.style === 'v_tips' ? row('จำนวนทิป', `${D.count} ทิป`) : '') + Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน/ร้าน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ', hours: 'เวลาเปิด' }[k] || k, v)).join('') + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + (D.style === 'v_tips' ? '' : row('ความยาว', `${D.length} วินาที`)) : ''}
-      ${(!vid && (st.pr || st.agent)) || (vid && st.agent) ? Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: st.agent ? 'สังกัด' : 'หน่วยงาน', date: 'วันเวลา', place: st.agent ? 'ทำเล' : 'สถานที่', contact: 'ติดต่อ', license: 'ใบอนุญาต', hours: 'เวลาเปิด' }[k] || k, v)).join('') : ''}
+      ${(!vid && (st.pr || st.agent || st.ad)) || (vid && st.agent) ? Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: st.agent ? 'สังกัด' : 'หน่วยงาน', date: 'วันเวลา', place: st.agent ? 'ทำเล' : 'สถานที่', contact: 'ติดต่อ', license: 'ใบอนุญาต', hours: 'เวลาเปิด', sub: 'ข้อความรอง', feats: 'จุดเด่น' }[k] || k, v)).join('') : ''}
       ${D.style === 'v_avatar' ? row('อวตาร', AVS.find((a) => a.id === D.avatarId)?.name) + row('ภาษา', CAT.video.avatar.langs.find((l) => l.id === D.lang)?.label) + row('บท', D.scriptMode === 'own' ? 'บทของฉัน' : `AI เขียนจาก: ${D.product}`) + row('ความยาว', `~${D.length} วิ`) + row('ซับ', D.subs ? CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label : 'ไม่ใส่') : ''}
       ${D.style === 'v_remix' ? row('คลิปตัวอย่าง', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : '') + row('ได้รับ', 'พรอมต์ทีละฉาก + ภาพแต่ละฉาก + เคล็ดลับ') + row('ใส่อวตาร', D.remixAvatar ? `${AVS.find((a) => a.id === D.avatarId)?.name || ''} · ${CAT.video.remix.modes.find((m) => m.id === (D.avatarMode || 'replace'))?.label}` : '') + row('เปลี่ยนเสียง', D.remixVoice ? `เสียงของคุณ · เสียงเดิม${{ off: 'ปิด', low: 'เบาๆ', mid: 'ปานกลาง' }[D.bg || 'low']}` : '') + row('สำหรับ', D.product) : ''}
       ${D.style === 'v_motion' ? row('สินค้า / เรื่อง', D.product) + row('แนวช็อต', CAT.video.motionPresets.find((m) => m.id === D.preset)?.label) + row('ไอเดีย', D.plot) + row('รูปสินค้า', REFS.length ? '1 รูป' : '') : ''}

@@ -111,7 +111,18 @@ const IDEA_STYLES = [
   ...STYLES.filter((s) => !s.pr).map((s) => ({ id: s.id, kind: 'image', label: s.label, emoji: s.emoji || '🖼️' })),
   ...VIDEO_STYLES.filter((s) => !s.pr && !s.as && s.id !== 'v_self' && s.id !== 'v_remix').map((s) => ({ id: s.id, kind: 'video', label: s.label, emoji: s.emoji || '🎬' })),
 ];
-const ent = (s) => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n))).trim();
+const ent = (s) => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).trim();
+// ชื่อคลิปจริง: ถอดรหัส &#x..; แล้วตัดยอดวิว/ยอดไลก์ ชื่อเพจ และคำว่า Facebook/Instagram ออก (FB: "ยอดดู 5.5 พัน ครั้ง · 9.3 พัน ความรู้สึก | แคปชั่น | ชื่อเพจ")
+const STAT = /(ยอดดู|ครั้ง|ความรู้สึก|ถูกใจ|ความคิดเห็น|การดู|แชร์|views?|reactions?|likes?|comments?|shares?|plays?)/i;
+export function clipTitle(raw, desc = '') {
+  const one = (x) => {
+    let t = ent(ent(x)).replace(/\s+/g, ' ').trim().replace(/\s*[|•·–-]\s*(Instagram|Facebook|TikTok|YouTube)\s*$/i, '');
+    const ig = t.match(/(?:\bon|บน)\s+Instagram\s*:\s*["“']?([\s\S]+?)["”']?$/i); if (ig) t = ig[1];
+    const parts = t.split(/\s+\|\s+/).map((p) => p.trim()).filter((p) => p && !(STAT.test(p) && /\d/.test(p)));
+    return (parts.length > 1 ? parts.slice(0, -1).sort((a, b) => b.length - a.length)[0] : parts[0] || '').replace(/^["“]|["”]$/g, '').trim();
+  };
+  return (one(raw) || one(desc)).slice(0, 200);
+}
 const tag = (xml, t) => ent((xml.match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)</${t}>`)) || [])[1] || '');
 const safeUrl = (u) => { try { const x = new URL(u); return x.protocol === 'https:' && !/^(localhost|\d+\.\d+\.\d+\.\d+|\[.*\])$/i.test(x.hostname) ? x.href : ''; } catch { return ''; } };
 const platformOf = (u) => { const h = (() => { try { return new URL(u).hostname; } catch { return ''; } })(); return /tiktok/.test(h) ? 'tiktok' : /youtu/.test(h) ? 'youtube' : /facebook|fb\.watch/.test(h) ? 'facebook' : /instagram/.test(h) ? 'instagram' : 'web'; };
@@ -333,7 +344,7 @@ export function registerViral(app, { q, auth, wrap, log, DATA_DIR }) {
     const rows = (await q(`SELECT id, source, title, meta FROM viral_items WHERE idea IS NULL AND active AND fetched_at > now() - interval '3 days'
       ORDER BY pinned DESC, (source='gtrends') DESC, first_seen DESC, COALESCE((meta->>'score')::bigint, 0) DESC LIMIT 25`)).rows;
     if (!rows.length) return 0;
-    const list = rows.map((r, i) => `${i}. [${r.source === 'gtrends' ? 'คำค้นหามาแรง' : `คลิปไวรัล ${r.source}`}] ${r.title}${r.meta?.news?.length ? ` | ข่าว: ${r.meta.news.map((n) => n.title).join(' / ')}` : ''}${r.meta?.channel ? ` | ช่อง: ${r.meta.channel}` : ''}${r.meta?.author ? ` | โดย: ${r.meta.author}` : ''}`).join('\n');
+    const list = rows.map((r, i) => `${i}. [${r.source === 'gtrends' ? 'คำค้นหามาแรง' : `คลิปไวรัล ${r.source}`}] ${r.source === 'gtrends' ? r.title : clipTitle(r.title)}${r.meta?.news?.length ? ` | ข่าว: ${r.meta.news.map((n) => n.title).join(' / ')}` : ''}${r.meta?.channel ? ` | ช่อง: ${r.meta.channel}` : ''}${r.meta?.author ? ` | โดย: ${r.meta.author}` : ''}`).join('\n');
     const prompt = `คุณเป็นนักวางกลยุทธ์คอนเทนต์ให้แม่ค้าออนไลน์และร้านค้าไทย ด้านล่างคือกระแสที่กำลังมาแรงในไทยวันนี้
 สำหรับแต่ละรายการ ให้:
 - safe: false ถ้าเป็น เนื้อหาโป๊/ล่อแหลม ยาเสพติด บุหรี่ไฟฟ้า แกล้งคนแรงๆ ข่าวเศร้า การเสียชีวิต อุบัติเหตุ ภัยพิบัติ อาชญากรรม คดีความ การเมือง การเลือกตั้ง ศาสนาที่ขัดแย้ง เรื่องทางเพศ การพนัน หรือดราม่าส่วนตัวของบุคคล (ไม่เหมาะเอามาขายของ) นอกนั้น true
@@ -406,7 +417,7 @@ ${list}
   // ---------- API หน้าแรก ----------
   const SOCIAL = ['tiktok', 'instagram', 'youtube', 'facebook'];
   const view = (r) => ({
-    id: r.id, source: r.source, title: r.title, url: r.url, thumb: r.thumb_file ? `api/viral/${r.id}/thumb` : '',
+    id: r.id, source: r.source, title: (r.source === 'gtrends' ? r.title : clipTitle(r.title)) || ({ tiktok: 'คลิป TikTok', youtube: 'YouTube Shorts', instagram: 'IG Reels', facebook: 'FB Reels' }[r.meta?.platform] || 'คลิปไวรัล'), url: r.url, thumb: r.thumb_file ? `api/viral/${r.id}/thumb` : '',
     traffic: r.meta?.traffic || '', news: r.meta?.news?.[0] || null, channel: r.meta?.channel || r.meta?.author || '', views: Number(r.meta?.views || 0), likes: Number(r.meta?.likes || 0),
     platform: SOCIAL.includes(r.source) ? r.source : r.meta?.platform || (r.source === 'ytpopular' ? 'youtube' : r.source === 'gtrends' ? 'google' : 'web'),
     vertical: !!(r.meta?.vertical || r.meta?.short), posted: r.meta?.posted || null, groups: r.meta?.groups || [],
@@ -454,12 +465,12 @@ ${list}
     const mine = new Set([...(p.categories || []), ...(p.styles || [])]);
     const myGroups = GROUPS.filter((g) => mine.has(g.interest)).map((g) => g.key);
     const all = await rowsNow();
-    const clipsOf = (pf) => all.filter((r) => isClip(r) && view(r).platform === pf && (r.pinned || isSocial(r)));
+    // แสดงเฉพาะคลิปที่แอดมินแนบ (curated) แยกตามแพลตฟอร์มที่มา
+    const clipsOf = (pf) => all.filter((r) => r.source === 'curated' && r.active && view(r).platform === pf);
     const auto = (await cfg()).auto;
     // ปิดดึงอัตโนมัติ: แสดงเฉพาะแพลตฟอร์มที่มีคลิปแอดมินแนบ (TikTok / Shorts / Reels) ไม่มี Google Trends
-    const tabs = auto ? [{ key: 'tiktok', label: 'TikTok' }, { key: 'youtube', label: 'YouTube Shorts' }, { key: 'google', label: 'Google Trends' },
-      ...['instagram', 'facebook'].filter((k) => clipsOf(k).length).map((k) => ({ key: k, label: k === 'instagram' ? 'Instagram' : 'Facebook' }))]
-      : (() => { const t = [['tiktok', 'TikTok'], ['youtube', 'YouTube Shorts'], ['instagram', 'IG Reels'], ['facebook', 'FB Reels']].filter(([k]) => clipsOf(k).length).map(([key, label]) => ({ key, label })); return t.length ? t : [{ key: 'tiktok', label: 'TikTok' }]; })();
+    // แท็บ = แพลตฟอร์มที่มีคลิปแอดมินแนบเท่านั้น (TikTok / Shorts / IG Reels / FB Reels)
+    const tabs = (() => { const t = [['tiktok', 'TikTok'], ['youtube', 'YouTube Shorts'], ['instagram', 'IG Reels'], ['facebook', 'FB Reels']].filter(([k]) => clipsOf(k).length).map(([key, label]) => ({ key, label })); return t.length ? t : [{ key: 'tiktok', label: 'TikTok' }]; })();
     const prefPf = (p.platforms || []).map((x) => PF_PREF[x]).find((k) => tabs.some((t) => t.key === k)) || 'tiktok';
     const pf = tabs.some((t) => t.key === req.query.platform) ? req.query.platform : prefPf;
     const g = String(req.query.group || 'mine');
@@ -482,7 +493,7 @@ ${list}
     if (pf !== 'google' && list.length < limit && !page) {
       const ids = new Set(list.map((r) => r.id));
       const extra = clipsOf(pf).filter((r) => !ids.has(r.id)).sort(byScore).slice(0, limit - list.length);
-      if (extra.length) { fallback = list.length < 4; list = [...list, ...extra.map((r) => ({ ...r, _fb: true }))]; }
+      if (extra.length) { fallback = auto && list.length < 4; list = [...list, ...extra.map((r) => ({ ...r, _fb: true }))]; }
     }
     // ชิปสไตล์: ทุกสไตล์ที่ผู้ใช้เลือกไว้ (สไตล์ที่ยังว่าง ระบบจะดึงให้ทันทีเมื่อกดดู)
     const myChips = GROUPS.filter((x) => myGroups.includes(x.key)).map((x) => ({ key: x.key, label: x.label, emoji: x.emoji,
@@ -526,7 +537,7 @@ ${list}
     if (!kind) return { url: raw, error: 'รับเฉพาะลิงก์ Reels (IG/FB), YouTube Shorts หรือ TikTok' };
     let o = await oembed(url);
     if (!o.title || !o.thumb) { // IG/FB ไม่มี oEmbed ฟรี → อ่านหน้าเว็บ (og:title/og:image)
-      try { const p = await readPage(url); o = { ...o, title: o.title || ent(p.title || '').replace(/\s*[|•·-]\s*(Instagram|Facebook|TikTok).*$/i, ''), thumb: o.thumb || safeUrl(p.image || '') }; } catch { /* ไม่เป็นไร */ }
+      try { const p = await readPage(url); o = { ...o, title: clipTitle(o.title || p.title || '', p.desc || ''), thumb: o.thumb || safeUrl(p.image || '') }; } catch { /* ไม่เป็นไร */ }
     }
     const title = String(title0 || '').trim().slice(0, 200) || o.title || `${{ tiktok: 'TikTok', youtube: 'YouTube Shorts', instagram: 'Instagram Reels', facebook: 'Facebook Reels' }[kind]}`;
     const g = GROUPS.find((x) => x.key === group);

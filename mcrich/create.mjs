@@ -61,6 +61,8 @@ export const CONCEPTS = ['สีสดใส', 'มินิมอล', 'หร�
 export const STYLES = [
   { id: 'poster_menu', label: 'โปสเตอร์เมนู / โปรโมชั่น', emoji: '🍜', color: '#2F6B4A', ratio: '4:5', text: true,
     prompt: 'A mouth-watering promotional food/menu poster. Hero shot of the product, appetizing lighting, clear menu-style layout with the headline and price as bold readable typography, space for the shop name.' },
+  { id: 'ad_poster', label: 'โปสเตอร์โฆษณาพรีเมียม', emoji: '🧋', color: '#B5651D', ratio: '4:5', text: true, ad: true,
+    prompt: 'A premium commercial advertising poster for a Thai shop, like a professional agency food & beverage / product ad. Studio-quality realistic product photography, warm inviting light, the product as the large hero in the lower-center on a natural surface (wood table or fitting surface), fresh natural props that match the product placed around it, softly blurred bokeh background of a cozy shop or nature. Bold, highly legible Thai typography hierarchy at the top: big headline, smaller sub-headline below. A round eye-catching price badge on the right side. A clean vertical column of 3 round icon badges on the left, each with a simple line icon and a short label. Balanced, uncluttered, ready to post.' },
   { id: 'product_luxury', label: 'ภาพสินค้าพื้นหรู', emoji: '💎', color: '#3B4A8C', ratio: '4:5',
     prompt: 'Premium commercial product photography. The product placed on an elegant pedestal or marble surface, soft studio lighting, subtle reflections, luxury magazine advertising look, generous negative space.' },
   { id: 'model_show', label: 'นางแบบ / นายแบบโชว์สินค้า', emoji: '💃', color: '#B0306A', ratio: '4:5', text: true,
@@ -248,7 +250,17 @@ function buildPrompt(p, style, brand, hasRefs, version) {
     agentOf(p) && `Field: ${agentOf(p).label} agent content for Thai customers. Do not show any real insurance/bank/developer company logo or brand name unless it is in the text below. No fake certificates, no money piles, no guaranteed-return imagery.`,
   ];
   const inf = p.info || {};
-  if (style.text && (p.headline || p.price || brand.shopName || inf.org || inf.license)) {
+  if (style.ad) {
+    // โปสเตอร์โฆษณา: AI วาดหัวข้อ/ข้อความรอง/ป้ายราคา/ไอคอนจุดเด่น · สาขา+เบอร์โทร ระบบพิมพ์เองให้คมและสะกดถูก 100%
+    const feats = String(inf.feats || '').split(/,\s*/).filter(Boolean);
+    lines.push('Render this Thai text exactly as written, spelled correctly, large and legible, no other text:');
+    if (p.headline) lines.push(`- Big headline (top): "${p.headline}"`);
+    if (inf.sub) lines.push(`- Sub-headline (under the headline): "${inf.sub}"`);
+    if (p.price) lines.push(`- Round price badge (right side): "${p.price}"`);
+    if (feats.length) lines.push(`- ${feats.length} feature icon badges stacked on the left, each a simple line icon that matches its meaning with this short label under it: ${feats.map((f) => `"${f}"`).join(', ')}`);
+    if (brand.shopName && p.showShop !== false) lines.push(`- Shop name (small, may appear printed on the product packaging): "${brand.shopName}"`);
+    lines.push('Keep the bottom-right corner (about 45% width × 13% height) free of text and busy details — contact info will be added there later. Do not write any phone number or address yourself.');
+  } else if (style.text && (p.headline || p.price || brand.shopName || inf.org || inf.license)) {
     lines.push('Render this Thai text exactly as written, spelled correctly, large and legible, no other text:');
     if (p.headline) lines.push(`- Headline: "${p.headline}"`);
     if (p.price) lines.push(`- ${style.pr || (style.agent && style.id !== 'agent_listing') ? 'Sub-headline' : 'Price/offer'}: "${p.price}"`);
@@ -280,7 +292,8 @@ ${agentOf(p) ? `สาย: ตัวแทน/นายหน้า ${agentOf(p)
 }
 
 // ---------- โลโก้ร้าน (ผลงานทุกชิ้นไม่มีลายน้ำ ทั้งฟรีและเสียดาว) ----------
-async function finish(buf, { logo }) {
+const xml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+async function finish(buf, { logo, contact = [] }) {
   let img = sharp(buf).rotate();
   const meta = await img.metadata();
   const W = meta.width || 1024, H = meta.height || 1024;
@@ -290,6 +303,15 @@ async function finish(buf, { logo }) {
     const lg = await sharp(logo).resize({ width: size, height: size, fit: 'inside' }).png().toBuffer();
     const m = Math.round(Math.min(W, H) * 0.035);
     layers.push({ input: lg, top: m, left: W - size - m });
+  }
+  contact = contact.filter(Boolean).slice(0, 2);
+  if (contact.length) { // สาขา / เบอร์โทร พิมพ์คมชัดมุมขวาล่าง (AI สะกดเลขผิดบ่อย)
+    const fs1 = Math.round(Math.min(W, H) * 0.048), lh = Math.round(fs1 * 1.35), pad = Math.round(Math.min(W, H) * 0.045);
+    const y0 = H - pad - lh * (contact.length - 1);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><filter id="s" x="-20%" y="-50%" width="140%" height="200%"><feDropShadow dx="0" dy="${Math.max(1, fs1 / 14)}" stdDeviation="${fs1 / 7}" flood-color="#000" flood-opacity="0.75"/></filter></defs>
+      <g filter="url(#s)" font-family="Kanit, Prompt, Sarabun, Noto Sans Thai, Garuda, Loma, sans-serif" font-weight="700" font-size="${fs1}" fill="#fff" text-anchor="end">
+      ${contact.map((t, i) => `<text x="${W - pad}" y="${y0 + i * lh}">${xml(t)}</text>`).join('')}</g></svg>`;
+    layers.push({ input: Buffer.from(svg), top: 0, left: 0 });
   }
   if (layers.length) img = sharp(await img.toBuffer()).composite(layers);
   const out = await img.jpeg({ quality: 92, mozjpeg: true }).toBuffer();
@@ -315,7 +337,8 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   // ตรวจและจัดรูปคำขอ (ใช้ทั้งตอนทบทวนและตอนยืนยัน)
   function cleanInfo(i) {
     i = i || {};
-    return { org: clean(i.org, 80), date: clean(i.date, 60), place: clean(i.place, 100), contact: clean(i.contact, 80), hours: clean(i.hours, 60), license: clean(i.license, 60) };
+    return { org: clean(i.org, 80), date: clean(i.date, 60), place: clean(i.place, 100), contact: clean(i.contact, 80), hours: clean(i.hours, 60), license: clean(i.license, 60),
+      sub: clean(i.sub, 60), feats: String(i.feats || '').split(/[,/\n·•|]+/).map((x) => clean(x, 16)).filter(Boolean).slice(0, 3).join(', ') };
   }
   function normalize(b, brand) {
     if (b.kind === 'video') return normalizeVideo(b, brand);
@@ -493,7 +516,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
     const m = await me(req.uid);
     res.json({
       ready: ready(), goals: GOALS, agentTypes: AGENT_TYPES.map(({ id, label }) => ({ id, label })), ratios: RATIOS, tones: TONES, concepts: CONCEPTS, modelLooks: MODEL_LOOKS, modelWho: MODEL_WHO,
-      styles: STYLES.map(({ id, label, emoji, color, ratio, text, pr, agent }) => ({ id, label, emoji, color, ratio, text: !!text, pr: !!pr, agent: !!agent, rec: recTier(id) })),
+      styles: STYLES.map(({ id, label, emoji, color, ratio, text, pr, agent, ad }) => ({ id, label, emoji, color, ratio, text: !!text, pr: !!pr, agent: !!agent, ad: !!ad, rec: recTier(id) })),
       tiers: TIERS.map(({ id, label, note, stars, free, size }) => ({ id, label, note, stars, free: !!free, size })),
       stars: m.stars, free: m.freeImages, keepDays: KEEP_DAYS,
       video: {
@@ -1178,7 +1201,7 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
 แนวงานที่มี (เลือก id ที่ใกล้ที่สุด 1 อัน): ${list.map((x) => `${x.id}=${x.label}`).join(' · ')}
 กฎ: ใช้เฉพาะข้อความ/ตัวเลขที่เห็นในภาพจริง ห้ามแต่งราคา · ไม่เห็นให้ว่าง · ภาษาไทย
 {"style":"id","product":"ชื่อสินค้า/บริการในภาพ ไม่เกิน 60 ตัวอักษร หรือว่าง","price":"ราคา/โปรที่เห็น หรือว่าง","headline":"ข้อความหลักบนภาพ ไม่เกิน 40 ตัวอักษร หรือว่าง",
-"details":"จุดเด่น/ข้อความรองที่เห็น สรุปไม่เกิน 200 ตัวอักษร","look":"บรรยายสไตล์ภาพ (โทนสี ฉาก แสง การจัดวาง ฟอนต์) 1-2 ประโยค สำหรับทำงานใหม่ให้คล้ายกัน","goal":"sell|aff|promo|content|pr|agent"}`;
+"details":"จุดเด่น/ข้อความรองที่เห็น สรุปไม่เกิน 200 ตัวอักษร","sub":"ข้อความรองใต้หัวข้อ ไม่เกิน 40 ตัวอักษร หรือว่าง","feats":["จุดเด่นสั้นๆ ข้างไอคอน ไม่เกิน 3 อัน"],"place":"สาขา/ที่อยู่ที่เห็น หรือว่าง","phone":"เบอร์โทร/LINE ที่เห็น หรือว่าง","look":"บรรยายสไตล์ภาพ (โทนสี ฉาก แสง การจัดวาง ฟอนต์) 1-2 ประโยค สำหรับทำงานใหม่ให้คล้ายกัน","goal":"sell|aff|promo|content|pr|agent"}`;
       const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
         contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/jpeg', data: small.toString('base64') } }, { text: prompt }] }],
         generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
@@ -1187,7 +1210,8 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
       try { o = JSON.parse(findText(j.candidates?.[0]?.content || j).replace(/^```(json)?|```$/g, '').trim()); } catch { return res.status(502).json({ error: 'AI อ่านภาพไม่สำเร็จ ลองภาพที่ชัดขึ้น' }); }
       const st = list.find((x) => x.id === o.style) || list[0];
       res.json({ style: st.id, styleLabel: st.label, ratio: vid ? '' : near, w, h, product: clean(o.product, 120), price: clean(o.price, 40), headline: clean(o.headline, 60),
-        details: [clean(o.details, 300), o.look ? `แบบภาพอ้างอิง: ${clean(o.look, 260)}` : ''].filter(Boolean).join('\n'), goal: GOALS.some((g) => g.id === o.goal) ? o.goal : '' });
+        details: [clean(o.details, 300), o.look ? `แบบภาพอ้างอิง: ${clean(o.look, 260)}` : ''].filter(Boolean).join('\n'), goal: GOALS.some((g) => g.id === o.goal) ? o.goal : '',
+        info: cleanInfo({ sub: o.sub, feats: Array.isArray(o.feats) ? o.feats.join(',') : o.feats, place: o.place, contact: o.phone }) });
     } finally { if (f) fs.rm(f.path, { force: true }, () => {}); }
   }));
 
@@ -1761,7 +1785,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     }
     const files = [];
     for (const [i, buf] of ok.entries()) {
-      const { out, w: W, h: H } = await finish(buf, { logo: p.useLogo && brand.logo ? path.join(LOGO_DIR, path.basename(brand.logo)) : '' });
+      const { out, w: W, h: H } = await finish(buf, { logo: p.useLogo && brand.logo ? path.join(LOGO_DIR, path.basename(brand.logo)) : '', contact: style.ad ? [p.info?.place, p.info?.contact && (/^(โทร|tel|line)/i.test(p.info.contact) ? p.info.contact : `โทร. ${p.info.contact}`)] : [] });
       const base = `${w.user_id}-${w.id}-${i}-${rand(6).toLowerCase()}`;
       fs.writeFileSync(path.join(WORK_DIR, `${base}.jpg`), out);
       await sharp(out).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`));

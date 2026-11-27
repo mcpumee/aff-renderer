@@ -1245,7 +1245,10 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
       '20': 'in her/his mid 20s', '30': 'in her/his 30s', '40': 'in her/his 40s', '50': 'in her/his 50s', '60': 'in her/his early 60s' },
     look: { thai: 'Thai', chinese: 'Thai-Chinese / East Asian', malay: 'Malay', indian: 'South Asian', western: 'Caucasian', korean: 'Korean-style East Asian', african: 'Black / African' },
     hair: { short: 'short neat hair', long: 'long straight hair', wavy: 'shoulder-length wavy hair', bun: 'hair tied in a neat bun', bob: 'bob haircut', bald: 'shaved head', hijab: 'wearing a neat hijab' },
-    outfit: { business: 'a smart business suit', casual: 'a clean casual shirt', smart: 'smart-casual blouse/shirt', thai: 'elegant modern Thai traditional outfit', chef: 'a white chef uniform', doctor: 'a medical white coat', apron: "a shop owner's apron over a casual shirt", sport: 'sporty athleisure wear', swim: 'a tasteful swimsuit like a sportswear/swimwear catalog (no nudity)' },
+    outfit: { business: 'a smart business suit', casual: 'a clean casual shirt', smart: 'smart-casual blouse/shirt', thai: 'elegant modern Thai traditional outfit', chef: 'a white chef uniform', doctor: 'a medical white coat', apron: "a shop owner's apron over a casual shirt", sport: 'sporty athleisure wear', swim: 'a tasteful swimsuit like a sportswear/swimwear catalog (no nudity)',
+      bodycon: 'a sleek form-fitting bodycon outfit that hugs the figure', gown: 'a glamorous evening gown, off-shoulder with a leg slit, red-carpet style',
+      crop: 'a fitted crop top with high-waist skinny jeans, trendy street style', gymfit: 'a tight-fitting sports bra and leggings / fitted gym wear' },
+    sexy: { no: '', yes: 'Sexy, confident, alluring glamour look like a high-end fashion editorial — flattering fitted styling, sultry confident gaze, elegant body-confident pose. Strictly tasteful: no nudity, nothing see-through over intimate areas, no lingerie-only, no sexual pose or act.' },
     body: { normal: 'an average healthy build', chubby: 'a chubby, plump build', fit: 'a fit, toned build', slim: 'a slim build', muscle: 'a muscular bodybuilder physique', athletic: 'a very athletic, sculpted build', skinny: 'a very thin, skinny build', worn: 'a tired, worn-out, disheveled look' },
     bg: { studio: 'plain soft-grey studio backdrop', shop: 'a bright tidy retail shop interior, softly blurred', office: 'a modern office, softly blurred', cafe: 'a cozy cafe, softly blurred', home: 'a warm living room, softly blurred', outdoor: 'an outdoor city street in daylight, softly blurred', kitchen: 'a clean modern kitchen, softly blurred' },
     mood: { smile: 'warm genuine smile', confident: 'confident friendly expression', calm: 'calm trustworthy expression', sad: 'a sad, downcast, gloomy expression', sick: 'a pale, unwell, sickly look with tired eyes', hyper: 'a wildly energetic, over-the-top hyped expression, eyes wide, big open grin' },
@@ -1287,7 +1290,11 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
     const sp = { gender: pick('gender', 'female'), age: pick('age', '30'), look: pick('look', 'thai'), hair: pick('hair', 'long'), outfit: pick('outfit', 'smart'), body: pick('body', 'normal'), bg: pick('bg', 'studio'), mood: pick('mood', 'smile'), extra: clean(b.extra, 200), art };
     // เด็ก/วัยรุ่น (ต่ำกว่า 18): ไม่มีชุดว่ายน้ำ ไม่มีหุ่นเซ็กซี่/เพาะกาย · แต่งตัวมิดชิดตามวัย
     const minor = ['0', '3', '7', '15'].includes(sp.age);
-    if (minor && (sp.outfit === 'swim' || ['fit', 'muscle', 'athletic'].includes(sp.body))) return res.status(400).json({ error: 'อวตารเด็ก/วัยรุ่น เลือกชุดว่ายน้ำหรือหุ่นแบบนี้ไม่ได้' });
+    sp.sexy = b.sexy === 'yes' ? 'yes' : 'no';
+    const ADULT_ONLY = ['swim', 'bodycon', 'gown', 'crop', 'gymfit'];
+    if (minor && (ADULT_ONLY.includes(sp.outfit) || sp.sexy === 'yes' || ['fit', 'muscle', 'athletic'].includes(sp.body))) return res.status(400).json({ error: 'อวตารเด็ก/วัยรุ่น เลือกชุด/ลุคแบบนี้ไม่ได้' });
+    // ผู้ใหญ่: เซ็กซี่ได้ถึงระดับแฟชั่น ไม่รับโป๊/ส่อเพศ
+    const gm = guardModel({ extra: sp.extra }); if (gm && !/ผู้ใหญ่เท่านั้น/.test(gm)) return res.status(400).json({ error: gm });
     if (minor && /เซ็กซี่|sexy|โป๊|บิกินี่|bikini|ชุดชั้นใน|lingerie|เปลือย|nude|ยั่ว/i.test(sp.extra)) return res.status(400).json({ error: 'รายละเอียดนี้ใช้กับอวตารเด็ก/วัยรุ่นไม่ได้' });
     const cX = checkContent({ extra: sp.extra });
     if (cX.error) return res.status(400).json({ error: cX.error });
@@ -1305,10 +1312,11 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
     const g = AV_OPT.gender[sp.gender], ageTxt = AV_OPT.age[sp.age].replace('her/his', sp.gender === 'male' ? 'his' : 'her');
     const kid = { male: 'boy', female: 'girl' }[sp.gender];
     const who = minor ? `a single ${AV_OPT.look[sp.look]} ${sp.age === '0' ? `baby ${kid}` : sp.age === '15' ? `teenage ${kid}` : kid}, ${ageTxt}` : `a single adult ${AV_OPT.look[sp.look]} ${g} ${ageTxt}`;
-    const wear = minor ? (sp.outfit === 'business' || sp.outfit === 'doctor' || sp.outfit === 'chef' ? `a child-size ${AV_OPT.outfit[sp.outfit].replace(/^an? /, '')}` : 'modest, age-appropriate everyday clothes') : AV_OPT.outfit[sp.outfit];
+    const MALE_WEAR = { gown: 'a sharp, slim-fit tuxedo with an open collar', gymfit: 'a tight-fitting tank top and fitted gym shorts that show his physique', crop: 'a fitted t-shirt with slim jeans', bodycon: 'a slim-fit shirt that hugs his physique', swim: 'swim shorts like a swimwear catalog' };
+    const wear = !minor && sp.gender === 'male' && MALE_WEAR[sp.outfit] ? MALE_WEAR[sp.outfit] : minor ? (sp.outfit === 'business' || sp.outfit === 'doctor' || sp.outfit === 'chef' ? `a child-size ${AV_OPT.outfit[sp.outfit].replace(/^an? /, '')}` : 'modest, age-appropriate everyday clothes') : AV_OPT.outfit[sp.outfit];
     const bodyTxt = sp.body !== 'normal' ? `, ${AV_OPT.body[sp.body]}` : '';
-    const showBody = !minor && (sp.body !== 'normal' || sp.outfit === 'swim');
-    const prompt = `${ART[art]}${art === 'real' ? 'Ultra-realistic professional portrait photograph' : 'Character portrait'} of ${who}${bodyTxt}, ${AV_OPT.hair[sp.hair]}, wearing ${wear}, ${AV_OPT.mood[sp.mood]}, looking straight into the camera${sp.mood === 'hyper' ? '' : ' with mouth gently closed'}.${minor ? ' Wholesome, family-friendly portrait.' : ''}
+    const showBody = !minor && (sp.body !== 'normal' || ADULT_ONLY.includes(sp.outfit) || sp.sexy === 'yes');
+    const prompt = `${ART[art]}${art === 'real' ? 'Ultra-realistic professional portrait photograph' : 'Character portrait'} of ${who}${bodyTxt}, ${AV_OPT.hair[sp.hair]}, wearing ${wear}, ${AV_OPT.mood[sp.mood]}, looking straight into the camera${sp.mood === 'hyper' ? '' : ' with mouth gently closed'}.${minor ? ' Wholesome, family-friendly portrait.' : sp.sexy === 'yes' ? ` ${AV_OPT.sexy.yes}` : ''}
 Framing: vertical 9:16, ${showBody ? 'three-quarter body from head to mid-thigh so the body type and outfit are visible, face still clear and sharp' : 'head and upper body centered, shoulders visible, face large and clear'}, eye level, camera about ${showBody ? '2' : '1'} meter${showBody ? 's' : ''} away.
 Background: ${AV_OPT.bg[sp.bg]}.${sp.extra ? `\nExtra details: ${sp.extra}` : ''}
 ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with pores, sharp focus on the eyes, shot on a full-frame camera, 50mm lens.' : 'Lighting: soft even studio light, clear readable face, consistent character design.'} Fictional person, not a celebrity. No text, no logo, no watermark, no hands covering the face, no sunglasses.`;

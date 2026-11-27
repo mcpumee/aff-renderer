@@ -62,9 +62,9 @@ export const STYLES = [
   { id: 'poster_menu', label: 'โปสเตอร์เมนู / โปรโมชั่น', emoji: '🍜', color: '#2F6B4A', ratio: '4:5', text: true,
     prompt: 'A mouth-watering promotional food/menu poster. Hero shot of the product, appetizing lighting, clear menu-style layout with the headline and price as bold readable typography, space for the shop name.' },
   { id: 'ad_poster', label: 'โปสเตอร์โฆษณาพรีเมียม', emoji: '🧋', color: '#B5651D', ratio: '4:5', text: true, ad: true,
-    prompt: 'A premium commercial advertising poster for a Thai shop, like a professional agency food & beverage / product ad. Studio-quality realistic product photography, warm inviting light, the product as the large hero in the lower-center on a natural surface (wood table or fitting surface), fresh natural props that match the product placed around it, softly blurred bokeh background of a cozy shop or nature. Bold, highly legible Thai typography hierarchy at the top: big headline, smaller sub-headline below. A round eye-catching price badge on the right side. A clean vertical column of 3 round icon badges on the left, each with a simple line icon and a short label. Balanced, uncluttered, ready to post.' },
+    prompt: 'A premium commercial advertising poster for a Thai shop, like a professional agency food & beverage / product ad. Studio-quality realistic product photography, warm inviting light, the product as the large hero in the lower-center in a setting that suits it, fresh natural props that match the product placed around it, softly blurred bokeh background of a cozy shop or nature. Bold, highly legible Thai typography hierarchy at the top: big headline, smaller sub-headline below. A round eye-catching price badge on the right side. A clean vertical column of 3 round icon badges on the left, each with a simple line icon and a short label. Balanced, uncluttered, ready to post.' },
   { id: 'product_luxury', label: 'ภาพสินค้าพื้นหรู', emoji: '💎', color: '#3B4A8C', ratio: '4:5',
-    prompt: 'Premium commercial product photography. The product placed on an elegant pedestal or marble surface, soft studio lighting, subtle reflections, luxury magazine advertising look, generous negative space.' },
+    prompt: 'Premium commercial product photography. The product in a refined premium setting that suits it (e.g. draped silk, rippling water, natural stone, glass and light, a styled real interior), sculpted lighting, subtle reflections, luxury magazine advertising look, generous negative space.' },
   { id: 'model_show', label: 'นางแบบ / นายแบบโชว์สินค้า', emoji: '💃', color: '#B0306A', ratio: '4:5', text: true,
     prompt: 'Professional fashion / commercial photoshoot of a strikingly attractive, confident adult model presenting the product (wearing it if it is clothing, swimwear, lingerie, sportswear or an accessory; holding or using it otherwise). Magazine-quality lighting, flattering pose, polished styling, premium e-commerce campaign look.' },
   { id: 'product_life', label: 'สินค้าในชีวิตจริง', emoji: '🏡', color: '#7B4A24', ratio: '4:5',
@@ -225,6 +225,7 @@ async function genCaptions(prompt) {
 }
 
 // ---------- คำสั่ง ----------
+let avRefImg = null; // ตั้งค่าใน register (ใช้ AV_DIR)
 const clean = (v, n = 200) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
 // นางแบบ/นายแบบ: ลุคสุภาพ หรือ เซ็กซี่แฟชั่น (ระดับแคตตาล็อกชุดว่ายน้ำ/ชุดชั้นใน) · ห้ามโป๊ ห้ามท่าทางทางเพศ · ผู้ใหญ่สมมติเท่านั้น
 export const MODEL_LOOKS = [{ id: 'clean', label: 'สุภาพ มืออาชีพ' }, { id: 'glam', label: 'แฟชั่นเซ็กซี่ (แบบแคตตาล็อก)' }];
@@ -236,11 +237,27 @@ const modelLine = (p) => {
     : 'Look: clean, elegant and professional, friendly confident expression, modest styling appropriate for any audience.';
   return `Model: ${who}, clearly an adult, fictional person (not a celebrity or real individual). ${look}`;
 };
+// ฉากสินค้าแบบสุ่ม (ไม่ให้วางบนแท่น/เขียงไม้ซ้ำๆ ทุกงาน) — AI เลือกอันที่เข้ากับสินค้าที่สุด
+const SCENES = [
+  'held in a hand in natural daylight outdoors', 'on a sunny café counter by a window', 'in use in a bright modern Thai home kitchen', 'flat-lay from above on soft linen fabric with a few related items',
+  'on a bold solid-color paper backdrop with a crisp hard shadow (pop art color-block style)', 'surrounded by its fresh ingredients or raw materials, some floating mid-air',
+  'outdoors on natural rocks / leaves / sand with dappled sunlight', 'on a bathroom vanity shelf with soft morning light', 'at a lively Thai street-market stall, background softly blurred',
+  'on a desk workspace with a laptop and coffee, shallow depth of field', 'with a splash of water or liquid frozen in motion', 'in a picnic scene on a blanket in a park',
+  'on a glossy reflective surface with a colored gradient light', 'beside a window with plant shadows falling across it', 'in a gift-box / unboxing moment with tissue paper', 'carried in a tote bag or on the go in the city',
+];
+const PROPS_FREE = new Set(['pr_news', 'pr_event', 'knowledge', 'before_after', 'shop_news']);
+function sceneLine(style, version) {
+  if (style.agent || style.pr || PROPS_FREE.has(style.id) || style.id === 'model_show') return '';
+  const a = SCENES[Math.floor(Math.random() * SCENES.length)];
+  let b = SCENES[Math.floor(Math.random() * SCENES.length)]; if (b === a) b = SCENES[(SCENES.indexOf(a) + 5 + version) % SCENES.length];
+  return `Setting idea (choose whichever fits this product best, or another real-world setting that feels natural for it): (a) ${a}; (b) ${b}. Avoid the stock cliché of the product standing on a podium, pedestal, cylinder display stand or a wooden cutting board / wood slab, unless the seller's details ask for it.`;
+}
 function buildPrompt(p, style, brand, hasRefs, version) {
   const goal = GOALS.find((g) => g.id === p.goal);
   const lines = [
     style.prompt,
     style.id === 'model_show' && modelLine(p),
+    sceneLine(style, version),
     `Purpose: ${goal?.hint || ''} (${goal?.label || ''}). Audience: Thai social media users.`,
     p.product && `Product / subject: ${p.product}.`,
     p.details && `Details from the seller: ${p.details}.`,
@@ -273,6 +290,10 @@ function buildPrompt(p, style, brand, hasRefs, version) {
   } else {
     lines.push('Do not add any text, letters, logos or watermarks to the image.');
   }
+  // กัน "ภาษาต่างดาว": AI ชอบแต่งตัวอักษรมั่วๆ บนฉลาก/ป้าย/พื้นหลัง
+  lines.push(style.text || style.ad
+    ? 'Text rule: the ONLY readable text allowed is the exact quoted text above. Do not invent any other words, letters, numbers or pseudo-script anywhere (packaging, signs, labels, screens, background) — keep those areas blank, plain or softly blurred. Thai letters must be correct Thai script; if a word cannot be written perfectly, leave it out instead of writing gibberish.'
+    : 'Text rule: no invented words, letters or pseudo-script anywhere (signs, labels, screens, background) — keep them blank or softly blurred. Only text physically printed on the real product reference may appear, copied exactly.');
   lines.push('Leave the top-right corner area clean (a logo may be placed there). Photorealistic quality, sharp focus, no distorted hands or faces, no misleading health claims.');
   if (version > 0) lines.push(`Variation #${version + 1}: use a noticeably different composition and camera angle from other variations.`);
   return lines.filter(Boolean).join('\n');
@@ -1220,12 +1241,25 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
   fs.mkdirSync(AV_DIR, { recursive: true });
   const AV_OPT = {
     gender: { female: 'woman', male: 'man' },
-    age: { '20': 'in her/his mid 20s', '30': 'in her/his 30s', '40': 'in her/his 40s', '50': 'in her/his 50s', '60': 'in her/his early 60s' },
+    age: { '0': 'a baby about 1 year old', '3': 'a toddler about 4 years old', '7': 'a child about 9 years old', '15': 'a teenager about 16 years old', '18': 'a young adult about 19 years old',
+      '20': 'in her/his mid 20s', '30': 'in her/his 30s', '40': 'in her/his 40s', '50': 'in her/his 50s', '60': 'in her/his early 60s' },
     look: { thai: 'Thai', chinese: 'Thai-Chinese / East Asian', malay: 'Malay', indian: 'South Asian', western: 'Caucasian', korean: 'Korean-style East Asian', african: 'Black / African' },
     hair: { short: 'short neat hair', long: 'long straight hair', wavy: 'shoulder-length wavy hair', bun: 'hair tied in a neat bun', bob: 'bob haircut', bald: 'shaved head', hijab: 'wearing a neat hijab' },
-    outfit: { business: 'a smart business suit', casual: 'a clean casual shirt', smart: 'smart-casual blouse/shirt', thai: 'elegant modern Thai traditional outfit', chef: 'a white chef uniform', doctor: 'a medical white coat', apron: "a shop owner's apron over a casual shirt", sport: 'sporty athleisure wear' },
+    outfit: { business: 'a smart business suit', casual: 'a clean casual shirt', smart: 'smart-casual blouse/shirt', thai: 'elegant modern Thai traditional outfit', chef: 'a white chef uniform', doctor: 'a medical white coat', apron: "a shop owner's apron over a casual shirt", sport: 'sporty athleisure wear', swim: 'a tasteful swimsuit like a sportswear/swimwear catalog (no nudity)' },
+    body: { normal: 'an average healthy build', chubby: 'a chubby, plump build', fit: 'a fit, toned build', slim: 'a slim build', muscle: 'a muscular bodybuilder physique', athletic: 'a very athletic, sculpted build', skinny: 'a very thin, skinny build', worn: 'a tired, worn-out, disheveled look' },
     bg: { studio: 'plain soft-grey studio backdrop', shop: 'a bright tidy retail shop interior, softly blurred', office: 'a modern office, softly blurred', cafe: 'a cozy cafe, softly blurred', home: 'a warm living room, softly blurred', outdoor: 'an outdoor city street in daylight, softly blurred', kitchen: 'a clean modern kitchen, softly blurred' },
-    mood: { smile: 'warm genuine smile', confident: 'confident friendly expression', calm: 'calm trustworthy expression' },
+    mood: { smile: 'warm genuine smile', confident: 'confident friendly expression', calm: 'calm trustworthy expression', sad: 'a sad, downcast, gloomy expression', sick: 'a pale, unwell, sickly look with tired eyes', hyper: 'a wildly energetic, over-the-top hyped expression, eyes wide, big open grin' },
+  };
+  // ภาพอ้างอิงตัวตน: มีมุมข้าง → รวมเป็นแผ่นเดียว (หน้าตรงใหญ่ + ข้างซ้าย/ขวา) ให้ AI จำหน้าได้ทุกมุม
+  avRefImg = async (a, w = 768, h = 1365) => {
+    const fp = path.join(AV_DIR, path.basename(a.file || ''));
+    if (!fs.existsSync(fp)) return null;
+    const angles = (a.spec?.angles || []).map((x) => path.join(AV_DIR, path.basename(x))).filter((x) => fs.existsSync(x));
+    if (!angles.length) return sharp(fp).rotate().resize({ width: w, height: h, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer();
+    const H = 1024, mainW = 640, sideW = 384, sideH = Math.floor(H / angles.length);
+    const tiles = [{ input: await sharp(fp).rotate().resize({ width: mainW, height: H, fit: 'cover', position: 'top' }).toBuffer(), left: 0, top: 0 }];
+    for (const [i, x] of angles.entries()) tiles.push({ input: await sharp(x).rotate().resize({ width: sideW, height: sideH, fit: 'cover', position: 'top' }).toBuffer(), left: mainW, top: i * sideH });
+    return sharp({ create: { width: mainW + sideW, height: H, channels: 3, background: '#ffffff' } }).composite(tiles).jpeg({ quality: 88 }).toBuffer();
   };
   const avView = (a) => ({ id: Number(a.id), name: a.name, gender: a.gender, source: a.source, spec: a.spec, voice: a.voice, img: `api/avatars/${a.id}/img`, createdAt: a.created_at });
   app.get('/api/avatars', auth, wrap(async (req, res) => {
@@ -1250,7 +1284,11 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
     const pick = (k, d) => (AV_OPT[k][b[k]] ? b[k] : d);
     const ART = { real: '', anime: 'Japanese anime character portrait illustration, clean line art, cel shading. ', '3d': 'High-end 3D animated film character render, stylized but detailed. ', paint: 'Cinematic digital painting portrait. ' };
     const art = ART[b.art] !== undefined ? b.art : 'real';
-    const sp = { gender: pick('gender', 'female'), age: pick('age', '30'), look: pick('look', 'thai'), hair: pick('hair', 'long'), outfit: pick('outfit', 'smart'), bg: pick('bg', 'studio'), mood: pick('mood', 'smile'), extra: clean(b.extra, 200), art };
+    const sp = { gender: pick('gender', 'female'), age: pick('age', '30'), look: pick('look', 'thai'), hair: pick('hair', 'long'), outfit: pick('outfit', 'smart'), body: pick('body', 'normal'), bg: pick('bg', 'studio'), mood: pick('mood', 'smile'), extra: clean(b.extra, 200), art };
+    // เด็ก/วัยรุ่น (ต่ำกว่า 18): ไม่มีชุดว่ายน้ำ ไม่มีหุ่นเซ็กซี่/เพาะกาย · แต่งตัวมิดชิดตามวัย
+    const minor = ['0', '3', '7', '15'].includes(sp.age);
+    if (minor && (sp.outfit === 'swim' || ['fit', 'muscle', 'athletic'].includes(sp.body))) return res.status(400).json({ error: 'อวตารเด็ก/วัยรุ่น เลือกชุดว่ายน้ำหรือหุ่นแบบนี้ไม่ได้' });
+    if (minor && /เซ็กซี่|sexy|โป๊|บิกินี่|bikini|ชุดชั้นใน|lingerie|เปลือย|nude|ยั่ว/i.test(sp.extra)) return res.status(400).json({ error: 'รายละเอียดนี้ใช้กับอวตารเด็ก/วัยรุ่นไม่ได้' });
     const cX = checkContent({ extra: sp.extra });
     if (cX.error) return res.status(400).json({ error: cX.error });
     const cost = V.AVATAR_DESIGN_PRICE.std;
@@ -1265,8 +1303,13 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
       await c.query('COMMIT');
     } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; } finally { c.release(); }
     const g = AV_OPT.gender[sp.gender], ageTxt = AV_OPT.age[sp.age].replace('her/his', sp.gender === 'male' ? 'his' : 'her');
-    const prompt = `${ART[art]}${art === 'real' ? 'Ultra-realistic professional portrait photograph' : 'Character portrait'} of a single adult ${AV_OPT.look[sp.look]} ${g} ${ageTxt}, ${AV_OPT.hair[sp.hair]}, wearing ${AV_OPT.outfit[sp.outfit]}, ${AV_OPT.mood[sp.mood]}, looking straight into the camera with mouth gently closed.
-Framing: vertical 9:16, head and upper body centered, shoulders visible, face large and clear, eye level, camera about 1 meter away.
+    const kid = { male: 'boy', female: 'girl' }[sp.gender];
+    const who = minor ? `a single ${AV_OPT.look[sp.look]} ${sp.age === '0' ? `baby ${kid}` : sp.age === '15' ? `teenage ${kid}` : kid}, ${ageTxt}` : `a single adult ${AV_OPT.look[sp.look]} ${g} ${ageTxt}`;
+    const wear = minor ? (sp.outfit === 'business' || sp.outfit === 'doctor' || sp.outfit === 'chef' ? `a child-size ${AV_OPT.outfit[sp.outfit].replace(/^an? /, '')}` : 'modest, age-appropriate everyday clothes') : AV_OPT.outfit[sp.outfit];
+    const bodyTxt = sp.body !== 'normal' ? `, ${AV_OPT.body[sp.body]}` : '';
+    const showBody = !minor && (sp.body !== 'normal' || sp.outfit === 'swim');
+    const prompt = `${ART[art]}${art === 'real' ? 'Ultra-realistic professional portrait photograph' : 'Character portrait'} of ${who}${bodyTxt}, ${AV_OPT.hair[sp.hair]}, wearing ${wear}, ${AV_OPT.mood[sp.mood]}, looking straight into the camera${sp.mood === 'hyper' ? '' : ' with mouth gently closed'}.${minor ? ' Wholesome, family-friendly portrait.' : ''}
+Framing: vertical 9:16, ${showBody ? 'three-quarter body from head to mid-thigh so the body type and outfit are visible, face still clear and sharp' : 'head and upper body centered, shoulders visible, face large and clear'}, eye level, camera about ${showBody ? '2' : '1'} meter${showBody ? 's' : ''} away.
 Background: ${AV_OPT.bg[sp.bg]}.${sp.extra ? `\nExtra details: ${sp.extra}` : ''}
 ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with pores, sharp focus on the eyes, shot on a full-frame camera, 50mm lens.' : 'Lighting: soft even studio light, clear readable face, consistent character design.'} Fictional person, not a celebrity. No text, no logo, no watermark, no hands covering the face, no sunglasses.`;
     const model = MODEL_OVERRIDE || TIERS[1].model;
@@ -1300,9 +1343,11 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
       [req.uid, clean(b.name, 40) || 'อวตารของฉัน', file, gender, 'design', spec, V.VOICES.find((v) => v.gender === gender)?.id || ''])).rows[0];
     res.json(avView(a));
   }));
-  const avUpload = multer({ dest: UP_TMP, limits: { fileSize: 12 * 1024 * 1024, files: 1 } });
-  app.post('/api/avatars/upload', auth, avUpload.single('photo'), wrap(async (req, res) => {
-    const drop = () => req.file && fs.rm(req.file.path, { force: true }, () => {});
+  const avUpload = multer({ dest: UP_TMP, limits: { fileSize: 12 * 1024 * 1024, files: 3 } });
+  app.post('/api/avatars/upload', auth, avUpload.fields([{ name: 'photo', maxCount: 1 }, { name: 'side', maxCount: 2 }]), wrap(async (req, res) => {
+    req.file = req.files?.photo?.[0];
+    const sides = (req.files?.side || []).filter((x) => /^image\//.test(x.mimetype));
+    const drop = () => { if (req.file) fs.rm(req.file.path, { force: true }, () => {}); for (const x of req.files?.side || []) fs.rm(x.path, { force: true }, () => {}); };
     try {
       if (req.body?.consent !== 'yes') return res.status(400).json({ error: 'ยืนยันก่อนว่าเป็นรูปของคุณเอง หรือได้รับอนุญาตจากเจ้าของรูป' });
       if (!req.file || !/^image\//.test(req.file.mimetype)) return res.status(400).json({ error: 'เลือกรูปภาพ 1 รูป' });
@@ -1311,8 +1356,14 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
       const file = `a${req.uid}-${Date.now().toString(36)}${rand(4).toLowerCase()}.jpg`;
       await sharp(req.file.path).rotate().resize({ width: 1080, height: 1920, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 92 }).toFile(path.join(AV_DIR, file));
       const gender = req.body?.gender === 'male' ? 'male' : 'female';
+      // มุมข้าง ซ้าย/ขวา (ไม่บังคับ) → ใช้เป็นภาพอ้างอิงเพิ่ม ให้ AI จำหน้าได้แม่นทุกมุม
+      const angles = [];
+      for (const x of sides) {
+        const af = `${file.replace(/\.jpg$/, '')}-s${angles.length + 1}.jpg`;
+        try { await sharp(x.path).rotate().resize({ width: 1080, height: 1920, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 90 }).toFile(path.join(AV_DIR, af)); angles.push(af); } catch { /* ข้ามรูปเสีย */ }
+      }
       const a = (await q('INSERT INTO avatars(user_id,name,file,gender,source,spec,voice) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-        [req.uid, clean(req.body?.name, 40) || 'รูปของฉัน', file, gender, 'upload', { consentAt: new Date().toISOString() }, V.VOICES.find((v) => v.gender === gender)?.id || ''])).rows[0];
+        [req.uid, clean(req.body?.name, 40) || 'รูปของฉัน', file, gender, 'upload', { consentAt: new Date().toISOString(), ...(angles.length ? { angles } : {}) }, V.VOICES.find((v) => v.gender === gender)?.id || ''])).rows[0];
       await q('INSERT INTO audit_log(user_id,action,detail,ip) VALUES($1,$2,$3,$4)', [req.uid, 'avatar_upload_consent', { avatar: a.id }, req.ip || '']);
       res.json(avView(a));
     } finally { drop(); }
@@ -1326,8 +1377,9 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     res.json(avView(r));
   }));
   app.delete('/api/avatars/:id', auth, wrap(async (req, res) => {
-    const a = (await q('DELETE FROM avatars WHERE id=$1 AND user_id=$2 RETURNING file, motion_file', [Number(req.params.id) || 0, req.uid])).rows[0];
+    const a = (await q('DELETE FROM avatars WHERE id=$1 AND user_id=$2 RETURNING file, motion_file, spec', [Number(req.params.id) || 0, req.uid])).rows[0];
     if (a) fs.rm(path.join(AV_DIR, path.basename(a.file)), () => {});
+    for (const x of a?.spec?.angles || []) fs.rm(path.join(AV_DIR, path.basename(x)), () => {});
     if (a?.motion_file) fs.rm(path.join(AV_DIR, path.basename(a.motion_file)), () => {});
     res.json({ ok: true });
   }));
@@ -1346,9 +1398,9 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     // รูปนักแสดง (ต้นแบบหน้าตา)
     const castImgs = {};
     for (const c of f.cast) {
-      const a = (await q('SELECT file FROM avatars WHERE id=$1 AND user_id=$2', [c.avatarId, w.user_id])).rows[0];
-      const fp = a && path.join(DATA_DIR, 'avatars', path.basename(a.file));
-      if (fp && fs.existsSync(fp)) castImgs[c.name] = await sharp(fp).rotate().resize({ width: 768, height: 1365, fit: 'inside' }).jpeg({ quality: 88 }).toBuffer();
+      const a = (await q('SELECT file, spec FROM avatars WHERE id=$1 AND user_id=$2', [c.avatarId, w.user_id])).rows[0];
+      const buf = a && avRefImg && await avRefImg(a).catch(() => null);
+      if (buf) castImgs[c.name] = buf;
     }
     let r;
     try { r = await FM.renderEpisode({ f, ep, quality: p.quality, castImgs, WORK_DIR, pubUrl, log, stage, id: w.id }); }
@@ -1469,8 +1521,10 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     try { ({ captions, tags } = await finalizeCaptions(w, p, capSrc || await genCaptions(avCapPrompt(p, lines)))); }
     catch { ({ captions, tags } = await finalizeCaptions(w, p, { facebook: lines.join(' '), instagram: lines.join(' '), tiktok: lines[0], shopee: lines.join(' '), hashtags: [] })); }
     const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
+    // คลิปภาษาอื่น: เก็บคำแปลไทยไว้ให้เจ้าของงานอ่านเข้าใจ
+    const scriptTh = p.lang && p.lang !== 'th' ? await V.adaptLines(lines, { lang: 'th', keepCount: true }).catch(() => null) : null;
     await q("UPDATE works SET status='done', files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
-      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: lines, avatarName: av.name, seconds: Math.round(sec), engine: useKling ? 'kling' : 'heygen' })]);
+      [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ script: lines, ...(scriptTh ? { scriptTh } : {}), avatarName: av.name, seconds: Math.round(sec), engine: useKling ? 'kling' : 'heygen' })]);
     PROG.delete(w.id);
     if (hooks.onDone) hooks.onDone({ ...w, files: vf }).catch((e) => log('onDone', w.id, e.message));
     log('avatar done', w.id, `${Math.round(sec)}s`, `${((Date.now() - t0) / 1000).toFixed(1)}s`);
@@ -1630,7 +1684,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
       if (a) {
         const img = path.join(AV_DIR, path.basename(a.file || ''));
         avatar = { id: Number(a.id), name: a.name, desc: [a.gender === 'male' ? 'man' : 'woman', ...Object.values(a.spec || {}).filter((v) => typeof v === 'string')].join(', ').slice(0, 300),
-          img: fs.existsSync(img) ? await sharp(img).resize({ width: 768, height: 768, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer() : null };
+          img: fs.existsSync(img) ? await (avRefImg ? avRefImg(a, 768, 768) : sharp(img).resize({ width: 768, height: 768, fit: 'inside' }).jpeg({ quality: 85 }).toBuffer()) : null };
       }
     }
     let rx;

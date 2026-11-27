@@ -1,7 +1,8 @@
 <!doctype html>
-<html lang="th">
+<html lang="th" translate="no">
 <head>
 <meta charset="utf-8">
+<meta name="google" content="notranslate">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#15161B">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,7 +17,7 @@
 <script>try{var t=localStorage.getItem('mr_theme');document.documentElement.dataset.theme=(t==='light'||t==='dark')?t:'auto'}catch(e){document.documentElement.dataset.theme='auto'}</script>
 </head>
 <body>
-<div id="app" aria-live="polite"></div>
+<div id="app" aria-live="polite"><div class="loader" role="status" style="min-height:80vh"><img src="icon.svg" alt="" class="ld-logo" width="72" height="72"><span class="muted">กำลังโหลด…</span></div></div>
 <div id="toast" role="status" hidden></div>
 <script src="app.js" defer></script>
 </body>

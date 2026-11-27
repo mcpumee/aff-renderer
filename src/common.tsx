@@ -7,7 +7,8 @@ import '@fontsource/kanit/latin-500.css';
 import '@fontsource/kanit/latin-700.css';
 import '@fontsource/kanit/latin-800.css';
 
-export const FONT = "'Kanit', sans-serif";
+// ภาษาอื่น (จีน/อังกฤษ/มลายู) ต้องมีฟอนต์สำรอง ไม่งั้นซับขึ้นเป็นกล่อง □ (ภาษาต่างดาว)
+export const FONT = "'Kanit', 'Noto Sans CJK SC', 'Noto Sans CJK TC', 'Noto Sans Thai', 'Loma', sans-serif";
 export const ORANGE = '#EE4D2D';
 export const YELLOW = '#FFD23F';
 

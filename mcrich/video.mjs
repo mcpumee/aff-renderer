@@ -483,7 +483,7 @@ Scene: ${sc.scene}
 Characters (keep exactly this appearance):
 ${cast}
 ${first ? 'The first reference image is the real product: if the product appears, draw it faithfully (same shape, packaging, colors).' : 'Reference images: 1) the real product, 2) an earlier frame of this same story — keep the same characters, faces, outfits and art style.'}
-Thai setting. No text, no letters, no subtitles, no watermark. Leave the top 15% and bottom 25% of the frame visually simple for captions.`;
+Thai setting. No text, no letters, no fake writing on signs or labels (keep them blank), no subtitles, no watermark. Leave the top 15% and bottom 25% of the frame visually simple for captions.`;
 }
 /** พากย์บทเดียว (Gemini) → {audio_base64 wav, alignment, format} */
 export async function voiceOne(text, voice) { return voiceGemini([text], voice, ''); }
@@ -773,7 +773,7 @@ export async function klingLipsync({ baseFile, audio, outFile, urlOf, tmpDir, on
 export const MOTION_MODEL = () => process.env.MCRICH_VIDEO_MODEL || 'gemini-omni-1.1-flash';
 export const MOTION_PRICE = { std: 65 }; // ~10 วิ 720p ต้นทุนราว $1 + บท
 export const MOTION_PRESETS = [
-  { id: 'spin', label: 'โชว์สินค้ารอบตัว', desc: 'สินค้าหมุนช้าๆ แสงสตูดิโอหรู', en: 'slow turntable rotation of the product on an elegant pedestal, premium studio lighting, soft reflections' },
+  { id: 'spin', label: 'โชว์สินค้ารอบตัว', desc: 'สินค้าหมุนช้าๆ แสงสตูดิโอหรู', en: 'slow orbit around the product in a stylish real-world setting that suits it (not a podium), premium lighting, soft reflections' },
   { id: 'push', label: 'กล้องพุ่งเข้าหา', desc: 'กล้องเคลื่อนเข้าใกล้ ดูพรีเมียม', en: 'smooth cinematic dolly-in toward the product, shallow depth of field, a light sweep across the surface' },
   { id: 'splash', label: 'สาดน้ำ / ผลไม้', desc: 'น้ำกระเซ็น วัตถุดิบลอย สดชื่น', en: 'slow-motion splash of water and fresh ingredients bursting around the product, high-speed commercial shot' },
   { id: 'food', label: 'อาหารน่ากิน', desc: 'ควันลอย ซอสราด เห็นเนื้อสัมผัส', en: 'appetizing food commercial: steam rising, sauce pouring, macro close-up of texture, warm light' },

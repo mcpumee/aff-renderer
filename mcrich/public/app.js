@@ -11,7 +11,19 @@ async function api(path, opt = {}) {
   const init = { method: opt.method || 'GET', credentials: 'same-origin', headers: {} };
   if (opt.body instanceof FormData) init.body = opt.body;
   else if (opt.body) { init.headers['content-type'] = 'application/json'; init.body = JSON.stringify(opt.body); }
-  const r = await fetch(path, init);
+  // Safari/iOS: ครั้งแรกหลังเปิดแอปจากพื้นหลังมักได้ "Load failed" (การเชื่อมต่อเก่าถูกตัด) → ลองใหม่อัตโนมัติ (เฉพาะ GET ไม่ให้สร้างงาน/ตัดดาวซ้ำ)
+  const safe = init.method === 'GET';
+  let r;
+  for (let i = 0; ; i++) {
+    try {
+      r = await fetch(path, init);
+      if (safe && [502, 503, 504].includes(r.status) && i < 2) throw Object.assign(new Error('gw'), { retry: true });
+      break;
+    } catch (e) {
+      if (!safe || i >= 2) throw new Error(/load failed|failed to fetch|network/i.test(e.message) ? 'เชื่อมต่อไม่สำเร็จ เช็กอินเทอร์เน็ตแล้วลองใหม่' : e.message);
+      await new Promise((ok) => setTimeout(ok, i ? 1200 : 400));
+    }
+  }
   const j = await r.json().catch(() => ({}));
   if (r.status === 401) { ME = null; go('login'); throw new Error('login'); }
   if (!r.ok) throw new Error(j.error || 'ระบบขัดข้อง');
@@ -76,6 +88,10 @@ function richHead(mood) {
     <rect x="50" y="58" width="100" height="76" rx="36" fill="url(#rgVisor)"/>
     <path d="M62 70q16-9 40-8" stroke="rgba(255,255,255,.22)" stroke-width="5" stroke-linecap="round" fill="none"/>
     ${richFace(mood)}</g>`;
+}
+// ตัวโหลด: โลโก้แอปเต้นเบาๆ ให้รู้ว่ากำลังโหลด (sm = ในการ์ด)
+function LOAD(text = 'กำลังโหลด…', sm = false) {
+  return `<div class="loader${sm ? ' sm' : ''}" role="status"><span class="ld-logo">${RICH('head', sm ? 28 : 64)}</span>${sm ? '' : '<span class="brand ld-word">Mc <em>Rich</em></span>'}<span class="muted">${text}</span></div>`;
 }
 function RICH(pose = 'wave', size = 96, cls = '') {
   if (pose === 'head') return `<svg class="rich ${cls}" width="${size}" height="${size}" viewBox="14 0 172 160" aria-hidden="true">${RICH_DEFS}${richHead('happy')}</svg>`;
@@ -162,9 +178,9 @@ async function homeView() {
       <a class="btn cta" href="#create?new=1">${ICON.plus}สร้างผลงานใหม่</a>
       <div class="quota"><span>ภาพฟรีวันนี้ <b>${ME.freeImages.today}</b></span><span>ภาพฟรีต้อนรับ <b>${ME.freeImages.welcome}/10</b></span></div>
     </section>
-    <section id="vBox" style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2>คลิปไวรัลแนะนำ</h2></div><p class="muted">กำลังโหลด…</p></section>
+    <section id="vBox" style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2>คลิปไวรัลแนะนำ</h2></div>${LOAD()}</section>
     <section style="display:flex;flex-direction:column;gap:12px"><div class="sec-h"><h2 id="th">แนวงานฮิต</h2><a href="#interests">ปรับความสนใจ</a></div>
-      <div class="grid3" id="trends"><p class="muted">กำลังโหลด…</p></div></section>
+      <div class="grid3" id="trends">${LOAD()}</div></section>
     ${promo}
   </main>${nav('home')}`;
   api('api/trends').then((t) => {
@@ -228,7 +244,7 @@ async function viralBox(el, o = {}) {
 }
 async function viralView(qs) {
   const ps = new URLSearchParams(qs || '');
-  app.innerHTML = `${topbar('คลิปไวรัลแนะนำ', 'home')}<main><section id="vAll" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></section></main>${nav('home')}`;
+  app.innerHTML = `${topbar('คลิปไวรัลแนะนำ', 'home')}<main><section id="vAll" style="display:flex;flex-direction:column;gap:12px">${LOAD()}</section></main>${nav('home')}`;
   if (ps.get('pf')) savePf(ps.get('pf'));
   await viralBox($('#vAll'), { pf: ps.get('pf') || '', g: ps.get('g') || 'mine' });
 }
@@ -332,9 +348,9 @@ function profileView(qs) {
       <a href="#tags"><span><b>แฮชแท็กประจำ</b><br><span class="muted">${(ME.hashtags || []).length} แท็ก · ติ๊กใช้ได้ตอนสร้าง</span></span><span aria-hidden="true">›</span></a>
     </div>
     ${linkCard}
-    <section class="card" id="notif"><h2 style="font-size:16px">แจ้งเตือน</h2><span class="muted">กำลังโหลด…</span></section>
+    <section class="card" id="notif"><h2 style="font-size:16px">แจ้งเตือน</h2>${LOAD('กำลังโหลด…', true)}</section>
     <section class="card"><h2 style="font-size:16px">การเชื่อมต่อ</h2>
-      <div id="drive" class="card" style="padding:12px;background:var(--s2)"><span class="muted">Google Drive · กำลังโหลด…</span></div>
+      <div id="drive" class="card" style="padding:12px;background:var(--s2)">${LOAD('Google Drive · กำลังโหลด…', true)}</div>
       <div class="grid2 muted">
         <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>เพจ Facebook</span><span>เร็วๆ นี้</span></span>
         <span class="card" style="padding:10px;flex-direction:row;justify-content:space-between"><span>Instagram</span><span>เร็วๆ นี้</span></span>
@@ -379,19 +395,20 @@ async function driveCard() {
 let AVS = [], AVS_LOADED = false, AVOPT = null;
 async function loadAvatars() { const r = await api('api/avatars'); AVS = r.items; AVOPT = r; AVS_LOADED = true; return r; }
 const AV_LABEL = {
-  gender: { female: 'ผู้หญิง', male: 'ผู้ชาย' }, age: { 20: '20+', 30: '30+', 40: '40+', 50: '50+', 60: '60+' },
+  gender: { female: 'ผู้หญิง', male: 'ผู้ชาย' }, age: { 0: '0+', 3: '3+', 7: '7+', 15: '15+', 18: '18+', 20: '20+', 30: '30+', 40: '40+', 50: '50+', 60: '60+' },
   look: { thai: 'ไทย', chinese: 'ไทยเชื้อสายจีน', malay: 'มลายู', indian: 'เอเชียใต้', western: 'ตะวันตก', korean: 'สไตล์เกาหลี', african: 'แอฟริกัน' },
   hair: { short: 'ผมสั้น', long: 'ผมยาวตรง', wavy: 'ผมลอนประบ่า', bun: 'มัดมวย', bob: 'บ๊อบ', bald: 'โกนหัว', hijab: 'คลุมฮิญาบ' },
-  outfit: { business: 'สูททำงาน', casual: 'เสื้อลำลอง', smart: 'สมาร์ทแคชชวล', thai: 'ชุดไทยประยุกต์', chef: 'ชุดเชฟ', doctor: 'เสื้อกาวน์', apron: 'ผ้ากันเปื้อนเจ้าของร้าน', sport: 'ชุดกีฬา' },
+  outfit: { business: 'สูททำงาน', casual: 'เสื้อลำลอง', smart: 'สมาร์ทแคชชวล', thai: 'ชุดไทยประยุกต์', chef: 'ชุดเชฟ', doctor: 'เสื้อกาวน์', apron: 'ผ้ากันเปื้อนเจ้าของร้าน', sport: 'ชุดกีฬา', swim: 'ชุดว่ายน้ำ' },
+  body: { normal: 'ปกติ', chubby: 'อวบ', fit: 'หุ่นดี', slim: 'ผอม', muscle: 'เพาะกาย', athletic: 'หุ่นดีมาก', skinny: 'ผอมมาก', worn: 'โทรม' },
   bg: { studio: 'สตูดิโอเรียบ', shop: 'ในร้าน', office: 'ออฟฟิศ', cafe: 'คาเฟ่', home: 'ในบ้าน', outdoor: 'ถนนกลางแจ้ง', kitchen: 'ห้องครัว' },
-  mood: { smile: 'ยิ้มอบอุ่น', confident: 'มั่นใจ', calm: 'สุขุมน่าเชื่อถือ' },
+  mood: { smile: 'ยิ้มอบอุ่น', confident: 'มั่นใจ', calm: 'สุขุมน่าเชื่อถือ', sad: 'หดหู่', sick: 'ป่วย', hyper: 'บ้าพลัง' },
 };
 let AVD = null;
 async function avatarsView(qs) { await loadAvatars(); drawAvatars(qs); }
 function drawAvatars(qs) {
   const from = new URLSearchParams(qs || '').get('from');
   const r = AVOPT;
-  AVD = AVD || { gender: 'female', age: '30', look: 'thai', hair: 'long', outfit: 'smart', bg: 'studio', mood: 'smile', extra: '', cands: null, spec: null, tab: AVS.length ? 'list' : 'design' };
+  AVD = AVD || { gender: 'female', age: '30', look: 'thai', hair: 'long', outfit: 'smart', body: 'normal', bg: 'studio', mood: 'smile', extra: '', cands: null, spec: null, tab: AVS.length ? 'list' : 'design' };
   const back = from === 'create' ? 'create' : from === 'film' ? 'film?new=1' : 'profile';
   const tabs = `<div class="chips"><button type="button" class="chip" data-tab="list" aria-pressed="${AVD.tab === 'list'}">อวตารของฉัน (${AVS.length})</button><button type="button" class="chip" data-tab="design" aria-pressed="${AVD.tab === 'design'}">ออกแบบใหม่</button><button type="button" class="chip" data-tab="upload" aria-pressed="${AVD.tab === 'upload'}">ใช้รูปตัวเอง</button></div>`;
   let body = '';
@@ -406,20 +423,27 @@ function drawAvatars(qs) {
       <label class="f" for="avname">ตั้งชื่ออวตาร<input id="avname" type="text" maxlength="40" placeholder="เช่น น้องมิน พรีเซนเตอร์" value="${esc(AVD.name || '')}"></label>
       <div class="grid2"><button type="button" class="btn dark" id="redo">ออกแบบใหม่</button><button type="button" class="btn" id="save">บันทึกอวตาร</button></div>`;
   } else if (AVD.tab === 'design') {
-    const grp = (k, t) => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${t}</h2><div class="chips">${(r.options[k] || []).map((v) => `<button type="button" class="chip" data-ak="${k}" data-v="${v}" aria-pressed="${AVD[k] === v}">${esc(AV_LABEL[k][v] || v)}</button>`).join('')}</div></section>`;
+    const minor = ['0', '3', '7', '15'].includes(AVD.age);
+    if (minor && AVD.outfit === 'swim') AVD.outfit = 'casual';
+    if (minor && ['fit', 'muscle', 'athletic'].includes(AVD.body)) AVD.body = 'normal';
+    const off = (k, v) => minor && ((k === 'outfit' && v === 'swim') || (k === 'body' && ['fit', 'muscle', 'athletic'].includes(v)));
+    const grp = (k, t) => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${t}</h2><div class="chips">${(r.options[k] || []).filter((v) => !off(k, v)).map((v) => `<button type="button" class="chip" data-ak="${k}" data-v="${v}" aria-pressed="${AVD[k] === v}">${esc(AV_LABEL[k]?.[v] || v)}</button>`).join('')}</div>${k === 'age' && minor ? '<span class="muted">อวตารเด็ก/วัยรุ่น: แต่งกายมิดชิดตามวัยเสมอ</span>' : ''}</section>`;
     body = `${r.ready ? '' : '<p class="muted">ระบบวิดีโออวตารกำลังตั้งค่า ออกแบบเก็บไว้ก่อนได้</p>'}
       <section style="display:flex;flex-direction:column;gap:8px"><h2>สไตล์ภาพ</h2><div class="chips">${[['real', 'เหมือนจริง'], ['anime', 'อนิเมะ'], ['3d', 'การ์ตูน 3D'], ['paint', 'ภาพวาด']].map(([k, l]) => `<button type="button" class="chip" data-ak="art" data-v="${k}" aria-pressed="${(AVD.art || 'real') === k}">${l}</button>`).join('')}</div>${from === 'film' ? '<span class="muted">ตัวละครหนัง: เลือกสไตล์ให้ตรงกับสไตล์ภาพของเรื่อง · ใส่ชุด/ลักษณะเฉพาะในรายละเอียดเพิ่ม เช่น ชุดเจ้าสาว, ชุดนักธุรกิจหรู</span>' : ''}</section>
-      ${grp('gender', 'เพศ')}${grp('age', 'อายุ')}${grp('look', 'หน้าตา')}${grp('hair', 'ทรงผม')}${grp('outfit', 'ชุด')}${grp('bg', 'ฉากหลัง')}${grp('mood', 'สีหน้า')}
+      ${grp('gender', 'เพศ')}${grp('age', 'ช่วงอายุ')}${grp('look', 'หน้าตา')}${grp('body', 'รูปร่าง')}${grp('hair', 'ทรงผม')}${grp('outfit', 'ชุด')}${grp('bg', 'ฉากหลัง')}${grp('mood', 'สีหน้า')}
       <label class="f" for="extra">รายละเอียดเพิ่ม (ไม่บังคับ)<input id="extra" type="text" maxlength="200" placeholder="เช่น ใส่แว่นกรอบบาง ต่างหูมุก" value="${esc(AVD.extra)}"></label>
       <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">ออกแบบ 1 ครั้ง ได้ 2 แบบให้เลือก</span><b class="num" style="font-size:22px">${ICON.star}${r.designPrice} ดาว</b></div>
         <span class="muted">ภาพคนเหมือนจริง (บุคคลสมมติ) · บันทึกแล้วใช้ได้ทุกงาน ไม่เสียดาวซ้ำ</span></section>
       <button type="button" class="btn" id="design">ออกแบบอวตาร</button>`;
   } else {
-    body = `<section class="card"><b>ใช้รูปตัวเองเป็นอวตาร</b><span class="muted">รูปหน้าตรง เห็นหน้าชัด ไหล่ขึ้นไป แสงสว่าง ไม่ใส่แว่นดำ ไม่มีคนอื่นในรูป</span>
+    const slot = (id, t, req) => `<label class="ref add" for="${id}" style="cursor:pointer;flex:1;min-width:0;height:auto;aspect-ratio:3/4;flex-direction:column;gap:4px;text-align:center;font-size:13px;background-size:cover;background-position:center" id="${id}l"><span class="sl-t">${t}<br><span class="muted">${req ? 'จำเป็น' : 'แนะนำ'}</span></span><input id="${id}" type="file" accept="image/*" hidden></label>`;
+    body = `<section class="card"><b>ใช้รูปตัวเองเป็นอวตาร</b>
+        <span class="muted">📸 ลงรูป 3 มุมได้อวตารคุณภาพดีที่สุด: <b>หน้าตรง</b> + <b>หันข้างซ้าย</b> + <b>หันข้างขวา</b> · เห็นหน้าชัด ไหล่ขึ้นไป แสงสว่าง ไม่ใส่แว่นดำ ไม่มีคนอื่นในรูป</span>
+        <div class="row" style="gap:8px">${slot('upf', 'หน้าตรง', true)}${slot('upL', 'ข้างซ้าย', false)}${slot('upR', 'ข้างขวา', false)}</div>
+        <span class="muted">หน้าตรงใช้ทำวิดีโอพูด · มุมข้างช่วยให้ AI จำหน้าได้แม่นเวลาเข้าฉากหนัง/คลิปมุมอื่น</span>
         <label class="f" for="upname">ชื่ออวตาร<input id="upname" type="text" maxlength="40" placeholder="เช่น พี่แม็ก"></label>
         <div class="chips"><button type="button" class="chip" data-ug="female" aria-pressed="${AVD.ug !== 'male'}">ผู้หญิง</button><button type="button" class="chip" data-ug="male" aria-pressed="${AVD.ug === 'male'}">ผู้ชาย</button></div>
-        <label class="btn dark" for="upf" style="cursor:pointer">เลือกรูป<input id="upf" type="file" accept="image/*" hidden></label><span class="muted" id="upn"></span>
-        <label class="row" for="consent" style="gap:10px;align-items:flex-start"><input id="consent" type="checkbox"><span>ฉันยืนยันว่าเป็นรูปของฉันเอง หรือได้รับอนุญาตจากเจ้าของรูปให้ใช้สร้างวิดีโอ และจะไม่ใช้ปลอมเป็นผู้อื่น</span></label>
+                <label class="row" for="consent" style="gap:10px;align-items:flex-start"><input id="consent" type="checkbox"><span>ฉันยืนยันว่าเป็นรูปของฉันเอง หรือได้รับอนุญาตจากเจ้าของรูปให้ใช้สร้างวิดีโอ และจะไม่ใช้ปลอมเป็นผู้อื่น</span></label>
         <button type="button" class="btn" id="upgo">บันทึกอวตาร (ฟรี)</button></section>`;
   }
   app.innerHTML = `${topbar('อวตารของฉัน', back)}<main>${tabs}${body}</main>${nav('profile')}`;
@@ -447,11 +471,14 @@ function drawAvatars(qs) {
     try { const a = await api('api/avatars', { method: 'POST', body: { cand: AVD.cands[AVD.pick || 0].name, name: $('#avname').value, spec: AVD.spec } }); AVD.cands = null; AVD.tab = 'list'; AVD.name = ''; if (D && D.style === 'v_avatar') D.avatarId = a.id; toast('บันทึกอวตารแล้ว'); if (from === 'create') return go('create'); if (from === 'film') { if (FD && a?.id && FD.cast.length < 6) FD.cast.push({ avatarId: a.id, name: a.name, role: '', desc: '', voice: a.voice }); AVS_LOADED = false; return go('film?new=1'); } avatarsView(qs); }
     catch (e) { toast(e.message); sv.disabled = false; }
   };
-  let UPF = null;
-  const uf = $('#upf'); if (uf) uf.onchange = (e) => { UPF = e.target.files[0] || null; $('#upn').textContent = UPF ? UPF.name : ''; };
+  let UPF = null; const UPS = {};
+  const prev = (id, f) => { const l = $(`#${id}l`); if (l && f) { l.style.backgroundImage = `url(${URL.createObjectURL(f)})`; l.style.justifyContent = 'flex-end'; const t = l.querySelector('.sl-t'); t.innerHTML = `✓ ${t.firstChild.textContent}`; t.style.cssText = 'background:rgba(0,0,0,.6);color:#fff;border-radius:999px;padding:2px 10px;margin-bottom:6px;font-weight:600'; } };
+  const uf = $('#upf'); if (uf) uf.onchange = (e) => { UPF = e.target.files[0] || null; prev('upf', UPF); };
+  ['upL', 'upR'].forEach((id) => { const x = $(`#${id}`); if (x) x.onchange = (e) => { UPS[id] = e.target.files[0] || null; prev(id, UPS[id]); }; });
   const ug = $('#upgo'); if (ug) ug.onclick = async () => {
-    if (!UPF) return toast('เลือกรูปก่อน'); if (!$('#consent').checked) return toast('ติ๊กยืนยันสิทธิ์ในรูปก่อน');
+    if (!UPF) return toast('เลือกรูปหน้าตรงก่อน'); if (!$('#consent').checked) return toast('ติ๊กยืนยันสิทธิ์ในรูปก่อน');
     const fd = new FormData(); fd.append('photo', UPF); fd.append('name', $('#upname').value); fd.append('gender', AVD.ug === 'male' ? 'male' : 'female'); fd.append('consent', 'yes');
+    ['upL', 'upR'].forEach((id) => UPS[id] && fd.append('side', UPS[id]));
     ug.disabled = true;
     try { const a = await api('api/avatars/upload', { method: 'POST', body: fd }); AVD.tab = 'list'; if (D && D.style === 'v_avatar') D.avatarId = a.id; toast('บันทึกอวตารแล้ว'); if (from === 'create') return go('create'); if (from === 'film') { if (FD && a?.id && FD.cast.length < 6) FD.cast.push({ avatarId: a.id, name: a.name, role: '', desc: '', voice: a.voice }); AVS_LOADED = false; return go('film?new=1'); } avatarsView(qs); }
     catch (e) { toast(e.message); ug.disabled = false; }
@@ -518,7 +545,7 @@ function tagsView() {
 
 // ---------- เติมดาว ----------
 async function topupView() {
-  app.innerHTML = `${topbar('เติมดาว', 'profile')}<main><p class="muted">กำลังโหลด…</p></main>${nav('profile')}`;
+  app.innerHTML = `${topbar('เติมดาว', 'profile')}<main>${LOAD()}</main>${nav('profile')}`;
   const info = await api('api/topup/packages');
   if (!info.ready) { $('main').innerHTML = '<div class="soon card"><span class="badge b-warn">ยังไม่เปิด</span><h2>ระบบเติมดาวกำลังตั้งค่า</h2></div>'; return; }
   $('main').innerHTML = `<p class="muted">1 ดาว = 1 บาท · ดาวไม่มีวันหมดอายุ · ได้ใบเสร็จทุกครั้ง</p>
@@ -595,7 +622,7 @@ async function adminView(qs) {
   const params = new URLSearchParams(qs || '');
   const tab = ADMIN_TABS.some(([k]) => k === params.get('t')) ? params.get('t') : 'dash';
   app.innerHTML = `${topbar('หลังบ้านแอดมิน', 'profile')}<div class="chips" style="padding:12px 16px 0;overflow-x:auto;flex-wrap:nowrap">${ADMIN_TABS.map(([k, l]) => `<a class="chip" href="#admin?t=${k}" aria-pressed="${k === tab}" style="white-space:nowrap;text-decoration:none">${l}</a>`).join('')}</div>
-    <main><p class="muted">กำลังโหลด…</p></main>${nav('profile')}`;
+    <main>${LOAD()}</main>${nav('profile')}`;
   if (tab === 'topups') return adminTopups();
   if (tab === 'users') return params.get('u') ? adminUser(params.get('u')) : adminUsers(params.get('q') || '', params.get('sort') || 'new');
   if (tab === 'works') return adminWorks(params.get('s') || 'failed');
@@ -798,7 +825,7 @@ async function adminTrends() {
 async function adminTopups(status = 'review') {
   $('main').innerHTML = `
     <div class="chips">${[['review', 'รอตรวจ'], ['paid', 'สำเร็จ'], ['rejected', 'ไม่ผ่าน']].map(([k, l]) => `<button type="button" class="chip" data-s="${k}" aria-pressed="${k === status}">${l}</button>`).join('')}</div>
-    <div id="sum" class="muted"></div><div id="list" style="display:flex;flex-direction:column;gap:12px"><p class="muted">กำลังโหลด…</p></div>`;
+    <div id="sum" class="muted"></div><div id="list" style="display:flex;flex-direction:column;gap:12px">${LOAD()}</div>`;
   app.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => adminTopups(b.dataset.s));
   const d = await api('api/admin/topups?status=' + status);
   $('#sum').textContent = `เดือนนี้เติมสำเร็จ ${num(d.month.n)} รายการ · ฿${num(d.month.total)}`;
@@ -814,7 +841,7 @@ async function adminTopups(status = 'review') {
 }
 
 async function starsView() {
-  app.innerHTML = `${topbar('ประวัติดาว', 'profile')}<main><div class="list" id="h"><div class="muted">กำลังโหลด…</div></div></main>${nav('profile')}`;
+  app.innerHTML = `${topbar('ประวัติดาว', 'profile')}<main><div class="list" id="h">${LOAD()}</div></main>${nav('profile')}`;
   const { items } = await api('api/stars/history');
   $('#h').innerHTML = items.map((x) => `<div><span><b>${esc(x.note || x.kind)}</b><br><span class="muted">${new Date(x.created_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}</span></span>
     <b class="num" style="color:${x.delta >= 0 ? 'var(--ok)' : 'var(--bad)'}">${x.delta >= 0 ? '+' : '−'}${num(Math.abs(x.delta))}</b></div>`).join('') || '<div class="muted">ยังไม่มีรายการ</div>';
@@ -876,7 +903,7 @@ function loadDraft() { try { const d = JSON.parse(sessionStorage.getItem('mr_dra
 async function createView(qs) {
   const params = new URLSearchParams(qs || '');
   if (!CAT) {
-    app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main><p class="muted">กำลังโหลด…</p></main>${nav('create')}`;
+    app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main>${LOAD()}</main>${nav('create')}`;
     CAT = await api('api/create/catalog');
   }
   if (params.get('new') || !D) { D = loadDraft() && !params.get('new') ? loadDraft() : newDraft(); REFS = []; }
@@ -1122,7 +1149,7 @@ function drawStep() {
     };
   } else if (s === 2 && D.style === 'v_avatar') {
     const A = CAT.video.avatar;
-    if (!AVS_LOADED) { loadAvatars().then(drawStep).catch((e) => toast(e.message)); app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main><p class="muted">กำลังโหลดอวตาร…</p></main>`; return; }
+    if (!AVS_LOADED) { loadAvatars().then(drawStep).catch((e) => toast(e.message)); app.innerHTML = `${topbar('สร้างผลงาน', 'home')}<main>${LOAD('กำลังโหลดอวตาร…')}</main>`; return; }
     if (!A.ready) { stepShell('<div class="soon card"><span class="badge b-warn">กำลังตั้งค่า</span><h2>ระบบอวตารกำลังเปิด</h2><p class="muted">ออกแบบอวตารเก็บไว้ก่อนได้เลย พร้อมเมื่อไรใช้ได้ทันที</p><a class="btn" href="#avatars">ออกแบบอวตาร</a></div>', { disabled: true }); return; }
     const av = AVS.find((a) => a.id === D.avatarId) || null;
     // นับความยาวตามภาษาที่พิมพ์ (พิมพ์คนละภาษากับที่เลือก ระบบแปลให้)
@@ -1333,7 +1360,7 @@ function drawStep() {
         <span class="muted" style="font-size:13px">AI ดูทั้งคลิป แยกฉาก เขียนพรอมต์ภาษาอังกฤษพร้อมวางใน Google Flow + ภาพแต่ละฉาก + เคล็ดลับว่าทำไมคลิปนี้ปัง · ราคาตามความยาว: ${R.prices.base.map(([x, p]) => `≤${x < 60 ? `${x} วิ` : `${x / 60} นาที`} ${p}⭐`).join(' · ')}</span></section>
       <section class="card" style="gap:10px">
         <label class="row between" for="rxa"><span><b>🧑‍🎤 ใส่อวตาร/ตัวละครของฉัน</b> <span class="muted">+${R.prices.avatar} ดาว</span><br><span class="muted" style="font-size:13px">ได้พรอมต์ฉบับมีตัวละครคุณ + วิธีทำใน Flow</span></span><input id="rxa" type="checkbox" class="sw-in" ${D.remixAvatar ? 'checked' : ''}></label>
-        ${D.remixAvatar ? (!AVS_LOADED ? '<span class="muted">กำลังโหลดอวตาร…</span>' : AVS.length ? `<div class="avgrid">${AVS.map((a) => `<button type="button" class="avcard" data-av="${a.id}" aria-pressed="${D.avatarId === a.id}"><img src="${a.img}" alt="" loading="lazy"><b>${esc(a.name)}</b></button>`).join('')}</div>
+        ${D.remixAvatar ? (!AVS_LOADED ? LOAD('กำลังโหลดอวตาร…', true) : AVS.length ? `<div class="avgrid">${AVS.map((a) => `<button type="button" class="avcard" data-av="${a.id}" aria-pressed="${D.avatarId === a.id}"><img src="${a.img}" alt="" loading="lazy"><b>${esc(a.name)}</b></button>`).join('')}</div>
             <div class="grid2">${R.modes.map((m) => `<button type="button" class="card opt" data-amode="${m.id}" aria-pressed="${(D.avatarMode || 'replace') === m.id}"><b>${esc(m.label)}</b><span class="muted">${esc(m.hint)}</span></button>`).join('')}</div>
             ${(D.avatarMode || 'replace') === 'custom' ? `<label class="f" for="avatarNote">อยากให้อยู่ตรงไหน ทำอะไร<textarea id="avatarNote" rows="2" maxlength="200" placeholder="เช่น ยืนรีวิวสินค้าในฉากสุดท้าย">${esc(D.avatarNote || '')}</textarea></label>` : ''}`
           : '<a class="btn dark sm" href="#avatars?from=create">ยังไม่มีอวตาร · สร้างอวตารก่อน</a>') : ''}
@@ -1792,7 +1819,7 @@ async function worksView() {
   app.innerHTML = `${topbar()}<main><div class="row between" style="flex-wrap:wrap;gap:10px"><h1 style="font-size:22px;white-space:nowrap">ผลงานของฉัน</h1><span class="row" style="gap:8px"><a class="btn dark sm" href="#plan">ปฏิทิน</a><a class="btn dark sm" href="#auto">อัตโนมัติ</a><a class="btn sm" href="#create?new=1">+ สร้าง</a></span></div>
     <div class="chips" id="wf" role="group" aria-label="กรองผลงาน" style="gap:6px">${[['all', 'ทั้งหมด'], ['image', '🖼️ ภาพ'], ['video', '🎬 วิดีโอ']].map(([k, l]) => `<button type="button" class="chip" data-wk="${k}" aria-pressed="${WF.kind === k}" style="min-height:32px;padding:4px 12px;font-size:13px">${l}</button>`).join('')}
       <button type="button" class="chip" id="wsort" style="min-height:32px;padding:4px 12px;font-size:13px;margin-left:auto">${WF.old ? '📅 เก่า → ใหม่' : '📅 ใหม่ → เก่า'}</button></div>
-    <div id="wl" class="grid2"><p class="muted">กำลังโหลด…</p></div></main>${nav('works')}`;
+    <div id="wl" class="grid2">${LOAD()}</div></main>${nav('works')}`;
   app.querySelectorAll('[data-wk]').forEach((b) => b.onclick = () => { WF.kind = b.dataset.wk; try { localStorage.setItem('mr_wf', JSON.stringify(WF)); } catch {} worksView(); });
   $('#wsort').onclick = () => { WF.old = !WF.old; try { localStorage.setItem('mr_wf', JSON.stringify(WF)); } catch {} worksView(); };
   let { items } = await api('api/works');
@@ -1850,7 +1877,7 @@ function bindRemix(w) {
 async function workView(qs) {
   const id = Number(new URLSearchParams(qs || '').get('id'));
   if (!id) return go('works');
-  app.innerHTML = `${topbar('ผลงาน', 'works')}<main><p class="muted">กำลังโหลด…</p></main>${nav('works')}`;
+  app.innerHTML = `${topbar('ผลงาน', 'works')}<main>${LOAD()}</main>${nav('works')}`;
   let w = await api(`api/works/${id}`);
   if (['queued', 'working'].includes(w.status)) {
     $('main').innerHTML = `<section class="hero" style="align-items:center;text-align:center;gap:14px;padding:32px 18px">
@@ -1890,9 +1917,9 @@ async function workView(qs) {
     $('main').innerHTML = `
       ${w.purged ? `<section class="card"><b>ไฟล์ถูกลบจากเซิร์ฟเวอร์แล้ว</b><span class="muted">ครบ ${CAT?.keepDays || 7} วัน · แคปชั่นยังคัดลอกได้ · กด "สร้างแบบนี้อีก" เพื่อทำใหม่</span></section>`
         : `<div class="gallery">${w.files.map((f, i) => w.params?.remix && f.type !== 'video' ? '' : `<figure>${f.type === 'video' ? `<video src="${f.url}" ${f.thumb ? `poster="${f.thumb}"` : ''} controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;aspect-ratio:9/16"></video>` : `<img src="${f.url}" alt="ภาพที่ ${i + 1}" width="${f.w}" height="${f.h}">`}
-          <figcaption class="grid2"><button type="button" class="btn sm" data-save="${i}">บันทึกลงเครื่อง</button><a class="btn dark sm" href="${f.url}?dl=1" download>ดาวน์โหลด</a></figcaption></figure>`).join('')}</div>
+          <figcaption class="grid2"><a class="btn sm" href="${f.url}?dl=1" download data-dl="${i}">⬇ ดาวน์โหลด</a><button type="button" class="btn dark sm" data-share="${i}">↗ แชร์ผลงาน</button></figcaption></figure>`).join('')}</div>
         <p class="muted">ไฟล์อยู่บนเซิร์ฟเวอร์อีก ${daysLeft(w.expiresAt)} วัน · ${w.free ? 'ภาพฟรี' : `ใช้ ${w.cost} ดาว`}</p>
-        ${w.params?.script?.length ? `<details class="card"><summary style="font-weight:600;cursor:pointer">บทพากย์</summary><p class="muted" style="margin:0">${esc(w.params.script.join(' '))}</p></details>` : ''}`}
+        ${w.params?.script?.length ? `<details class="card"><summary style="font-weight:600;cursor:pointer">บทพากย์${w.params.lang && w.params.lang !== 'th' ? ` (${({ en: 'อังกฤษ', zh: 'จีน', ms: 'มลายู' })[w.params.lang] || w.params.lang})` : ''}</summary><p class="muted" style="margin:0" lang="${esc(w.params.lang || 'th')}">${esc(w.params.script.join(' '))}</p>${w.params.scriptTh?.length ? `<b style="font-size:14px">คำแปลไทย</b><p class="muted" style="margin:0">${esc(w.params.scriptTh.join(' '))}</p>` : ''}</details>` : ''}`}
       ${w.params?.remix ? remixHtml(w) : ''}
       ${caps.length ? `<section style="display:flex;flex-direction:column;gap:10px"><h2>แคปชั่น</h2>
         ${caps.length < 2 ? '' : `<div class="chips" role="tablist">${caps.map(([k, l], i) => `<button type="button" class="chip" role="tab" data-cap="${k}" aria-pressed="${i === 0}">${l}</button>`).join('')}</div>`}
@@ -1902,12 +1929,12 @@ async function workView(qs) {
           <button type="button" class="btn ghost sm" id="copyAll">คัดลอกรวม (แคปชั่น + ลิงก์ + แฮชแท็ก)</button>
           <span class="muted">TikTok / IG ไม่ให้กดลิงก์ในแคปชั่น · คัดลอกลิงก์แยกไปวางในตะกร้า/ไบโอ/คอมเมนต์</span>`
           : '<button type="button" class="btn dark" id="copyCap">คัดลอกแคปชั่น + แฮชแท็ก</button>'}</section>` : ''}
-      ${w.purged ? '' : '<section class="card" id="pubcard"><b>โพสต์ตรง</b><span class="muted">กำลังโหลด…</span></section>'}
+      ${w.purged ? '' : `<section class="card" id="pubcard"><b>โพสต์ตรง</b>${LOAD('กำลังโหลด…', true)}</section>`}
       <section class="card"><b>โพสต์ไปที่ไหนแล้ว</b><span class="muted">ติ๊กไว้ จะได้รู้ว่างานไหนโพสต์แล้ว (โพสต์ตรงจะติ๊กให้อัตโนมัติ)</span>
         <div class="chips">${PLAT.map(([k, l]) => `<button type="button" class="chip" data-post="${k}" aria-pressed="${!!w.posted?.[k]}">${l}${w.posted?.[k] ? ' · ' + new Date(w.posted[k]).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : ''}</button>`).join('')}</div></section>
       <div id="wstats"></div>
       ${w.purged ? '' : '<button type="button" class="btn dark" id="toDrive">ส่งเข้า Google Drive</button>'}
-      ${w.purged ? '' : '<section class="card" id="sched"><b>ตั้งเวลาโพสต์</b><span class="muted">กำลังโหลด…</span></section>'}
+      ${w.purged ? '' : `<section class="card" id="sched"><b>ตั้งเวลาโพสต์</b>${LOAD('กำลังโหลด…', true)}</section>`}
       <div class="list">${historyRows(w)}</div>
       ${w.style === 'v_self' && w.params?.selfMode === 'subs' && !w.purged && (w.params?.rerenders || 0) < 1 ? '<button type="button" class="btn dark" id="fixsubs">แก้ซับแล้วตัดใหม่ (ฟรี 1 ครั้ง)</button>' : ''}
       ${w.style === 'v_series' && w.params?.series ? `<button type="button" class="btn cta" id="nextEp">${ICON.plus}ทำตอนต่อไป (EP.${w.params.series.ep + 1})</button>` : ''}
@@ -1929,7 +1956,8 @@ async function workView(qs) {
       try { await navigator.clipboard.writeText($('#cap').value); toast('คัดลอกแล้ว'); } catch { $('#cap').select(); toast('กดค้างเพื่อคัดลอก'); }
       api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'copy', p: app.querySelector('[data-cap][aria-pressed="true"]')?.dataset.cap } }).catch(() => {});
     };
-    app.querySelectorAll('[data-save]').forEach((b) => b.onclick = () => saveImage(w, Number(b.dataset.save)));
+    app.querySelectorAll('[data-share]').forEach((b) => b.onclick = () => shareWork(w, Number(b.dataset.share), $('#cap')?.value || ''));
+    app.querySelectorAll('[data-dl]').forEach((b) => b.addEventListener('click', () => api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'download', n: Number(b.dataset.dl) } }).catch(() => {})));
     if (w.params?.remix) bindRemix(w);
     const td = $('#toDrive'); if (td) td.onclick = async () => {
       td.disabled = true; td.textContent = 'กำลังส่งเข้า Drive…';
@@ -1966,24 +1994,29 @@ async function workView(qs) {
 }
 function historyRows(w) {
   const ev = [...(w.events || [])].reverse().slice(0, 8);
-  const lab = { download: 'ดาวน์โหลด', share: 'บันทึก/แชร์', copy: 'คัดลอกแคปชั่น', drive: 'ส่งเข้า Drive' };
+  const lab = { download: 'ดาวน์โหลด', share: 'แชร์', copy: 'คัดลอกแคปชั่น', drive: 'ส่งเข้า Drive' };
   const d = (x) => new Date(x).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
   return `<div><span class="muted">สร้างเมื่อ</span><span>${d(w.createdAt)}</span></div>` + ev.map((e) => `<div><span class="muted">${lab[e.t] || e.t}${e.t === 'drive' ? ` ${e.n} ภาพ` : e.t !== 'copy' ? ` ภาพที่ ${(e.n || 0) + 1}` : ''}</span><span>${d(e.at)}</span></div>`).join('');
 }
-// มือถือ: เปิดหน้าแชร์ของเครื่อง → "บันทึกภาพ" ลงคลังรูป / ส่ง LINE ได้เลย
-async function saveImage(w, i) {
+// แชร์ผลงาน: เปิดหน้าแชร์ของเครื่อง (Facebook, LINE, Google Drive, IG, บันทึกลงคลังรูป ฯลฯ) + คัดลอกแคปชั่นให้วางต่อได้
+async function shareWork(w, i, caption) {
   const f = w.files[i];
+  if (caption) { try { await navigator.clipboard.writeText(caption); } catch {} }
   try {
+    toast('กำลังเตรียมไฟล์…');
     const blob = await (await fetch(f.url, { credentials: 'same-origin' })).blob();
     const vid = f.type === 'video';
     const file = new File([blob], `mcrich-${w.id}-${i + 1}.${vid ? 'mp4' : 'jpg'}`, { type: vid ? 'video/mp4' : 'image/jpeg' });
     if (navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file] });
+      if (caption) toast('คัดลอกแคปชั่นไว้แล้ว วางในโพสต์ได้เลย');
       api(`api/works/${w.id}/event`, { method: 'POST', body: { t: 'share', n: i } }).catch(() => {});
       return;
     }
   } catch (e) { if (e.name === 'AbortError') return; }
-  location.href = `${f.url}?dl=1`;
+  // เครื่องที่แชร์ไฟล์ไม่ได้ (คอมบางรุ่น) → ให้เลือกส่งเข้า Drive หรือดาวน์โหลดไปโพสต์เอง
+  if (confirm('เครื่องนี้แชร์ไฟล์ตรงไม่ได้\nกด OK = ส่งเข้า Google Drive · Cancel = ดาวน์โหลดไฟล์แล้วโพสต์เอง')) $('#toDrive')?.click();
+  else location.href = `${f.url}?dl=1`;
 }
 
 
@@ -2286,7 +2319,7 @@ async function ensurePush(ask) {
   return 'on';
 }
 async function planView() {
-  app.innerHTML = `${topbar('ปฏิทินโพสต์', 'works')}<main><p class="muted">กำลังโหลด…</p></main>${nav('works')}`;
+  app.innerHTML = `${topbar('ปฏิทินโพสต์', 'works')}<main>${LOAD()}</main>${nav('works')}`;
   const { items } = await api('api/schedules');
   const st = await ensurePush(false).catch(() => 'off');
   const ios = /iphone|ipad/i.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches;
@@ -2311,7 +2344,7 @@ async function planView() {
 // ---------- โหมดอัตโนมัติ ----------
 const DAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 async function autoView(qs) {
-  app.innerHTML = `${topbar('โหมดอัตโนมัติ', 'works')}<main><p class="muted">กำลังโหลด…</p></main>${nav('works')}`;
+  app.innerHTML = `${topbar('โหมดอัตโนมัติ', 'works')}<main>${LOAD()}</main>${nav('works')}`;
   const d = await api('api/auto');
   const edit = new URLSearchParams(qs || '').get('edit');
   if (edit) return autoForm(d, d.items.find((x) => String(x.id) === edit) || null);
@@ -2502,7 +2535,7 @@ const bars = (days) => {
 };
 const PLATS = [['tiktok', 'TikTok'], ['facebook', 'Facebook'], ['instagram', 'Instagram'], ['shopee', 'Shopee'], ['lazada', 'Lazada'], ['line', 'LINE'], ['youtube', 'YouTube'], ['other', 'อื่นๆ']];
 async function linksView() {
-  app.innerHTML = `${topbar('ลิงก์ของฉัน', 'profile')}<main><p class="muted">กำลังโหลด…</p></main>${nav('profile')}`;
+  app.innerHTML = `${topbar('ลิงก์ของฉัน', 'profile')}<main>${LOAD()}</main>${nav('profile')}`;
   const [d, st] = await Promise.all([api('api/links'), api('api/stats/clicks')]);
   let plat = 'tiktok';
   $('main').innerHTML = `

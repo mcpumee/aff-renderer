@@ -220,10 +220,14 @@ async function storyProps(id, req, stage, { captions, segs, endStart, speechEnd 
   }
   // ฉากจบ: รูปสินค้าจริง (ตัดพื้นหลังถ้าได้)
   stage('ตัดพื้นหลังรูปสินค้า');
-  let endImage = '', endCut = false, theme = null;
+  let endImage = '', endCut = false, theme = null, endPhoto = '', endLayout = 'blur';
   if (req.endImage) {
     endImage = await localize(id, req.endImage, 'end', 'jpg');
-    const [c] = await cutouts([path.join(TMP, `${id}-end.jpg`)]);
+    endPhoto = endImage;
+    // สลับรูปแบบฉากจบ ไม่ให้ซ้ำเดิม · ตัดพื้นหลังเฉพาะแบบ blur (ถ้าตัดไม่เนียน ใช้รูปเต็มขอบมน)
+    const L = ['blur', 'full', 'split', 'card'];
+    endLayout = L.includes(req.endLayout) ? req.endLayout : L[Math.floor(Math.random() * L.length)];
+    const [c] = endLayout === 'blur' ? await cutouts([path.join(TMP, `${id}-end.jpg`)]) : [null];
     if (c?.ok) { endImage = `${LOCAL}/tmp/${path.basename(c.file)}`; endCut = true; }
     theme = pickTheme(c?.hue ?? null, id);
   }
@@ -231,7 +235,7 @@ async function storyProps(id, req, stage, { captions, segs, endStart, speechEnd 
     comp: 'StoryClip',
     props: {
       durationSec: Math.max(endStart + 3.2, speechEnd + 1.2), audioUrl: `${LOCAL}/tmp/${id}-vo.mp3`, captions,
-      shots, endStart, endImage, endCut, theme, price: req.price || '', cta: req.cta || 'กดตะกร้าเลย 👇',
+      shots, endStart, endImage, endCut, endPhoto, endLayout, theme, price: req.price || '', cta: req.cta || 'กดตะกร้าเลย 👇',
       snapshotSec: Math.min(2.5, endStart / 2),
       music: ['fun', 'hype', 'suspense', 'chill', 'luxury'].includes(req.music) ? req.music : undefined, musicVolume: Math.min(0.3, Math.max(0, Number(req.musicVolume) || 0.1)),
     },

@@ -6,7 +6,7 @@ import json
 import sys
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 from rembg import new_session, remove
 
 MODEL = 'isnet-general-use'
@@ -25,7 +25,7 @@ def judge(alpha: np.ndarray):
         return False, f'วัตถุชนขอบภาพมาก ({border.mean():.0%})'
     # ขอบนุ่ม/ฟุ้งมากเกินไป = แยกวัตถุไม่ชัด
     soft = ((alpha > 20) & (alpha < 235)).sum() / max(1, (alpha > 20).sum())
-    if soft > 0.45:
+    if soft > 0.32:
         return False, f'ขอบฟุ้งเกินไป ({soft:.0%})'
     return True, ''
 
@@ -52,11 +52,18 @@ def main(args):
     for src, dst in zip(args[0::2], args[1::2]):
         try:
             im = Image.open(src).convert('RGB')
-            im.thumbnail((1400, 1400))
-            out = remove(im, session=session, post_process_mask=True)
+            im.thumbnail((1100, 1100))
+            try:
+                # alpha matting = ขอบเนียน (ผม/ขอบใส/ขอบโค้ง) ไม่เป็นหยัก
+                out = remove(im, session=session, alpha_matting=True, alpha_matting_foreground_threshold=240,
+                             alpha_matting_background_threshold=12, alpha_matting_erode_size=8)
+            except Exception:  # noqa: BLE001
+                out = remove(im, session=session, post_process_mask=True)
             a = np.array(out.getchannel('A'))
             a[a < 30] = 0  # ลบเงาจาง ๆ ที่หลงเหลือ
+            # ขอบนุ่ม 1px กันขอบหยัก/ขอบขาวรอบวัตถุ
             ok, reason = judge(a)
+            a = np.array(Image.fromarray(a).filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.8)))
             out.putalpha(Image.fromarray(a))
             box = out.getbbox()
             if box:

@@ -438,5 +438,7 @@ app.get(['/', '/index.html'], (_q, res) => { res.setHeader('cache-control', 'no-
 app.get('/sw.js', (_q, r) => { r.setHeader('cache-control', 'no-cache'); r.setHeader('service-worker-allowed', './'); r.sendFile(path.join(__dir, 'public', 'sw.js')); });
 app.use(express.static(path.join(__dir, 'public'), { maxAge: '7d', index: false }));
 
-migrate().then(() => office.start()).then(() => { create.start(); sched.start(); social.start(); chat.start(); auto.start(); priv.start(); viral.start(); samples.start(); app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`)); })
+migrate().then(() => office.start()).then(() => { create.start(); sched.start(); social.start(); chat.start(); auto.start(); priv.start(); viral.start(); samples.start(); const srv = app.listen(PORT, () => log(`Mc Rich พร้อม :${PORT} (${PUBLIC_URL}) LINE=${PROVIDERS.line.enabled()} Google=${PROVIDERS.google.enabled()} เติมดาว=${pay.ready()} ตรวจสลิปอัตโนมัติ=${!!process.env.EASYSLIP_KEY} สร้างภาพ=${create.ready()} LINE OA=${chat.oaReady()}`));
+  // พร็อกซีหน้าบ้าน (Traefik) ถือการเชื่อมต่อค้างไว้นานกว่าค่าเริ่มต้นของ Node (5 วิ) → คำขอแรกหลังว่างเจอ 502/Load failed · ให้ Node ถือนานกว่าพร็อกซี
+  srv.keepAliveTimeout = 95000; srv.headersTimeout = 96000; })
   .catch((e) => { console.error('เริ่มระบบไม่สำเร็จ', e); process.exit(1); });

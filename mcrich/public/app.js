@@ -840,6 +840,7 @@ let D = null;        // ร่างงานที่กำลังสร้�
 let REFS = [];       // ไฟล์ภาพอ้างอิง (อยู่ในหน่วยความจำ)
 let REVS = [];       // แคปรีวิว (คลิป)
 let VFILE = null;
+let VFILES = []; // v_self หลายคลิป [{f, sec}] (VFILE = คลิปแรก)
 let VOICEB = null; // เสียงที่ลูกค้าอัด (แกะคลิป)
 let REC = { on: false, t: 0 };    // คลิปที่ถ่ายเอง
 let ITEMF = [];      // รูปสินค้าแต่ละอันดับ (Top N)
@@ -961,7 +962,7 @@ function stepShell(inner, { next = 'ถัดไป', nextId = 'next', disabled 
   if (s) { const b = app.querySelector('header .back'); if (b) b.onclick = (e) => { e.preventDefault(); back(); }; }
   const back = () => { D.step = D.style === 'v_remix' && D.step === 5 ? 2 : D.step - 1; drawStep(); };
   const p = $('#prev'); if (p) p.onclick = back;
-  $('#reset').onclick = () => { D = newDraft(); REFS = []; REVS = []; VFILE = null; VOICEB = null; ITEMF = []; saveDraft(); drawStep(); };
+  $('#reset').onclick = () => { D = newDraft(); REFS = []; REVS = []; VFILE = null; VFILES = []; VOICEB = null; ITEMF = []; saveDraft(); drawStep(); };
 }
 // แนวงานที่ตรงกับเป้าหมาย (ไม่ปนหมวด) — ดูทั้งหมดได้จากปุ่ม "ดูแนวอื่นทั้งหมด"
 function goalStyles(list) {
@@ -1384,16 +1385,25 @@ function drawStep() {
       D.step = 5; drawStep();
     };
   } else if (s === 2 && D.style === 'v_self') {
+    const multi = VFILES.length > 1;
+    if (multi) D.selfMode = 'voice';
     const voice = D.selfMode === 'voice';
     const cs = CAT.video.captionStyles;
-    stepShell(`<section class="card"><b>คลิปที่ถ่ายเอง (ไม่เกิน ${CAT.video.selfMaxSec / 60} นาที)</b>
-        ${VFILE ? `<video src="${URL.createObjectURL(VFILE)}" controls playsinline muted style="width:100%;max-height:420px;border-radius:12px;background:#000"></video>
-          <div class="row between"><span class="muted">${esc(VFILE.name)} · ${Math.round(D.videoSec)} วิ</span><label class="chip" for="vin" style="cursor:pointer">เปลี่ยนคลิป</label></div>`
-          : `<label class="ref add" for="vin" style="width:100%;height:120px;cursor:pointer">+ เลือกคลิปจากเครื่อง</label>${D.fromWork ? '<span class="muted">หรือใช้คลิปจากงานเดิม</span>' : ''}`}
-        <input id="vin" type="file" accept="video/*" hidden></section>
+    const total = VFILES.reduce((a, x) => a + x.sec, 0);
+    const maxS = CAT.video.selfMaxSec;
+    stepShell(`<section class="card"><b>คลิปของคุณ (รวมไม่เกิน ${maxS / 60} นาที · ต่อได้ถึง 8 คลิป)</b>
+        <span class="muted">ถ่ายเอง หรือคลิปจาก Google Flow / AI ตัวอื่น — หลายคลิปจะต่อกันตามลำดับ แล้ว AI ดูภาพเขียนบทพากย์ไทยให้</span>
+        ${VFILE && !multi ? `<video src="${URL.createObjectURL(VFILE)}" controls playsinline muted style="width:100%;max-height:420px;border-radius:12px;background:#000"></video>` : ''}
+        ${VFILES.length ? `<div style="display:flex;flex-direction:column;gap:6px">${VFILES.map((x, i) => `<div class="row between" style="gap:6px"><span class="muted" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i + 1}. ${esc(x.f.name)} · ${Math.round(x.sec)} วิ</span>
+            ${multi ? `<button type="button" class="chip" data-up="${i}" ${i ? '' : 'disabled'} aria-label="เลื่อนขึ้น">↑</button><button type="button" class="chip" data-dn="${i}" ${i < VFILES.length - 1 ? '' : 'disabled'} aria-label="เลื่อนลง">↓</button>` : ''}
+            <button type="button" class="chip" data-rm="${i}" aria-label="ลบคลิป">✕</button></div>`).join('')}</div>
+          <div class="row between"><b>รวม ${Math.round(total)} วิ</b>${VFILES.length < 8 ? '<label class="chip" for="vin" style="cursor:pointer">+ เพิ่มคลิป</label>' : ''}</div>`
+          : `<label class="ref add" for="vin" style="width:100%;height:120px;cursor:pointer">+ เลือกคลิปจากเครื่อง (เลือกได้หลายคลิป)</label>${D.fromWork ? '<span class="muted">หรือใช้คลิปจากงานเดิม</span>' : ''}`}
+        <input id="vin" type="file" accept="video/*" multiple hidden></section>
       <section style="display:flex;flex-direction:column;gap:10px"><h2>ทำอะไรกับเสียง</h2>
-        <div class="grid2"><button type="button" class="card opt" data-mode="subs" aria-pressed="${!voice}"><b>ใส่ซับจากเสียงพูด</b><span class="muted">AI ฟังแล้วทำซับ แก้คำผิดได้ก่อนตัด</span></button>
-        <button type="button" class="card opt" data-mode="voice" aria-pressed="${voice}"><b>AI พากย์ทับ</b><span class="muted">คลิปไม่มีเสียง/ไม่อยากพูดเอง +${CAT.video.selfPrices.voiceExtra} ดาว</span></button></div></section>
+        ${multi ? '<span class="muted">หลายคลิป = AI ดูภาพแล้วพากย์ไทยทับทั้งเรื่อง</span>' : ''}
+        <div class="grid2"><button type="button" class="card opt" data-mode="subs" aria-pressed="${!voice}" ${multi ? 'disabled' : ''}><b>ใส่ซับจากเสียงพูด</b><span class="muted">AI ฟังแล้วทำซับ แก้คำผิดได้ก่อนตัด</span></button>
+        <button type="button" class="card opt" data-mode="voice" aria-pressed="${voice}"><b>AI ดูภาพ + พากย์ทับ</b><span class="muted">พูดตรงกับภาพในคลิป +${CAT.video.selfPrices.voiceExtra} ดาว</span></button></div></section>
       <section class="card">
         <label class="f" for="product">ชื่อสินค้า${voice ? '' : ' (ช่วยให้ซับสะกดถูก)'}<input id="product" type="text" maxlength="120" placeholder="เช่น เต้าหู้ไข่ ตราบ้านพรุ" value="${esc(D.product)}"></label>
         <label class="f" for="price">ราคา / โปร (ป้ายมุมจอ)<input id="price" type="text" maxlength="40" placeholder="เช่น ฿59" value="${esc(D.price)}"></label>
@@ -1409,18 +1419,23 @@ function drawStep() {
         ${voice ? `<label class="row between" for="keepAudio"><span><b>เก็บเสียงต้นฉบับเบาๆ</b><br><span class="muted">เช่น เสียงทอด เสียงบรรยากาศ</span></span><input id="keepAudio" type="checkbox" class="sw-in" ${D.keepAudio ? 'checked' : ''}></label>` : ''}
       </section>`);
     const fields = ['product', 'price', 'hookText', 'details', 'useLogo', 'keepAudio'];
-    $('#vin').onchange = (e) => {
-      const f = e.target.files[0]; if (!f) return;
-      if (f.size > 400 * 1024 * 1024) return toast('ไฟล์ใหญ่เกิน 400MB');
+    const sync = () => { VFILE = VFILES[0]?.f || null; D.videoSec = VFILES.reduce((a, x) => a + x.sec, 0); drawStep(); };
+    const dur = (f) => new Promise((ok) => { const v = document.createElement('video'); v.preload = 'metadata'; v.onloadedmetadata = () => ok(v.duration || 8); v.onerror = () => ok(8); v.src = URL.createObjectURL(f); });
+    $('#vin').onchange = async (e) => {
+      const fs = [...e.target.files]; if (!fs.length) return;
       readInputs(fields);
-      const v = document.createElement('video'); v.preload = 'metadata';
-      v.onloadedmetadata = () => {
-        if (v.duration > CAT.video.selfMaxSec + 1) return toast(`คลิปยาว ${Math.round(v.duration)} วิ เกิน ${CAT.video.selfMaxSec / 60} นาที`);
-        VFILE = f; D.videoSec = v.duration; drawStep();
-      };
-      v.onerror = () => { VFILE = f; D.videoSec = 60; drawStep(); };
-      v.src = URL.createObjectURL(f);
+      for (const f of fs) {
+        if (VFILES.length >= 8) { toast('ต่อได้สูงสุด 8 คลิป'); break; }
+        if (f.size > 400 * 1024 * 1024) { toast(`${f.name} ใหญ่เกิน 400MB`); continue; }
+        const sec = await dur(f);
+        if (VFILES.reduce((a, x) => a + x.sec, 0) + sec > maxS + 1) { toast(`รวมเกิน ${maxS / 60} นาที — ข้าม ${f.name}`); continue; }
+        VFILES.push({ f, sec });
+      }
+      sync();
     };
+    app.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => { readInputs(fields); VFILES.splice(+b.dataset.rm, 1); sync(); });
+    app.querySelectorAll('[data-up]').forEach((b) => b.onclick = () => { readInputs(fields); const i = +b.dataset.up; [VFILES[i - 1], VFILES[i]] = [VFILES[i], VFILES[i - 1]]; sync(); });
+    app.querySelectorAll('[data-dn]').forEach((b) => b.onclick = () => { readInputs(fields); const i = +b.dataset.dn; [VFILES[i + 1], VFILES[i]] = [VFILES[i], VFILES[i + 1]]; sync(); });
     app.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { readInputs(fields); D.selfMode = b.dataset.mode; drawStep(); });
     app.querySelectorAll('[data-cs]').forEach((b) => b.onclick = () => { readInputs(fields); D.captionStyle = b.dataset.cs; drawStep(); });
     $('#next').onclick = () => {
@@ -1666,7 +1681,7 @@ function uploadWithProgress(url, fd, onp) {
 }
 function styleNote(x) {
   const V2 = CAT.video;
-  return { v_pixel: `เริ่ม ${V2.seriesPrices[4]} ดาว · ซีรีส์ภาพพิกเซล`, v_stick: `เริ่ม ${V2.seriesPrices[4]} ดาว · เรื่องเล่าชีวิต`, v_remix: `เริ่ม ${V2.remix?.prices?.base?.[0]?.[1] || 9} ดาว · พรอมต์ Flow ทีละฉาก`, v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.std === false ? V2.avatar?.proPrices?.[15] : V2.avatar?.prices?.[15]} ดาว · พูด ไทย/EN/中文/Melayu`,
+  return { v_flow: `เริ่ม ${V2.selfPrices.subs[0] + V2.selfPrices.voiceExtra} ดาว · ต่อคลิป + AI พากย์ตามภาพ`, v_pixel: `เริ่ม ${V2.seriesPrices[4]} ดาว · ซีรีส์ภาพพิกเซล`, v_stick: `เริ่ม ${V2.seriesPrices[4]} ดาว · เรื่องเล่าชีวิต`, v_remix: `เริ่ม ${V2.remix?.prices?.base?.[0]?.[1] || 9} ดาว · พรอมต์ Flow ทีละฉาก`, v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.std === false ? V2.avatar?.proPrices?.[15] : V2.avatar?.prices?.[15]} ดาว · พูด ไทย/EN/中文/Melayu`,
     v_show: `เริ่ม ${V2.prices[15]} ดาว · 2–8 รูป`, v_tips: `เริ่ม ${V2.prices[30]} ดาว · 3 หรือ 5 ทิป`, v_shop: `เริ่ม ${V2.prices[15]} ดาว · รูปร้าน+ข้อมูล`,
     v_pr_announce: `เริ่ม ${V2.prices[15]} ดาว · เสียงทางการ`, v_pr_recap: `เริ่ม ${V2.prices[15]} ดาว · จากรูปกิจกรรม` }[x.id] || `เริ่ม ${V2.prices[15]} ดาว · 9:16`;
 }
@@ -1727,7 +1742,7 @@ async function reviewStep() {
     ${qt.blocked ? `<p role="alert" class="card" style="background:var(--bad-bg);color:var(--bad)">${esc(qt.blocked)}</p>` : ''}
     ${qt.warnings.length ? `<p role="alert" class="card" style="background:var(--warn-bg);color:var(--warn)">ระวังผิดกฎ อย./โฆษณาเกินจริง: ${esc(qt.warnings.join(', '))} · AI จะเลี่ยงคำเหล่านี้ในแคปชั่น แนะนำแก้ข้อความบนภาพ</p>` : ''}
     <div class="list kv">
-      ${row('เป้าหมาย', goal.label)}${D.style === 'model_show' ? row('นางแบบ/นายแบบ', `${CAT.modelWho.find((x) => x.id === D.modelWho)?.label} · ${CAT.modelLooks.find((x) => x.id === D.modelLook)?.label}`) : ''}${D.goal === 'agent' || st.agent ? row('สายงาน', CAT.agentTypes.find((x) => x.id === (D.agentType || 'insurance'))?.label) : ''}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
+      ${row('เป้าหมาย', goal.label)}${D.style === 'model_show' ? row('นางแบบ/นายแบบ', `${CAT.modelWho.find((x) => x.id === D.modelWho)?.label} · ${CAT.modelLooks.find((x) => x.id === D.modelLook)?.label}`) : ''}${D.goal === 'agent' || st.agent ? row('สายงาน', CAT.agentTypes.find((x) => x.id === (D.agentType || 'insurance'))?.label) : ''}${row('ลิงก์', D.link)}${row(vid ? 'แนวคลิป' : 'แนวภาพ', (D.alias && CAT.video.styles.find((x) => x.id === D.alias)?.label) || st.label)}${row('สินค้า', D.product)}${row('ข้อความบนภาพ', D.headline)}${row('ราคา/โปร', D.price)}
       ${row('คอนเซปต์', D.concepts.join(', '))}${vid ? '' : row('ขนาด', D.ratio) + row('ภาพสินค้าจริง', REFS.length ? `${REFS.length} รูป` : D.fromWork ? 'จากงานเดิม' : '')}
       ${vid ? '' : row('โลโก้', D.useLogo && ME.brand?.logo ? 'ใส่มุมขวาบน' : '')}${row('สไตล์การเขียน', D.tone)}${row('แฮชแท็ก', payload().hashtags.join(' '))}
       ${INFO_IDS.includes(D.style) ? row('รูป', REFS.length ? `${REFS.length} รูป` : (D.style === 'v_pr_announce' ? 'AI วาดพื้นหลังให้ (+5 ดาว)' : '')) + (D.style === 'v_tips' ? row('จำนวนทิป', `${D.count} ทิป`) : '') + Object.entries(D.info || {}).filter(([, v]) => v).map(([k, v]) => row({ org: 'หน่วยงาน/ร้าน', date: 'วันเวลา', place: 'สถานที่', contact: 'ติดต่อ', hours: 'เวลาเปิด' }[k] || k, v)).join('') + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + (D.style === 'v_tips' ? '' : row('ความยาว', `${D.length} วินาที`)) : ''}
@@ -1739,7 +1754,7 @@ async function reviewStep() {
       ${D.style === 'v_drama' ? row('แนวเรื่อง', CAT.video.genres.find((g) => g.id === D.genre)?.label) + row('พล็อต', D.genre === 'free' ? D.plot : '') + row('สไตล์ภาพ', CAT.video.art.find((a) => a.id === D.art)?.label) + row('จำนวนฉาก', `${D.scenes} ฉาก`) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) : ''}
       ${D.style === 'v_top' ? D.items.map((it, i) => row(`#${i + 1}`, `${it.name}${it.price ? ` · ${it.price}` : ''}${it.link ? ' · มีลิงก์' : ''}`)).join('') + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_top').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `~${D.length} วินาที`) : ''}
       ${D.style === 'v_show' ? row('รูปสินค้า', `${REFS.length} รูป`) + row('สไตล์ตัดต่อ', CAT.video.styles.find((x) => x.id === 'v_show').variants.find((v) => v.id === D.variant)?.label || 'สุ่มให้') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : ''}
-      ${D.style === 'v_remix' || D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || D.style === 'v_series' || D.style === 'v_motion' || D.style === 'v_avatar' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
+      ${D.style === 'v_remix' || D.style === 'v_top' || D.style === 'v_show' || D.style === 'v_drama' || D.style === 'v_series' || D.style === 'v_motion' || D.style === 'v_avatar' || INFO_IDS.includes(D.style) ? '' : D.style === 'v_self' ? row('คลิป', VFILES.length > 1 ? `${VFILES.length} คลิปต่อกัน · ${Math.round(D.videoSec)} วิ` : VFILE ? `${VFILE.name} · ${Math.round(D.videoSec)} วิ` : 'จากงานเดิม') + row('เสียง', D.selfMode === 'voice' ? `AI พากย์ทับ (${vname || ''})` : 'ซับจากเสียงพูด') + row('สไตล์ซับ', CAT.video.captionStyles.find((c) => c.id === D.captionStyle)?.label) + row('ฮุค', D.hookText) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label)
         : vid ? row('รูปสินค้า', REFS.length ? `${REFS.length} รูป` : '') + row('แคปรีวิว', REVS.length ? `${REVS.length} รูป` : '') + row('ลูกเล่นตอนเปิด', st.variants?.length ? (st.variants.find((x) => x.id === D.variant)?.label || 'สุ่มให้') : '') + row('สูตรเล่าเรื่อง', CAT.video.formulas.find((f) => f.id === D.formula)?.label) + row('เสียงพากย์', vname + (CAT.video.formulas.find((f) => f.id === D.formula)?.dialogue ? ' + คู่สนทนา' : '')) + row('เพลง', CAT.video.music.find((m) => m.id === D.music)?.label) + row('ความยาว', `${D.length} วินาที`) : row('คุณภาพ', `${tier.label} ${tier.size} × ${qt.versions} แบบ`)}
     </div>
     <section class="hero"><div class="row between"><span class="muted" style="font-weight:600">${qt.free ? 'ใช้ภาพฟรี' : 'ดาวที่ใช้'}</span>
@@ -1751,12 +1766,13 @@ async function reviewStep() {
     if (!qt.free && !qt.enough) return go('topup');
     const b = $('#go'); b.disabled = true; b.textContent = 'กำลังส่งงาน…';
     const fd = new FormData(); fd.append('data', JSON.stringify(payload())); REFS.forEach((f) => fd.append('refs', f)); if (D.kind === 'video') REVS.forEach((f) => fd.append('revs', f));
-    if ((D.style === 'v_self' || D.style === 'v_remix') && VFILE) fd.append('video', VFILE);
+    if (D.style === 'v_self' && VFILES.length) VFILES.forEach((x) => fd.append('video', x.f));
+    else if ((D.style === 'v_self' || D.style === 'v_remix') && VFILE) fd.append('video', VFILE);
     if (D.style === 'v_remix' && D.remixVoice && VOICEB) fd.append('voice', VOICEB, VOICEB.name || 'voice.webm');
     if (D.style === 'v_top') ITEMF.slice(0, D.items.length).forEach((f) => fd.append('refs', f));
     try {
       const r = (D.style === 'v_self' || D.style === 'v_remix') && VFILE ? await uploadWithProgress('api/works', fd, (pc) => { b.textContent = `กำลังอัปโหลดคลิป ${pc}%`; }) : await api('api/works', { method: 'POST', body: fd });
-      ME = r.me; CAT = null; D = null; REFS = []; REVS = []; VFILE = null; VOICEB = null; ITEMF = []; try { sessionStorage.removeItem('mr_draft'); } catch {}
+      ME = r.me; CAT = null; D = null; REFS = []; REVS = []; VFILE = null; VFILES = []; VOICEB = null; ITEMF = []; try { sessionStorage.removeItem('mr_draft'); } catch {}
       go(`work?id=${r.id}`);
     } catch (e) { toast(e.message); b.disabled = false; b.textContent = label; }
   };
@@ -1928,7 +1944,7 @@ async function workView(qs) {
   }
   $('#again').onclick = () => {
     const p = w.params || {};
-    VFILE = null; ITEMF = [];
+    VFILE = null; VFILES = []; ITEMF = [];
     D = { ...newDraft(), kind: w.kind, info: p.info || {}, count: p.count || 3, items: p.items || newDraft().items, genre: p.genre || 'inlaw', art: p.art || 'cartoon3d', scenes: p.scenes || 4, plot: p.plot || '', selfMode: p.selfMode || 'subs', videoSec: p.videoSec || 0, captionStyle: p.captionStyle || 'pop', hookText: p.hookText || '', keepAudio: p.keepAudio !== false, length: p.length || 30, voice: p.voice || '', premiumVoice: !!p.premium, formula: p.formula || '', variant: p.variant || 'random', music: p.music || 'auto', goal: p.goal, link: p.link, style: w.style, product: p.product, price: p.price, headline: p.headline, details: p.details, concepts: p.concepts || [], ratio: p.ratio, useLogo: p.useLogo, showShop: p.showShop, tone: p.tone, hashtags: p.hashtags || [], tier: w.tier, versions: w.versions, fromWork: w.id, step: 2 };
     REFS = []; REVS = []; saveDraft(); go('create');
   };
@@ -2388,7 +2404,7 @@ function openDraft(d) {
   D = { ...newDraft(), kind: d.kind, style: d.style, goal: d.goal || 'sell', product: d.product || '', headline: d.headline || '', price: d.price || '', details: d.details || '', hookText: d.hookText || '', step: d.style ? 2 : 1 };
   if (d.style === 'v_series') Object.assign(D, { goal: 'content', genre: d.genre || 'magic', art: d.art || 'cartoon3d', seriesFrom: d.seriesFrom || 0, seriesInfo: d.seriesInfo || null, plot: d.plot || '' });
   if (d.kind === 'image') { const st = CAT?.styles?.find((x) => x.id === d.style); if (st) D.ratio = st.ratio; }
-  REFS = []; REVS = []; VFILE = null; ITEMF = []; saveDraft(); go('create');
+  REFS = []; REVS = []; VFILE = null; VFILES = []; ITEMF = []; saveDraft(); go('create');
 }
 const botAv = () => `<span class="av" aria-hidden="true">${RICH('head', 30)}</span>`;
 // การ์ดงานที่ริชแนะนำ (หน้าตาและปุ่มเดียวกับการ์ดใน LINE)

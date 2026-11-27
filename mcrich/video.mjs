@@ -58,6 +58,7 @@ export const VIDEO_STYLES = [
   { id: 'v_drama', label: 'ละครสั้นขายของ', emoji: '🎭', color: '#7A1E48', reveal: 'drama', open: '', hook: '', variants: [] },
   // การ์ดลัด: เป็นซีรีส์แนวตั้งที่ตั้งสไตล์ภาพไว้ให้แล้ว (as = แนวจริงที่ส่งไปเซิร์ฟเวอร์)
   { id: 'v_pixel', label: 'เล่าเรื่องพิกเซล 8-bit', emoji: '👾', color: '#3B2A7A', as: 'v_series', preset: { art: 'pixel' }, open: 'retro pixel-art game style story', hook: '', variants: [] },
+  { id: 'v_flow', label: 'ต่อคลิป Flow/AI + พากย์ไทย', emoji: '🎞️', color: '#1F6F5C', as: 'v_self', preset: { selfMode: 'voice' }, open: 'join AI clips with Thai voiceover', hook: '', variants: [] },
   { id: 'v_stick', label: 'เล่าเรื่องตัวก้านไม้', emoji: '🧍', color: '#C76A2C', as: 'v_series', preset: { art: 'stick', genre: 'life' }, open: 'stick-figure life story', hook: '', variants: [] },
   { id: 'v_remix', label: 'แกะคลิป → พรอมต์ Flow / เปลี่ยนเสียง / ใส่อวตาร', emoji: '🧩', color: '#5B3FA8', reveal: 'remix', open: '', hook: '', variants: [], upload: true },
   { id: 'v_self', label: 'ใส่ซับคลิปที่ถ่ายเอง', emoji: '🎬', color: '#1F4E79', reveal: 'self', open: '', hook: '', variants: [] },
@@ -907,4 +908,58 @@ export async function orVideo({ model, prompt, imageUrl, duration = 5, resolutio
     fs.writeFileSync(outFile, Buffer.from(await v.arrayBuffer()));
   }
   return { file: outFile, cost: Number(s.usage?.cost) || null };
+}
+
+// ---------- ต่อหลายคลิป (เช่น คลิปจาก Google Flow ทีละ 8 วิ) ----------
+/** ปรับทุกคลิปเป็น 720x1280 30fps มีเสียง (ใส่เสียงเงียบถ้าไม่มี) แล้วต่อกัน */
+export async function joinClips(files, out) {
+  const parts = [];
+  try {
+    for (const [i, f] of files.entries()) {
+      const info = await probe(f);
+      const o = `${out}.p${i}.mp4`;
+      const args = ['-i', f, ...(info.hasAudio ? [] : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']),
+        '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30,format=yuv420p',
+        '-map', '0:v:0', '-map', info.hasAudio ? '0:a:0' : '1:a:0', '-shortest',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '19', '-threads', '2', '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', o];
+      await ff(args, 300000);
+      parts.push(o);
+    }
+    const list = `${out}.txt`;
+    fs.writeFileSync(list, parts.map((x) => `file '${x.replace(/'/g, "'\\''")}'`).join('\n'));
+    await ff(['-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', out], 300000);
+    fs.rm(list, () => {});
+    return out;
+  } finally { parts.forEach((x) => fs.rm(x, () => {})); }
+}
+
+/** ดูภาพในคลิปจริง แล้วเขียนบทพากย์ไทยให้ตรงกับภาพทีละช่วง (ขายของ/รีวิว/เล่าเรื่อง ตามเป้าหมาย) */
+export async function writeScriptForVideo({ file, p, brand, goalLabel, sec, gpost: post, url, findText }) {
+  const small = `${file}.ai.mp4`;
+  await ff(['-i', file, '-t', '180', '-vf', 'scale=-2:360', '-r', '8', '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', '200k', small], 300000);
+  try {
+    const say = Math.max(8, sec * 0.85);
+    const chars = Math.round(say * 11.5);
+    const prompt = `คุณคือครีเอเตอร์ TikTok ไทย ดูคลิปนี้ (ยาว ${sec.toFixed(1)} วินาที) แล้วเขียนบทพากย์ทับภาษาไทย ที่พูดตรงกับภาพที่เห็นในแต่ละช่วงเวลา
+เป้าหมาย: ${goalLabel || 'โปรโมตสินค้า'}
+สินค้า/เรื่อง: ${p.product || '-'}
+จุดเด่นที่ต้องพูด: ${p.details || '-'}
+ราคา/โปร: ${p.price || '-'}
+ร้าน: ${brand.shopName || '-'}
+โทน/สไตล์การเขียน: ${toneOf(p.tone, 'เป็นกันเอง')}
+กฎ: เรียงประโยคตามลำดับภาพในคลิป (ภาพไหนขึ้นก่อนพูดเรื่องนั้นก่อน) · ประโยคแรกเป็นฮุคดึงคนดูภายใน 3 วิ · ประโยคท้ายชวนสั่ง/ทักแชท/ติดตาม
+ภาษาพูดธรรมชาติ ประโยคสั้น · รวมทั้งบทประมาณ ${chars} ตัวอักษร (พูดจบภายใน ${Math.round(say)} วินาที) · ห้ามอ้างรักษาโรค/เกินจริง · ห้ามบรรยายสิ่งที่ไม่มีในภาพหรือข้อมูล
+ตอบเป็น JSON เท่านั้น: {"lines":["ประโยค 1","ประโยค 2"],"hookText":"ข้อความฮุคบนจอ ไม่เกิน 25 ตัวอักษร","cta":"ข้อความปิดท้ายสั้น","facebook":"แคปชั่น 1 แบบ ใช้ได้ทุกแพลตฟอร์ม","hashtags":["5 แท็ก"]}
+${p.link ? 'มีลิงก์สินค้า: ใส่ {LINK} ในแคปชั่น ห้ามเขียน URL เอง' : ''}`;
+    const j = await post(url, {
+      contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'video/mp4', data: fs.readFileSync(small).toString('base64') } }, { text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.6 },
+    }, 180000);
+    const o = JSON.parse(findText(j.candidates?.[0]?.content || j).replace(/^```(json)?|```$/g, '').trim());
+    const clean = (s) => String(s || '').replace(/[\u{1F000}-\u{1FFFF}☀-➿()[\]{}*#"]/gu, '').replace(/\s+/g, ' ').trim();
+    const lines = (Array.isArray(o.lines) ? o.lines : []).map(clean).filter(Boolean).slice(0, 18);
+    if (!lines.length) throw new Error('script_empty');
+    return { lines, speakers: lines.map(() => 'A'), rankAt: null, highlights: [], hookText: String(o.hookText || '').slice(0, 40), cta: String(o.cta || '').slice(0, 24),
+      captions: o, hashtags: Array.isArray(o.hashtags) ? o.hashtags : [] };
+  } finally { fs.rm(small, () => {}); }
 }

@@ -307,7 +307,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   const ready = () => !!KEY();
   const UP_TMP = path.join(DATA_DIR, 'tmp'), VID_DIR = path.join(DATA_DIR, 'uploads');
   fs.mkdirSync(UP_TMP, { recursive: true }); fs.mkdirSync(VID_DIR, { recursive: true });
-  const upload = multer({ dest: UP_TMP, limits: { fileSize: 400 * 1024 * 1024, files: 7 } });
+  const upload = multer({ dest: UP_TMP, limits: { fileSize: 400 * 1024 * 1024, files: 16 } });
   const rmTmp = (req) => Object.values(req.files || {}).flat().forEach((f) => fs.rm(f.path, { force: true }, () => {}));
   const PROG = new Map(); // ความคืบหน้างานวิดีโอ {stage, pct}
   const thaiToday = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
@@ -523,7 +523,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
   }));
 
   // ยืนยันสร้าง: ตัดดาว (หรือภาพฟรี) แล้วเข้าคิว
-  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 8 }, { name: 'revs', maxCount: 3 }, { name: 'video', maxCount: 1 }, { name: 'voice', maxCount: 1 }]), wrap(async (req, res) => {
+  app.post('/api/works', auth, upload.fields([{ name: 'refs', maxCount: 8 }, { name: 'revs', maxCount: 3 }, { name: 'video', maxCount: 8 }, { name: 'voice', maxCount: 1 }]), wrap(async (req, res) => {
     res.on('finish', () => rmTmp(req));
     if (!ready()) return res.status(503).json({ error: 'ระบบสร้างภาพกำลังตั้งค่า' });
     let body; try { body = JSON.parse(req.body?.data || '{}'); } catch { return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' }); }
@@ -549,7 +549,22 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       videoName = `${req.uid}-${Date.now().toString(36)}${rand(5).toLowerCase()}${(path.extname(vf.originalname || '') || '.mp4').toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 6)}`;
       fs.renameSync(vf.path, path.join(VID_DIR, videoName));
     }
-    if (body.style === 'v_self') {
+    let clipNames = [];
+    if (body.style === 'v_self' && (req.files?.video || []).length > 1) {
+      // หลายคลิป (เช่น คลิปจาก Google Flow ทีละ 8 วิ) → ต่อเป็นคลิปเดียวตอนประมวลผล
+      const vfs = req.files.video;
+      let total = 0;
+      for (const f of vfs) {
+        const inf = await V.probe(f.path).catch(() => null);
+        if (!inf?.hasVideo) { rmTmp(req); return res.status(400).json({ error: `ไฟล์ ${String(f.originalname || '').slice(0, 40)} เปิดไม่ได้` }); }
+        total += inf.sec;
+      }
+      if (total > V.SELF_MAX_SEC + 1) { rmTmp(req); return res.status(400).json({ error: `รวมทุกคลิปยาวเกิน ${V.SELF_MAX_SEC / 60} นาที` }); }
+      if (body.selfMode !== 'voice') body.selfMode = 'voice'; // คลิป AI ไม่มีเสียงพูด → พากย์ทับ
+      body.videoSec = total;
+      clipNames = vfs.map((f, i) => { const nm = `${req.uid}-${Date.now().toString(36)}${rand(4).toLowerCase()}-c${i}${(path.extname(f.originalname || '') || '.mp4').toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 6)}`; fs.renameSync(f.path, path.join(VID_DIR, nm)); return nm; });
+      videoName = clipNames[0];
+    } else if (body.style === 'v_self') {
       const vf = req.files?.video?.[0];
       let info = null;
       if (vf) info = await V.probe(vf.path).catch(() => null);
@@ -567,10 +582,11 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       }
     }
     const n = normalize(body, m.brand || {});
-    const dropVideo = () => { if (videoName && req.files?.video?.[0]) fs.rm(path.join(VID_DIR, videoName), { force: true }, () => {}); if (voiceName) fs.rm(path.join(VID_DIR, voiceName), { force: true }, () => {}); };
+    const dropVideo = () => { clipNames.forEach((c) => fs.rm(path.join(VID_DIR, c), { force: true }, () => {})); if (videoName && req.files?.video?.[0]) fs.rm(path.join(VID_DIR, videoName), { force: true }, () => {}); if (voiceName) fs.rm(path.join(VID_DIR, voiceName), { force: true }, () => {}); };
     if (n.error) { dropVideo(); return res.status(400).json({ error: n.error }); }
     if (n.blocked) { dropVideo(); return res.status(400).json({ error: n.blocked }); }
     if (n.self || n.remix) n.p.video = videoName;
+    if (n.self && clipNames.length > 1) n.p.clips = clipNames;
     if (n.remix && voiceName) n.p.voiceFile = voiceName;
 
     // ภาพอ้างอิง: อัปโหลดใหม่ หรือใช้ของงานเดิม
@@ -1633,6 +1649,16 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
   async function processSelf(w) {
     const p = w.params;
     const stage = (s, pct) => PROG.set(w.id, { stage: s, pct });
+    if (Array.isArray(p.clips) && p.clips.length > 1 && !p.joined) {
+      try {
+        stage('กำลังต่อคลิป', 5);
+        const name = `${w.user_id}-${w.id}-joined.mp4`;
+        await V.joinClips(p.clips.map((c) => path.join(VID_DIR, path.basename(c))), path.join(VID_DIR, name));
+        p.clips.forEach((c) => fs.rm(path.join(VID_DIR, path.basename(c)), () => {}));
+        p.video = name; p.joined = true; p.videoSec = (await V.probe(path.join(VID_DIR, name))).sec || p.videoSec;
+        await q("UPDATE works SET params = params || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ video: name, joined: true, videoSec: p.videoSec })]);
+      } catch (e) { log('self join fail', w.id, e.message); PROG.delete(w.id); return refund(w, 'ต่อคลิปไม่สำเร็จ (ไฟล์อาจเสีย) · คืนดาวแล้ว'); }
+    }
     const vfile = path.join(VID_DIR, path.basename(p.video || ''));
     if (!p.video || !fs.existsSync(vfile)) { PROG.delete(w.id); return refund(w, 'ไม่พบไฟล์คลิป · คืนดาวแล้ว'); }
     const brand = (await q('SELECT brand FROM profiles WHERE user_id=$1', [w.user_id])).rows[0]?.brand || {};
@@ -1657,8 +1683,11 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     let voice, script;
     try {
       if (p.selfMode === 'voice') {
-        stage('AI กำลังเขียนบท', 10);
-        script = await V.writeScript({ ...p, length: Math.max(10, Math.round(p.videoSec * 0.85)) }, style, brand, GOALS.find((g) => g.id === p.goal)?.label || '');
+        stage('AI กำลังดูคลิปและเขียนบท', 10);
+        const goalLabel = GOALS.find((g) => g.id === p.goal)?.label || '';
+        // ดูภาพจริงในคลิปแล้วเขียนบทให้พูดตรงกับภาพทีละช่วง · ล้มก็กลับไปเขียนจากข้อมูลสินค้า
+        script = await V.writeScriptForVideo({ file: vfile, p, brand, goalLabel, sec: p.videoSec, gpost, url: `${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, findText })
+          .catch((e) => { log('self watch fail', w.id, e.message); return V.writeScript({ ...p, length: Math.max(10, Math.round(p.videoSec * 0.85)) }, style, brand, goalLabel); });
         stage('กำลังพากย์เสียง', 25);
         // พากย์ทับคลิปที่ถ่ายเอง: ต้องพูดจบก่อนคลิปหมด
         const fit = await voiceFit(script.lines, Math.max(8, p.videoSec * 0.85), (ls) => (p.premium ? V.voiceEleven(ls, p.voice) : V.voiceGemini(ls, p.voice, p.tone, script.speakers, p.dialogue ? V.partnerVoice(p.voice) : '')), { keepCount: true, maxSec: Math.max(6, p.videoSec - 0.6), id: w.id });

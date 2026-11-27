@@ -114,6 +114,14 @@ function onFal(method, url, body, j) {
   return withCost(p.ctx, () => record({ provider: 'fal', model: p.model, op: 'video', units: sec, unit: 'วินาที', usd: sec * pick(PRICES.fal, p.model), meta: { request: id } }));
 }
 
+// OpenRouter: งานเสร็จแล้วคำตอบมี usage.cost = เงินจริงที่ถูกหัก (ไม่ต้องเดาราคา)
+const orDone = new Set();
+function onOpenRouter(method, url, body, j) {
+  if (method !== 'GET' || !/\/videos\/[^/]+$/.test(url.split('?')[0]) || j.status !== 'completed' || !j.id || orDone.has(j.id)) return;
+  orDone.add(j.id);
+  const sec = Number(j.duration || j.usage?.seconds) || 0;
+  return record({ provider: 'openrouter', model: j.model || 'video', op: 'video', units: sec || 1, unit: sec ? 'วินาที' : 'คลิป', usd: Number(j.usage?.cost) || 0, meta: { id: j.id } });
+}
 const heygenDone = new Set();
 function onHeygen(method, url, body, j) {
   const d = j.data || j;
@@ -140,12 +148,12 @@ export function installCostMeter({ q, log }) {
       const method = (init.method || input?.method || 'GET').toUpperCase();
       const host = (() => { try { return new URL(url).host; } catch { return ''; } })();
       const which = /generativelanguage|\/v1beta\/(models\/[^/]+:generateContent|interactions$)/.test(url) && method === 'POST' && /generateContent|interactions$/.test(url) ? 'gemini'
-        : (/fal\.run|fal\.ai/.test(host) || (process.env.FAL_QUEUE_URL && host === new URL(process.env.FAL_QUEUE_URL).host)) ? 'fal' : /heygen/.test(host) ? 'heygen' : /elevenlabs/.test(host) && method === 'POST' ? 'eleven' : '';
+        : (/fal\.run|fal\.ai/.test(host) || (process.env.FAL_QUEUE_URL && host === new URL(process.env.FAL_QUEUE_URL).host)) ? 'fal' : (/openrouter\.ai/.test(host) || (process.env.OPENROUTER_URL && host === new URL(process.env.OPENROUTER_URL).host && /\/videos/.test(url))) ? 'openrouter' : /heygen/.test(host) ? 'heygen' : /elevenlabs/.test(host) && method === 'POST' ? 'eleven' : '';
       if (which && res.ok && /json/.test(res.headers.get('content-type') || '')) {
         const body = typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body); } catch { return null; } })() : null;
         const hk = init.headers?.['x-goog-api-key'] || (typeof init.headers?.get === 'function' ? init.headers.get('x-goog-api-key') : '');
         const ctx = { ...costCtx(), ...(hk && hk === process.env.GEMINI_CHAT_KEY && hk !== process.env.GEMINI_API_KEY ? { free: true } : {}) };
-        res.clone().json().then((j) => withCost(ctx, () => (which === 'gemini' ? onGemini(url, body, j) : which === 'fal' ? onFal(method, url, body, j) : which === 'heygen' ? onHeygen(method, url, body, j) : null))).catch(() => {});
+        res.clone().json().then((j) => withCost(ctx, () => (which === 'gemini' ? onGemini(url, body, j) : which === 'fal' ? onFal(method, url, body, j) : which === 'heygen' ? onHeygen(method, url, body, j) : which === 'openrouter' ? onOpenRouter(method, url, body, j) : null))).catch(() => {});
       } else if (which === 'eleven' && res.ok) {
         const body = typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body); } catch { return null; } })() : null;
         onEleven(url, body);

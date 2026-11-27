@@ -128,6 +128,12 @@ if [ "${SET_MCRICH_AVATAR:-}" = "1" ] && [ -r /dev/tty ]; then
   echo ">> fal.ai API key สำหรับอวตารมาตรฐาน Kling (fal.ai > Dashboard > API Keys · กด Enter ข้าม)"
   askkey "   fal.ai key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && FALKEY=$REPLY
 fi
+# ---- OpenRouter (Seedance 2.5 Flash ถูกกว่า fal · กด Enter ข้าม) ----
+ORKEY=$(envget OPENROUTER_API_KEY)
+if [ "${SET_MCRICH_OPENROUTER:-}" = "1" ] && [ -r /dev/tty ]; then
+  echo ">> OpenRouter API key (openrouter.ai > Keys > Create key · กด Enter ข้าม)"
+  askkey "   OpenRouter key (ตัวอักษรจะไม่แสดง): " 1; [ -n "$REPLY" ] && ORKEY=$REPLY
+fi
 # ---- คีย์ Gemini ฟรีสำหรับแชทริช (โปรเจกต์ที่ไม่ผูกบิล · กด Enter ข้าม) ----
 GCHAT=$(envget GEMINI_CHAT_KEY)
 if [ "${SET_MCRICH_CHATKEY:-}" = "1" ] && [ -r /dev/tty ]; then
@@ -167,6 +173,7 @@ SELLER_ADDRESS="${SADDR}"
 SELLER_TAX_ID=${STAX}
 GEMINI_API_KEY=${GKEY}
 GEMINI_CHAT_KEY=${GCHAT}
+OPENROUTER_API_KEY=${ORKEY}
 ELEVENLABS_API_KEY=${ELKEY}
 LINEOA_SECRET=${OASEC}
 LINEOA_TOKEN=${OATOK}

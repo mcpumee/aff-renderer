@@ -241,8 +241,46 @@ function trimSilence(pcm, rate) {
   for (let i = 0; i < f; i++) { const k = m - f + i; out.writeInt16LE(Math.round(out.readInt16LE(k * 2) * (1 - i / f)), k * 2); }
   return out;
 }
+// ช่วงเงียบภายในประโยค (Gemini TTS บางครั้งเงียบไปกลางประโยค หรืออ่านไม่จบ)
+function gapsOf(pcm, rate) {
+  const n = pcm.length >> 1, win = Math.round(rate * 0.02);
+  let peak = 0;
+  for (let i = 0; i < n; i += 4) peak = Math.max(peak, Math.abs(pcm.readInt16LE(i * 2)));
+  const th = Math.max(150, Math.round(peak * 0.03));
+  const runs = []; let start = -1, voiced = 0;
+  for (let w0 = 0; w0 < n; w0 += win) {
+    let m = 0; for (let i = w0; i < Math.min(n, w0 + win); i += 2) m = Math.max(m, Math.abs(pcm.readInt16LE(i * 2)));
+    if (m < th) { if (start < 0) start = w0; } else { voiced += Math.min(win, n - w0); if (start >= 0) { runs.push([start, w0]); start = -1; } }
+  }
+  return { runs, voiced: voiced / rate, maxGap: runs.reduce((a, [x, y]) => Math.max(a, (y - x) / rate), 0) };
+}
+// ย่อช่วงเงียบกลางประโยคที่ยาวเกิน 0.6 วิ เหลือ 0.3 วิ (กันเสียง "หาย" ระหว่างเล่าเรื่อง)
+function squeezeGaps(pcm, rate) {
+  const { runs } = gapsOf(pcm, rate);
+  const long = runs.filter(([x, y]) => (y - x) / rate > 0.6);
+  if (!long.length) return pcm;
+  const keep = Math.round(rate * 0.3), parts = []; let pos = 0;
+  for (const [x, y] of long) { parts.push(pcm.slice(pos * 2, (x + keep / 2) * 2)); pos = y - keep / 2; }
+  parts.push(pcm.slice(pos * 2));
+  return Buffer.concat(parts);
+}
 let ttsModel = null;
+// พากย์ 1 ประโยค + ตรวจคุณภาพ: อ่านไม่ครบ (สั้นผิดปกติ) หรือเงียบกลางประโยคนานเกิน → ขอใหม่ (สูงสุด 3 ครั้ง เลือกอันดีสุด)
 async function ttsLine(text, voice, tone) {
+  const want = [...String(text).replace(/\s+/g, '')].length / 15; // ไทย ~15 ตัวอักษร/วิ
+  let best = null;
+  for (let k = 0; k < 3; k++) {
+    const o = await ttsOnce(text, voice, tone);
+    const g = gapsOf(o.pcm, o.rate);
+    const bad = (want > 1.2 && g.voiced < want * 0.45) || g.maxGap > 1.6;
+    const score = Math.min(1, g.voiced / Math.max(0.5, want)) - (g.maxGap > 1.6 ? 0.5 : 0);
+    if (!best || score > best.score) best = { o, score };
+    if (!bad) break;
+    console.log(new Date().toISOString(), 'tts retry', k + 1, `voiced ${g.voiced.toFixed(1)}s/คาด ${want.toFixed(1)}s gap ${g.maxGap.toFixed(1)}s`);
+  }
+  return best.o;
+}
+async function ttsOnce(text, voice, tone) {
   const models = ttsModel ? [ttsModel] : TTS_MODELS;
   let last;
   for (const m of models) {
@@ -272,7 +310,7 @@ export async function voiceGemini(lines, voice, tone, speakers = [], voiceB = ''
   const chunks = [], characters = [], st = [], en = [];
   let t = 0;
   for (const [i, o] of out.entries()) {
-    const pcm = trimSilence(o.pcm, rate);
+    const pcm = squeezeGaps(trimSilence(o.pcm, rate), rate);
     const dur = (pcm.length >> 1) / rate;
     const chars = [...lines[i]];
     chars.forEach((c, k) => { characters.push(c); st.push(t + (k / chars.length) * dur); en.push(t + ((k + 1) / chars.length) * dur); });
@@ -818,4 +856,34 @@ ${p.link ? 'มีลิงก์: ใส่ {LINK} ในแคปชั่น 
   })).filter((sl) => sl.lines.length);
   if (!slides.length) throw new Error('info_empty');
   return { slides, badge: clean(o.badge).slice(0, 20), captions: o, formal, n };
+}
+export const _ttsTest = { gapsOf, squeezeGaps };
+
+// ---------- OpenRouter (วิดีโอ: Seedance 2.5 Flash ฯลฯ ราคาถูกกว่า fal) ----------
+const OR_URL = () => (process.env.OPENROUTER_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
+export const orReady = () => !!process.env.OPENROUTER_API_KEY;
+/** สร้างวิดีโอจากภาพแรก → ดาวน์โหลดลง outFile · คืน { file, cost } (cost = เงินจริงที่ OpenRouter คิด) */
+export async function orVideo({ model, prompt, imageUrl, duration = 5, resolution = '720p', aspect = '9:16', audio = false, outFile, timeoutMs = 15 * 60e3 }) {
+  const H = { authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'content-type': 'application/json', 'x-title': 'Mc Rich' };
+  const r = await fetch(`${OR_URL()}/videos`, { method: 'POST', headers: H, signal: AbortSignal.timeout(60000),
+    body: JSON.stringify({ model, prompt, duration: Number(duration), resolution, aspect_ratio: aspect, generate_audio: !!audio,
+      ...(imageUrl ? { frame_images: [{ type: 'image_url', image_url: { url: imageUrl }, frame_type: 'first_frame' }] } : {}) }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.id) { const e = new Error(`openrouter ${r.status} ${j.error?.message || j.error || ''}`.trim()); e.status = r.status; throw e; }
+  const t0 = Date.now();
+  let s = j;
+  while (!['completed', 'failed', 'cancelled', 'expired'].includes(s.status)) {
+    if (Date.now() - t0 > timeoutMs) throw new Error('openrouter timeout');
+    await sleep(5000);
+    s = await fetch(`${OR_URL()}/videos/${j.id}`, { headers: H, signal: AbortSignal.timeout(30000) }).then((x) => x.json()).catch(() => s);
+  }
+  if (s.status !== 'completed') throw new Error(`openrouter ${s.status} ${s.error?.message || s.error || ''}`.trim());
+  const url = s.unsigned_urls?.[0];
+  if (url) await download(url, outFile);
+  else {
+    const v = await fetch(`${OR_URL()}/videos/${j.id}/content?index=0`, { headers: H, signal: AbortSignal.timeout(180000) });
+    if (!v.ok) throw new Error(`openrouter download ${v.status}`);
+    fs.writeFileSync(outFile, Buffer.from(await v.arrayBuffer()));
+  }
+  return { file: outFile, cost: Number(s.usage?.cost) || null };
 }

@@ -65,6 +65,9 @@ async function ffL(args, t = 300000) {
 const I2V = { std: () => process.env.FILM_I2V_STD || 'fal-ai/kling-video/v2.5-turbo/standard/image-to-video', pro: () => process.env.FILM_I2V_PRO || 'fal-ai/kling-video/v2.5-turbo/pro/image-to-video',
   cine: () => process.env.FILM_I2V_CINE || 'bytedance/seedance-2.5/image-to-video' };
 // เกรดหนังโรง (Seedance 2.5): ความละเอียด และวิธีพากย์ — dub = เสียงพากย์ไทยของเรา + ขยับปาก (เสียงฉากจาก Seedance), native = ให้ Seedance พูดเองพร้อมปาก
+// ผู้ให้บริการ Seedance: OpenRouter (ถ้ามีคีย์) ถูกกว่า fal · บังคับ fal ได้ด้วย FILM_CINE_PROVIDER=fal
+const cineOR = () => V.orReady() && process.env.FILM_CINE_PROVIDER !== 'fal';
+const CINE_OR_MODEL = () => process.env.FILM_CINE_OR_MODEL || 'bytedance/seedance-2.5-flash';
 const CINE_RES = () => (process.env.FILM_CINE_RES === '480p' ? '480p' : '720p');
 const cineVoice = (lang) => (['dub', 'native'].includes(process.env.FILM_CINE_VOICE) ? process.env.FILM_CINE_VOICE : lang === 'th' ? 'dub' : 'native');
 // ราคา Seedance คิดตามโทเคน: กว้าง×สูง×24fps/1024 × $0.0214/1k → 9:16 720p ≈ $0.462/วิ, 480p ≈ $0.206/วิ
@@ -140,7 +143,7 @@ const COST = {
   key: { std: Number(process.env.FILM_COST_KEY_STD || 0.034), pro: Number(process.env.FILM_COST_KEY_PRO || 0.134) },
   i2v: { std: Number(process.env.FILM_COST_I2V_STD || 0.21), pro: Number(process.env.FILM_COST_I2V_PRO || 0.35) },
   lipPerSec: Number(process.env.FILM_COST_LIP_SEC || 0.014),
-  cinePerSec: () => Number(process.env.FILM_COST_CINE_SEC || (CINE_RES() === '480p' ? 0.206 : 0.462)),
+  cinePerSec: () => Number(process.env.FILM_COST_CINE_SEC || (cineOR() ? (CINE_RES() === '480p' ? 0.068 : 0.152) : CINE_RES() === '480p' ? 0.206 : 0.462)),
 };
 COST.key.cine = COST.key.pro;
 // ช็อตพูด: Kling AI Avatar v2 (ภาพ + เสียง → ตัวละครพูดทั้งหน้า ขยับหัว กะพริบตา ปากตรงเสียง)
@@ -252,12 +255,15 @@ Adults only for any romance. No text, no subtitles, no logos, no watermark.`;
         // Seedance 2.5: ภาพแรก = ภาพหลักของช็อต · มีเสียงฉากในตัว (และบทพูดถ้าเป็นโหมด native)
         const v0 = T('.mp4');
         const talk = s.speaker && s.line;
-        const o = await V.falRun(I2V.cine(), {
-          prompt: `${A.en}. ${s.action}. Camera: ${s.camera}. Mood: ${s.mood}. Cinematic film shot, natural physics, consistent faces and costumes, no cuts within the shot.${talk ? (dub ? ` ${s.speaker} is talking (mouth moving naturally) but keep the audio to ambient sound effects only, no voices, no music.` : ` ${s.speaker} says in ${langOf(f.lang).name}: "${s.line}"`) : ' Ambient sound effects only, no voices, no music.'} No text, no subtitles, no watermark.`,
-          image_url: pubUrl(keys[i]), duration: String(SHOT_SEC), resolution: CINE_RES(), aspect_ratio: '9:16', generate_audio: true,
-        });
+        const cinePrompt = `${A.en}. ${s.action}. Camera: ${s.camera}. Mood: ${s.mood}. Cinematic film shot, natural physics, consistent faces and costumes, no cuts within the shot.${talk ? (dub ? ` ${s.speaker} is talking (mouth moving naturally) but keep the audio to ambient sound effects only, no voices, no music.` : ` ${s.speaker} says in ${langOf(f.lang).name}: "${s.line}"`) : ' Ambient sound effects only, no voices, no music.'} No text, no subtitles, no watermark.`;
+        if (cineOR()) {
+          // OpenRouter: Seedance 2.5 Flash (~$0.152/วิ ที่ 720p ถูกกว่า fal ราว 3 เท่า)
+          await V.orVideo({ model: CINE_OR_MODEL(), prompt: cinePrompt, imageUrl: pubUrl(keys[i]), duration: SHOT_SEC, resolution: CINE_RES(), aspect: '9:16', audio: true, outFile: v0 });
+        } else {
+          const o = await V.falRun(I2V.cine(), { prompt: cinePrompt, image_url: pubUrl(keys[i]), duration: String(SHOT_SEC), resolution: CINE_RES(), aspect_ratio: '9:16', generate_audio: true });
+          await V.download(o.video?.url || o.video_url || o.url, v0);
+        }
         used.i2v++; used.cineSec += SHOT_SEC;
-        await V.download(o.video?.url || o.video_url || o.url, v0);
         await ffL(['-i', v0, '-an', '-vf', 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '17', '-preset', 'veryfast', v1]);
         sfx = T('.wav');
         try { await ffL(['-i', v0, '-vn', '-ac', '1', '-ar', '44100', sfx]); } catch { sfx = null; }

@@ -398,11 +398,11 @@ const AV_LABEL = {
   gender: { female: 'ผู้หญิง', male: 'ผู้ชาย' }, age: { 0: '0+', 3: '3+', 7: '7+', 15: '15+', 18: '18+', 20: '20+', 30: '30+', 40: '40+', 50: '50+', 60: '60+' },
   look: { thai: 'ไทย', chinese: 'ไทยเชื้อสายจีน', malay: 'มลายู', indian: 'เอเชียใต้', western: 'ตะวันตก', korean: 'สไตล์เกาหลี', african: 'แอฟริกัน' },
   hair: { short: 'ผมสั้น', long: 'ผมยาวตรง', wavy: 'ผมลอนประบ่า', bun: 'มัดมวย', bob: 'บ๊อบ', bald: 'โกนหัว', hijab: 'คลุมฮิญาบ' },
-  outfit: { business: 'สูททำงาน', casual: 'เสื้อลำลอง', smart: 'สมาร์ทแคชชวล', thai: 'ชุดไทยประยุกต์', chef: 'ชุดเชฟ', doctor: 'เสื้อกาวน์', apron: 'ผ้ากันเปื้อนเจ้าของร้าน', sport: 'ชุดกีฬา', swim: 'ชุดว่ายน้ำ', bodycon: 'ชุดรัดรูป', gown: 'ชุดราตรีเซ็กซี่', crop: 'เสื้อครอป + ยีนส์รัดรูป', gymfit: 'ชุดออกกำลังกายรัดรูป' },
+  outfit: { business: 'สูททำงาน', casual: 'เสื้อลำลอง', smart: 'สมาร์ทแคชชวล', thai: 'ชุดไทยประยุกต์', chef: 'ชุดเชฟ', doctor: 'เสื้อกาวน์', apron: 'ผ้ากันเปื้อนเจ้าของร้าน', sport: 'ชุดกีฬา', swim: 'ชุดว่ายน้ำ', bodycon: 'ชุดรัดรูป', gown: 'ชุดราตรีเซ็กซี่', crop: 'เสื้อครอป + ยีนส์รัดรูป', gymfit: 'ชุดออกกำลังกายรัดรูป', satin: 'ชุดนอนผ้าซาติน' },
   sexy: { no: 'ปกติ', yes: 'เซ็กซี่ มั่นใจ (ไม่โป๊)' },
   bust: { auto: 'ตามธรรมชาติ', small: 'เล็ก', medium: 'กลาง', full: 'ใหญ่ (โค้งเว้า)', xl: 'ใหญ่มาก (สายแกลมเมอร์)' },
   body: { normal: 'ปกติ', chubby: 'อวบ', fit: 'หุ่นดี', slim: 'ผอม', muscle: 'เพาะกาย', athletic: 'หุ่นดีมาก', skinny: 'ผอมมาก', worn: 'โทรม' },
-  bg: { studio: 'สตูดิโอเรียบ', shop: 'ในร้าน', office: 'ออฟฟิศ', cafe: 'คาเฟ่', home: 'ในบ้าน', outdoor: 'ถนนกลางแจ้ง', kitchen: 'ห้องครัว' },
+  bg: { studio: 'สตูดิโอเรียบ', shop: 'ในร้าน', office: 'ออฟฟิศ', cafe: 'คาเฟ่', home: 'ในบ้าน', outdoor: 'ถนนกลางแจ้ง', kitchen: 'ห้องครัว', bedroom: 'ห้องนอนบ้านไม้ แสงหน้าต่าง' },
   mood: { smile: 'ยิ้มอบอุ่น', confident: 'มั่นใจ', calm: 'สุขุมน่าเชื่อถือ', sad: 'หดหู่', sick: 'ป่วย', hyper: 'บ้าพลัง' },
 };
 let AVD = null;
@@ -428,12 +428,13 @@ function drawAvatars(qs) {
     const minor = ['0', '3', '7', '15'].includes(AVD.age);
     if (minor && AVD.outfit === 'swim') AVD.outfit = 'casual';
     if (minor && ['fit', 'muscle', 'athletic'].includes(AVD.body)) AVD.body = 'normal';
-    const ADULT = ['swim', 'bodycon', 'gown', 'crop', 'gymfit'];
+    const ADULT = ['swim', 'bodycon', 'gown', 'crop', 'gymfit', 'satin'];
+    if (minor && AVD.bg === 'bedroom') AVD.bg = 'studio';
     if (minor && ADULT.includes(AVD.outfit)) AVD.outfit = 'casual';
     if (minor) AVD.sexy = 'no';
     AVD.sexy = AVD.sexy || 'no';
     if (minor || AVD.gender !== 'female') AVD.bust = 'auto'; AVD.bust = AVD.bust || 'auto';
-    const off = (k, v) => minor && ((k === 'outfit' && ADULT.includes(v)) || k === 'sexy' && v === 'yes' || (k === 'body' && ['fit', 'muscle', 'athletic'].includes(v)));
+    const off = (k, v) => minor && ((k === 'outfit' && ADULT.includes(v)) || (k === 'bg' && v === 'bedroom') || k === 'sexy' && v === 'yes' || (k === 'body' && ['fit', 'muscle', 'athletic'].includes(v)));
     const grp = (k, t) => `<section style="display:flex;flex-direction:column;gap:8px"><h2>${t}</h2><div class="chips">${(r.options[k] || []).filter((v) => !off(k, v)).map((v) => `<button type="button" class="chip" data-ak="${k}" data-v="${v}" aria-pressed="${AVD[k] === v}">${esc(AV_LABEL[k]?.[v] || v)}</button>`).join('')}</div>${k === 'age' && minor ? '<span class="muted">อวตารเด็ก/วัยรุ่น: แต่งกายมิดชิดตามวัยเสมอ</span>' : ''}</section>`;
     body = `${r.ready ? '' : '<p class="muted">ระบบวิดีโออวตารกำลังตั้งค่า ออกแบบเก็บไว้ก่อนได้</p>'}
       <section style="display:flex;flex-direction:column;gap:8px"><h2>สไตล์ภาพ</h2><div class="chips">${[['real', 'เหมือนจริง'], ['anime', 'อนิเมะ'], ['3d', 'การ์ตูน 3D'], ['paint', 'ภาพวาด']].map(([k, l]) => `<button type="button" class="chip" data-ak="art" data-v="${k}" aria-pressed="${(AVD.art || 'real') === k}">${l}</button>`).join('')}</div>${from === 'film' ? '<span class="muted">ตัวละครหนัง: เลือกสไตล์ให้ตรงกับสไตล์ภาพของเรื่อง · ใส่ชุด/ลักษณะเฉพาะในรายละเอียดเพิ่ม เช่น ชุดเจ้าสาว, ชุดนักธุรกิจหรู</span>' : ''}</section>

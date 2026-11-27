@@ -1247,11 +1247,12 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
     hair: { short: 'short neat hair', long: 'long straight hair', wavy: 'shoulder-length wavy hair', bun: 'hair tied in a neat bun', bob: 'bob haircut', bald: 'shaved head', hijab: 'wearing a neat hijab' },
     outfit: { business: 'a smart business suit', casual: 'a clean casual shirt', smart: 'smart-casual blouse/shirt', thai: 'elegant modern Thai traditional outfit', chef: 'a white chef uniform', doctor: 'a medical white coat', apron: "a shop owner's apron over a casual shirt", sport: 'sporty athleisure wear', swim: 'a tasteful swimsuit like a sportswear/swimwear catalog (no nudity)',
       bodycon: 'a sleek form-fitting bodycon outfit that hugs the figure', gown: 'a glamorous evening gown, off-shoulder with a leg slit, red-carpet style',
-      crop: 'a fitted crop top with high-waist skinny jeans, trendy street style', gymfit: 'a tight-fitting sports bra and leggings / fitted gym wear' },
+      crop: 'a fitted crop top with high-waist skinny jeans, trendy street style', gymfit: 'a tight-fitting sports bra and leggings / fitted gym wear',
+      satin: 'an elegant satin slip nightdress with thin straps, opaque (not see-through), hem at mid-thigh' },
     bust: { auto: '', small: 'a petite, small bust', medium: 'a medium, natural bust', full: 'a curvy figure with a full bust', xl: 'a voluptuous hourglass glamour-model figure with a large, full bust (like a swimwear-calendar model)' },
     sexy: { no: '', yes: 'Sexy, confident, alluring glamour look like a high-end fashion editorial — flattering fitted styling, sultry confident gaze, elegant body-confident pose. Strictly tasteful: no nudity, nothing see-through over intimate areas, no lingerie-only, no sexual pose or act.' },
     body: { normal: 'an average healthy build', chubby: 'a chubby, plump build', fit: 'a fit, toned build', slim: 'a slim build', muscle: 'a muscular bodybuilder physique', athletic: 'a very athletic, sculpted build', skinny: 'a very thin, skinny build', worn: 'a tired, worn-out, disheveled look' },
-    bg: { studio: 'plain soft-grey studio backdrop', shop: 'a bright tidy retail shop interior, softly blurred', office: 'a modern office, softly blurred', cafe: 'a cozy cafe, softly blurred', home: 'a warm living room, softly blurred', outdoor: 'an outdoor city street in daylight, softly blurred', kitchen: 'a clean modern kitchen, softly blurred' },
+    bg: { studio: 'plain soft-grey studio backdrop', shop: 'a bright tidy retail shop interior, softly blurred', office: 'a modern office, softly blurred', cafe: 'a cozy cafe, softly blurred', home: 'a warm living room, softly blurred', outdoor: 'an outdoor city street in daylight, softly blurred', kitchen: 'a clean modern kitchen, softly blurred', bedroom: 'a cozy old Thai wooden-house bedroom with a framed painting, floral curtains and soft warm sunlight through the window, natural film-photo look with gentle grain' },
     mood: { smile: 'warm genuine smile', confident: 'confident friendly expression', calm: 'calm trustworthy expression', sad: 'a sad, downcast, gloomy expression', sick: 'a pale, unwell, sickly look with tired eyes', hyper: 'a wildly energetic, over-the-top hyped expression, eyes wide, big open grin' },
   };
   // ภาพอ้างอิงตัวตน: มีมุมข้าง → รวมเป็นแผ่นเดียว (หน้าตรงใหญ่ + ข้างซ้าย/ขวา) ให้ AI จำหน้าได้ทุกมุม
@@ -1294,7 +1295,11 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
     sp.sexy = b.sexy === 'yes' ? 'yes' : 'no';
     // สัดส่วนหน้าอก: เฉพาะผู้หญิงผู้ใหญ่ · ระดับธรรมชาติ ไม่เกินจริง
     sp.bust = !minor && sp.gender === 'female' && AV_OPT.bust[b.bust] ? b.bust : 'auto';
-    const ADULT_ONLY = ['swim', 'bodycon', 'gown', 'crop', 'gymfit'];
+    const ADULT_ONLY = ['swim', 'bodycon', 'gown', 'crop', 'gymfit', 'satin'];
+    // ชุดนอน/ห้องนอน: หน้าตาผู้ใหญ่ชัดเจน (อย่างน้อยกลาง 20)
+    if ((sp.outfit === 'satin' || sp.bg === 'bedroom') && ['18'].includes(sp.age)) sp.age = '20';
+    if ((sp.outfit === 'satin' || sp.bg === 'bedroom') && ['hyper', 'sick', 'sad'].includes(sp.mood)) sp.mood = 'confident';
+    if (minor && sp.bg === 'bedroom') return res.status(400).json({ error: 'อวตารเด็ก/วัยรุ่น เลือกฉากนี้ไม่ได้' });
     if (minor && (ADULT_ONLY.includes(sp.outfit) || sp.sexy === 'yes' || ['fit', 'muscle', 'athletic'].includes(sp.body))) return res.status(400).json({ error: 'อวตารเด็ก/วัยรุ่น เลือกชุด/ลุคแบบนี้ไม่ได้' });
     // ผู้ใหญ่: เซ็กซี่ได้ถึงระดับแฟชั่น ไม่รับโป๊/ส่อเพศ
     const gm = guardModel({ extra: sp.extra }); if (gm && !/ผู้ใหญ่เท่านั้น/.test(gm)) return res.status(400).json({ error: gm });
@@ -1315,7 +1320,7 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
     const g = AV_OPT.gender[sp.gender], ageTxt = AV_OPT.age[sp.age].replace('her/his', sp.gender === 'male' ? 'his' : 'her');
     const kid = { male: 'boy', female: 'girl' }[sp.gender];
     const who = minor ? `a single ${AV_OPT.look[sp.look]} ${sp.age === '0' ? `baby ${kid}` : sp.age === '15' ? `teenage ${kid}` : kid}, ${ageTxt}` : `a single adult ${AV_OPT.look[sp.look]} ${g} ${ageTxt}`;
-    const MALE_WEAR = { gown: 'a sharp, slim-fit tuxedo with an open collar', gymfit: 'a tight-fitting tank top and fitted gym shorts that show his physique', crop: 'a fitted t-shirt with slim jeans', bodycon: 'a slim-fit shirt that hugs his physique', swim: 'swim shorts like a swimwear catalog' };
+    const MALE_WEAR = { gown: 'a sharp, slim-fit tuxedo with an open collar', gymfit: 'a tight-fitting tank top and fitted gym shorts that show his physique', crop: 'a fitted t-shirt with slim jeans', bodycon: 'a slim-fit shirt that hugs his physique', swim: 'swim shorts like a swimwear catalog', satin: 'silk pajamas' };
     const wear = !minor && sp.gender === 'male' && MALE_WEAR[sp.outfit] ? MALE_WEAR[sp.outfit] : minor ? (sp.outfit === 'business' || sp.outfit === 'doctor' || sp.outfit === 'chef' ? `a child-size ${AV_OPT.outfit[sp.outfit].replace(/^an? /, '')}` : 'modest, age-appropriate everyday clothes') : AV_OPT.outfit[sp.outfit];
     const bodyTxt = (sp.body !== 'normal' ? `, ${AV_OPT.body[sp.body]}` : '') + (sp.bust !== 'auto' ? `, ${AV_OPT.bust[sp.bust]} (${sp.bust === 'xl' ? 'believable, not cartoonish' : 'natural proportions'}, fully covered by the outfit)` : '');
     const showBody = !minor && (sp.body !== 'normal' || ADULT_ONLY.includes(sp.outfit) || sp.sexy === 'yes');

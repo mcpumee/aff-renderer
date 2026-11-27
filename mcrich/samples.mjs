@@ -151,7 +151,7 @@ export function registerSamples(app, { q, auth, wrap, log, DATA_DIR, create }) {
   // ทุกแนวงาน (ภาพ + คลิป) ที่ต้องมีตัวอย่าง
   const ALL = () => [
     ...STYLES.map((x) => ({ id: x.id, kind: 'image', label: x.label })),
-    ...V.VIDEO_STYLES.map((x) => ({ id: x.id, kind: 'video', label: x.label, manual: VID_MANUAL.includes(x.id) })),
+    ...V.VIDEO_STYLES.map((x) => ({ id: x.id, kind: 'video', label: x.label, manual: VID_MANUAL.includes(x.id) || !!x.as })),
   ];
   const withCostSys = async (fn) => withCost({ userId: await sysUser(), src: 'system covers' }, fn);
   // ภาพปกของทุกแนวคลิป (ถูก ~1 บาท/ภาพ) — แนวที่ยังไม่มีคลิปตัวอย่าง/ปกจากการ์ดฮิต ให้มีปกโชว์ในขั้นเลือกแนว

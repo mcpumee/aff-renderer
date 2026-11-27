@@ -56,6 +56,9 @@ export const VIDEO_STYLES = [
   { id: 'v_motion', label: 'คลิป AI ภาพเคลื่อนไหวจริง', emoji: '🎥', color: '#0F5257', reveal: 'motion', open: '', hook: '', variants: [] },
   { id: 'v_series', label: 'ซีรีส์แนวตั้ง (เล่าเรื่อง ไม่ขายของ)', emoji: '🔮', color: '#3B2A7A', reveal: 'drama', open: '', hook: '', variants: [] },
   { id: 'v_drama', label: 'ละครสั้นขายของ', emoji: '🎭', color: '#7A1E48', reveal: 'drama', open: '', hook: '', variants: [] },
+  // การ์ดลัด: เป็นซีรีส์แนวตั้งที่ตั้งสไตล์ภาพไว้ให้แล้ว (as = แนวจริงที่ส่งไปเซิร์ฟเวอร์)
+  { id: 'v_pixel', label: 'เล่าเรื่องพิกเซล 8-bit', emoji: '👾', color: '#3B2A7A', as: 'v_series', preset: { art: 'pixel' }, open: 'retro pixel-art game style story', hook: '', variants: [] },
+  { id: 'v_stick', label: 'เล่าเรื่องตัวก้านไม้', emoji: '🧍', color: '#C76A2C', as: 'v_series', preset: { art: 'stick', genre: 'life' }, open: 'stick-figure life story', hook: '', variants: [] },
   { id: 'v_remix', label: 'แกะคลิป → พรอมต์ Flow / เปลี่ยนเสียง / ใส่อวตาร', emoji: '🧩', color: '#5B3FA8', reveal: 'remix', open: '', hook: '', variants: [], upload: true },
   { id: 'v_self', label: 'ใส่ซับคลิปที่ถ่ายเอง', emoji: '🎬', color: '#1F4E79', reveal: 'self', open: '', hook: '', variants: [] },
   { id: 'v_sell', label: 'ขายของ / รีวิวสินค้า', emoji: '🛍️', color: '#17694A', reveal: 'none', open: '', hook: 'ของมันต้องมี\nบอกต่อ!', variants: [] },
@@ -414,6 +417,7 @@ export const ART = [
   { id: 'anime', label: 'อนิเมะ', prompt: 'Japanese anime illustration style, clean cel shading, vibrant colors' },
   { id: 'real', label: 'ภาพจริงแบบซีรีส์', prompt: 'cinematic photorealistic Thai TV drama still, natural lighting, 35mm film look' },
   { id: 'blocky', label: 'ตัวบล็อกน่ารัก', prompt: 'cute blocky toy-like characters with cube heads and simple shapes, clean bright 3D render' },
+  { id: 'pixel', label: 'พิกเซล 8-bit/16-bit', prompt: '16-bit retro pixel art, crisp clearly visible square pixels, limited vibrant palette, cozy richly detailed pixel-art backgrounds, SNES-era RPG game aesthetic, cute chibi pixel-art characters with simple expressive faces, warm lighting, no anti-aliasing blur, no smooth gradients' },
   { id: 'stick', label: 'ตัวก้านไม้หัวกลม (เล่าเรื่องชีวิต)', prompt: 'simple flat 2D storybook illustration, minimalist stick-figure characters with big round plain white heads, simple dot eyes and small expressive mouth, thick clean black outlines, thin black stick arms, simple solid-color clothes, richly detailed warm cozy hand-drawn backgrounds, soft warm lamp lighting, gentle muted palette, heartwarming slice-of-life mood' },
   { id: 'comic', label: 'การ์ตูนหมึก', prompt: 'Thai comic book illustration, bold ink outlines, flat colors, halftone shading' },
 ];
@@ -441,7 +445,7 @@ export async function writeDrama(p, brand, goalLabel) {
   const genre = GENRES.find((g) => g.id === p.genre) || GENRES[0];
   const n = p.scenes === 6 ? 6 : 4;
   const len = n === 6 ? 45 : 30;
-  const prompt = `คุณคือนักเขียนบทละครสั้น TikTok ไทยที่ทำคลิปไวรัลขายของ เขียนละครสั้นแนว "${genre.label}" (${genre.desc})${p.plot ? `\nพล็อตที่ผู้ใช้อยากได้: ${p.plot}` : ''}
+  const prompt = `คุณคือนักเขียนบทละครสั้น TikTok ไทยที่ทำคลิปไวรัลขายของ เขียนละครสั้นแนว "${genre.label}" (${genre.desc})${p.plot ? `\nพล็อตของผู้ใช้: ${p.plot}${FAITHFUL}\n- สินค้าใส่เข้าไปในจุดที่เหมาะในเรื่องของผู้ใช้ ไม่ต้องแต่งเรื่องใหม่` : ''}
 ยาวประมาณ ${len} วินาที แบ่งเป็น ${n} ฉาก สินค้าต้องเข้ามาแก้ปัญหาในเรื่องอย่างเป็นธรรมชาติ ไม่ยัดเยียด มีจุดพลิกหรือมุกตลก
 สินค้า: ${p.product}
 จุดเด่น: ${p.details || '-'}
@@ -457,7 +461,7 @@ look ของตัวละครเขียนเป็นภาษาอั
 "facebook":"แคปชั่น FB 3-6 บรรทัด ใส่ {LINK} ถ้ามีลิงก์","instagram":"แคปชั่น IG","tiktok":"แคปชั่น TikTok สั้นมีฮุค","shopee":"แคปชั่นขาย","hashtags":["5-8 แท็ก"]}`;
   const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 1 },
+    generationConfig: { responseMimeType: 'application/json', temperature: p.plot ? 0.55 : 0.95 },
   }, 120000);
   const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
   const clean = (x) => String(x || '').replace(/[\u{1F000}-\u{1FFFF}\u2600-\u27BF()[\]{}*#"]/gu, '').replace(/\s+/g, ' ').trim();
@@ -505,6 +509,12 @@ export const SERIES_LEN = { 4: 30, 6: 45, 8: 60 };
 export const SERIES_MOTION = { 4: { n: 2, price: 25 }, 6: { n: 2, price: 25 }, 8: { n: 3, price: 35 } };
 // เลือกฉากเด่น: ฉากเปิด ฉากจบ แล้วฉากกลางเรื่อง
 export const motionPick = (count, n) => [...new Set([0, count - 1, Math.floor(count / 2), 1, count - 2].filter((i) => i >= 0 && i < count))].slice(0, Math.min(n, count));
+// กฎเรียบเรียงเรื่องของผู้ใช้ (ใช้ร่วมกันทุกตัวเขียนบท): ยึดเรื่องเดิม · เรียงเหตุการณ์ · เกลาคำพูด · เสริมนิดเดียว
+export const FAITHFUL = `
+⚠️ ยึดเรื่องของผู้ใช้เป็นหลัก (สำคัญที่สุด):
+- ใช้ตัวละคร เหตุการณ์ และลำดับตามที่ผู้ใช้เขียน ห้ามเปลี่ยนเนื้อเรื่อง ห้ามเพิ่มตัวละครหลัก/เหตุการณ์ใหญ่/การหักมุมที่ผู้ใช้ไม่ได้เขียน
+- หน้าที่: (1) เรียงเหตุการณ์ให้เป็นลำดับที่เข้าใจง่าย ต้น→กลาง→จบ (2) เกลาคำพูดให้เป็นภาษาพูดธรรมชาติ กระชับ ไม่ซ้ำ (3) เสริมรายละเอียดเล็กน้อยเพื่อเชื่อมให้ลื่น ไม่เกิน 10-15%
+- 1 ฉาก = 1 เหตุการณ์ชัดเจน · ห้ามข้ามเหตุการณ์สำคัญ · คำพูดที่ผู้ใช้เขียนไว้ให้คงความหมายเดิม`;
 export async function writeSeries(p, prev) {
   const genre = SERIES_GENRES.find((g) => g.id === p.genre) || SERIES_GENRES[0];
   const n = SERIES_LEN[p.scenes] ? p.scenes : 4;
@@ -512,11 +522,20 @@ export async function writeSeries(p, prev) {
   const prevCtx = prev ? `
 นี่คือตอนที่ ${ep} ของเรื่อง "${prev.title}" (ต่อจากตอนก่อน)
 เรื่องย่อที่ผ่านมา: ${prev.summary}
-ตอนที่แล้วจบที่: ${prev.cliff || '-'}
+ตอนที่แล้วจบที่: ${prev.cliff || '-'}${prev.plot ? `\nเรื่องย่อทั้งเรื่องของผู้ใช้ (ต้นฉบับ): ${prev.plot}` : ''}${prev.arc?.length ? `\nแผนเรื่องทุกตอน:\n${prev.arc.map((a, i) => `EP.${i + 1}: ${a}`).join('\n')}\n→ ตอนนี้ (EP.${ep}) ต้องเล่าส่วนนี้: ${prev.arc[ep - 1] || 'บทสรุป/ตอนจบของเรื่อง ตามเรื่องย่อของผู้ใช้'}` : ''}
 ตัวละครเดิม (ใช้ชื่อและ look เดิมทุกตัว เพิ่มตัวใหม่ได้ไม่เกิน 1 ตัว):
 ${prev.chars.map((c) => `- ${c.name} (${c.gender}, ${c.age}): ${c.look}`).join('\n')}` : '';
+  const plot = p.plot || prev?.plot || '';
+  const own = !!plot; // ผู้ใช้มีเรื่องของตัวเอง → ยึดเรื่องเขาเป็นหลัก แค่เรียบเรียง
+  const ownRules = own ? `
+⚠️ โหมด "เรียบเรียงเรื่องของผู้ใช้" (สำคัญที่สุด):
+- ยึดเรื่องย่อของผู้ใช้เป็นแกนหลัก: ใช้ตัวละคร เหตุการณ์ และลำดับตามที่ผู้ใช้เขียน ห้ามเปลี่ยนเนื้อเรื่อง ห้ามเพิ่มตัวละครหลัก/เหตุการณ์ใหญ่/การหักมุมที่ผู้ใช้ไม่ได้เขียน
+- หน้าที่คุณมีแค่ 3 อย่าง: (1) เรียงเหตุการณ์ให้เป็นลำดับเวลาที่เข้าใจง่าย ต้น→กลาง→จบ (2) เรียบเรียงคำพูดให้เป็นภาษาพูดธรรมชาติ กระชับ ไม่ซ้ำ (3) เสริมรายละเอียดเล็กน้อยเพื่อเชื่อมฉากให้ลื่น (ไม่เกิน 10-15% ของเนื้อหา เช่น บรรยากาศ ความรู้สึก ประโยคเชื่อม)
+- 1 ฉาก = 1 เหตุการณ์ชัดเจน ไม่กระโดดไปมา · ห้ามข้ามเหตุการณ์สำคัญของผู้ใช้ · คำพูดที่ผู้ใช้เขียนไว้ให้คงความหมายเดิม
+- ถ้าเรื่องย่อยาวเกินตอนเดียว: เล่าเฉพาะส่วนของตอนนี้ตามลำดับ แล้วค่อยต่อในตอนถัดไป (ไม่อัดทุกอย่างลงตอนเดียว ไม่ข้ามไปตอนจบ)
+- จบตอนตรงจุดที่เรื่องของผู้ใช้หยุดพักได้อย่างเป็นธรรมชาติ (ไม่ต้องแต่งเรื่องค้างใหม่ขึ้นมาเอง)` : '';
   const prompt = `คุณคือนักเขียนบทซีรีส์แนวตั้งไทย (สไตล์ซีรีส์สั้นในแอปดูซีรีส์และ TikTok) เขียนตอนที่ ${ep} แนว "${genre.label}" (${genre.desc})
-${p.product ? `ชื่อเรื่อง/แนวคิด: ${p.product}` : ''}${p.plot ? `\nเรื่องย่อที่ผู้ใช้อยากได้: ${p.plot}` : ''}${prevCtx}
+${p.product ? `ชื่อเรื่อง/แนวคิด: ${p.product}` : ''}${p.plot ? `\nเรื่องย่อของผู้ใช้${prev ? ' (สำหรับตอนนี้)' : ''}: ${p.plot}` : ''}${prevCtx}${ownRules}
 ยาวประมาณ ${SERIES_LEN[n]} วินาที แบ่งเป็น ${n} ฉาก · เปิดเรื่องด้วยฉากที่ดึงดูดภายใน 3 วินาทีแรก · มีความขัดแย้ง จุดพลิก และจบตอนแบบค้างคา (cliffhanger) ให้อยากดูตอนต่อไป
 โทน: ${p.tone || 'ตื่นเต้น'} · ไม่มีการขายสินค้าหรือโฆษณาใดๆ
 กฎ: ตัวละคร 2-4 ตัว ชื่อไทยหรือชื่อในโลกของเรื่อง สั้นๆ · แต่ละฉาก 1-3 บทพูด ประโยคสั้น ภาษาพูดธรรมชาติ ใช้ผู้บรรยาย (name: "ผู้บรรยาย") ได้ · ห้ามเนื้อหาทางเพศ ความรุนแรงโจ่งแจ้ง หรือเลียนแบบตัวละคร/เรื่องที่มีลิขสิทธิ์ · ห้ามอีโมจิหรือวงเล็บในบทพูด
@@ -524,11 +543,11 @@ look ของตัวละครเขียนเป็นภาษาอั
 ตอบเป็น JSON เท่านั้น:
 {"title":"ชื่อเรื่อง${prev ? ' (ใช้ชื่อเดิม)' : ''}","epTitle":"ชื่อตอนสั้นๆ","characters":[{"name":"ชื่อ","gender":"female|male","age":"child|young|middle|old","look":"English visual description"}],
 "scenes":[{"scene":"English scene description","onscreen":"ข้อความบนจอสั้นๆ ไม่บังคับ","lines":[{"name":"ชื่อตัวละคร หรือ ผู้บรรยาย","text":"บทพูด"}]}],
-"hookText":"ฮุคบนจอ 2 บรรทัด คั่นด้วย \\n","summary":"สรุปเรื่องทั้งหมดถึงตอนนี้ 2-3 ประโยค","cliff":"ตอนนี้จบค้างไว้ที่อะไร 1 ประโยค",
+"hookText":"ฮุคบนจอ 2 บรรทัด คั่นด้วย \\n","summary":"สรุปเรื่องทั้งหมดถึงตอนนี้ 2-3 ประโยค","cliff":"ตอนนี้จบค้างไว้ที่อะไร 1 ประโยค",${own && !prev?.arc?.length ? '"arc":["แผนเรื่องทั้งหมดของผู้ใช้ แบ่งเป็นตอนตามลำดับ ตอนละ 1-2 ประโยค (ตอนแรก = ตอนนี้) จำนวนตอนให้พอดีกับความยาวเรื่องย่อ ไม่ยืดไม่อัด"],' : ''}
 "facebook":"แคปชั่น FB 2-4 บรรทัด ชวนติดตามตอนต่อไป","instagram":"แคปชั่น IG","tiktok":"แคปชั่น TikTok สั้นมีฮุค","hashtags":["5-8 แท็ก เช่น #ซีรีส์แนวตั้ง"]}`;
   const j = await gpost(`${API()}/v1beta/models/${TEXT_MODEL}:generateContent`, {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { responseMimeType: 'application/json', temperature: 1 },
+    generationConfig: { responseMimeType: 'application/json', temperature: own ? 0.5 : 0.9 },
   }, 120000);
   const o = JSON.parse(partsText(j).replace(/^```(json)?|```$/g, '').trim());
   const clean = (x) => String(x || '').replace(/[\u{1F000}-\u{1FFFF}☀-➿()[\]{}*#"]/gu, '').replace(/\s+/g, ' ').trim();
@@ -548,7 +567,9 @@ look ของตัวละครเขียนเป็นภาษาอั
   })).filter((sc) => sc.scene && sc.lines.length);
   if (scenes.length < 2) throw new Error('series_no_scenes');
   return { title: (prev?.title || clean(o.title)).slice(0, 40), epTitle: clean(o.epTitle).slice(0, 40), ep, chars, scenes, hookText: String(o.hookText || '').slice(0, 40),
-    summary: String(o.summary || '').slice(0, 600), cliff: String(o.cliff || '').slice(0, 200), captions: { ...o, shopee: '' } };
+    summary: String(o.summary || '').slice(0, 600), cliff: String(o.cliff || '').slice(0, 200), captions: { ...o, shopee: '' },
+    plot: (prev?.plot || p.plot || '').slice(0, 5000),
+    arc: prev?.arc?.length ? prev.arc : (Array.isArray(o.arc) ? o.arc.map((x) => String(x || '').slice(0, 300)).filter(Boolean).slice(0, 30) : []) };
 }
 export function seriesScenePrompt(sc, chars, art, refKind) {
   const who = chars.filter((c) => sc.scene.includes(c.name) || sc.lines.some((l) => l.name === c.name));

@@ -35,7 +35,7 @@ const PER_MIN = Number(process.env.MCRICH_CHAT_PER_MIN || 15);
 
 const styleList = () => [
   ...STYLES.map((s) => `${s.id} = ภาพ: ${s.label}`),
-  ...VIDEO_STYLES.map((s) => `${s.id} = คลิป: ${s.label}`),
+  ...VIDEO_STYLES.filter((s) => !s.as).map((s) => `${s.id} = คลิป: ${s.label}`),
 ].join('\n');
 
 function systemPrompt(m, works) {
@@ -125,7 +125,7 @@ export function registerChat(app, { q, auth, wrap, log, me, PUBLIC_URL, makeToke
         log('chat json fallback', uid, j.candidates?.[0]?.finishReason || '', raw.slice(0, 120));
       }
       if (o.reply) o.reply = String(o.reply).replace(/\*\*|__|^#+\s/gm, '');
-      const all = [...STYLES.map((s) => ({ id: s.id, kind: 'image' })), ...VIDEO_STYLES.map((s) => ({ id: s.id, kind: 'video' }))];
+      const all = [...STYLES.map((s) => ({ id: s.id, kind: 'image' })), ...VIDEO_STYLES.filter((s) => !s.as).map((s) => ({ id: s.id, kind: 'video' }))];
       let draft = o.draft && typeof o.draft === 'object' ? o.draft : null;
       if (draft) {
         const st = all.find((s) => s.id === draft.style);

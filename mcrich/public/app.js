@@ -1028,7 +1028,7 @@ function drawStep() {
         <span style="font-size:26px">📎</span><span style="flex:1"><b>มีงานตัวอย่างอยู่แล้ว?</b><br><span class="muted" style="font-size:13px">${vid ? 'อัปโหลดภาพหรือคลิปที่อยากได้แบบนี้ · คลิป = แกะพรอมต์/เปลี่ยนเสียง/ใส่อวตาร' : 'อัปโหลดภาพที่อยากได้แบบนี้ AI อ่านแนวงาน ขนาด ชื่อสินค้า ราคาให้ แล้วข้ามไปกรอกรายละเอียด'}</span></span>
         <span class="btn dark sm" id="refbusy">${REFBUSY ? 'กำลังอ่าน…' : 'อัปโหลด'}</span><input id="refwork" type="file" accept="${vid ? 'image/*,video/*' : 'image/*'}" hidden></label>
       ${(() => {
-        const card = (x) => { const im = (vid ? SAMPLES?.video : SAMPLES?.image)?.[x.id]; const pl = vid ? SAMPLES?.play?.[x.id] : im; return `<button type="button" class="stylecard has-img" data-style="${x.id}" aria-pressed="${D.style === x.id}">
+        const card = (x) => { const im = (vid ? SAMPLES?.video : SAMPLES?.image)?.[x.id]; const pl = vid ? SAMPLES?.play?.[x.id] : im; return `<button type="button" class="stylecard has-img" data-style="${x.id}" aria-pressed="${(D.alias || D.style) === x.id}">
           ${im ? `<span class="sx"><img src="${im}" alt="ตัวอย่าง ${esc(x.label)}" loading="lazy">${pl ? `<i data-play="${x.id}">${vid ? '▶ ดูตัวอย่าง' : '🔍 ดูภาพ'}</i>` : ''}</span>`
             : pl ? `<span class="sx"><video src="${pl}#t=0.6" muted playsinline preload="metadata"></video><i data-play="${x.id}">▶ ดูตัวอย่าง</i></span>` : `<span class="sx sxe" style="background:${esc(x.color)}">${x.emoji}</span>`}<b>${esc(x.label)}</b><span class="muted">${vid ? styleNote(x) : `${x.text ? 'มีข้อความบนภาพ' : 'ภาพล้วน'} · ${esc(x.ratio)}`}</span></button>`; };
         const biz = list.filter((x) => !x.pr && !x.agent), pr = list.filter((x) => x.pr), ag = list.filter((x) => x.agent);
@@ -1070,8 +1070,11 @@ function drawStep() {
     app.querySelectorAll('[data-style]').forEach((b) => b.onclick = (e) => {
       const pl = e.target.closest('[data-play]');
       if (pl) { const x = list.find((y) => y.id === pl.dataset.play); sampleSheet(vid ? SAMPLES?.play?.[x.id] : SAMPLES?.image?.[x.id], vid ? 'video' : 'image', x.label); }
-      D.style = b.dataset.style; if (!vid) D.ratio = CAT.styles.find((x) => x.id === D.style).ratio;
-      if (D.style === 'v_series') { D.goal = 'content'; if (!CAT.video.seriesGenres.some((g) => g.id === D.genre)) D.genre = 'magic'; if (!CAT.video.seriesPrices[D.scenes]) D.scenes = 4; }
+      D.style = b.dataset.style; D.alias = '';
+      // การ์ดลัด (เช่น เล่าเรื่องพิกเซล) = ซีรีส์แนวตั้งที่ตั้งค่าไว้ให้
+      const al = vid && CAT.video.styles.find((x) => x.id === D.style && x.as); if (al) { D.alias = al.id; D.style = al.as; Object.assign(D, al.preset || {}); }
+      if (!vid) D.ratio = CAT.styles.find((x) => x.id === D.style).ratio;
+      if (D.style === 'v_series') { D.goal = 'content'; if (!CAT.video.seriesGenres.some((g) => g.id === D.genre)) D.genre = al?.preset?.genre || 'magic'; if (!CAT.video.seriesPrices[D.scenes]) D.scenes = 4; }
       else if (D.style === 'v_drama' && !CAT.video.genres.some((g) => g.id === D.genre)) { D.genre = 'inlaw'; if (D.scenes === 8) D.scenes = 6; }
       drawStep();
     });
@@ -1216,7 +1219,7 @@ function drawStep() {
         for (const w of r.items.filter((x) => x.style === 'v_series' && x.status === 'done' && x.params?.series)) { const k = w.params.series.root || w.id; if (!latest[k] || w.params.series.ep > latest[k].params.series.ep) latest[k] = w; }
         const list = Object.values(latest);
         if (!list.length) return;
-        el.innerHTML = `<section class="card"><b>ทำตอนต่อจากเรื่องเดิม</b>${list.map((w) => `<div class="row between" style="gap:8px"><span style="min-width:0"><b style="font-size:14px">${esc(w.params.series.title)}</b><br><span class="muted" style="font-size:12px">จบที่ EP.${w.params.series.ep}</span></span>
+        el.innerHTML = `<section class="card"><b>ทำตอนต่อจากเรื่องเดิม</b>${list.map((w) => `<div class="row between" style="gap:8px"><span style="min-width:0"><b style="font-size:14px">${esc(w.params.series.title)}</b><br><span class="muted" style="font-size:12px">จบที่ EP.${w.params.series.ep}${w.params.series.arc?.[w.params.series.ep] ? ` · ตอนต่อไปตามแผน: ${esc(w.params.series.arc[w.params.series.ep].slice(0, 80))}` : (w.params.series.arc?.length && w.params.series.ep >= w.params.series.arc.length ? ' · เล่าครบตามเรื่องย่อแล้ว' : '')}</span></span>
           <button type="button" class="btn sm" data-cont="${w.id}">ทำ EP.${w.params.series.ep + 1}</button></div>`).join('')}</section>`;
         el.querySelectorAll('[data-cont]').forEach((b) => b.onclick = () => { const w = list.find((x) => String(x.id) === b.dataset.cont); Object.assign(D, { seriesFrom: w.id, seriesInfo: w.params.series, genre: w.params.series.genre, art: w.params.series.art, product: w.params.series.title, plot: '' }); drawStep(); });
       }).catch(() => {});
@@ -1663,7 +1666,7 @@ function uploadWithProgress(url, fd, onp) {
 }
 function styleNote(x) {
   const V2 = CAT.video;
-  return { v_remix: `เริ่ม ${V2.remix?.prices?.base?.[0]?.[1] || 9} ดาว · พรอมต์ Flow ทีละฉาก`, v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.std === false ? V2.avatar?.proPrices?.[15] : V2.avatar?.prices?.[15]} ดาว · พูด ไทย/EN/中文/Melayu`,
+  return { v_pixel: `เริ่ม ${V2.seriesPrices[4]} ดาว · ซีรีส์ภาพพิกเซล`, v_stick: `เริ่ม ${V2.seriesPrices[4]} ดาว · เรื่องเล่าชีวิต`, v_remix: `เริ่ม ${V2.remix?.prices?.base?.[0]?.[1] || 9} ดาว · พรอมต์ Flow ทีละฉาก`, v_self: `เริ่ม ${V2.selfPrices.subs[0]} ดาว · ซับอัตโนมัติ`, v_top: `เริ่ม ${V2.prices[30]} ดาว · 2–5 สินค้า`, v_drama: `เริ่ม ${V2.dramaPrices[4]} ดาว · AI วาดฉาก+หลายเสียง`, v_series: `เริ่ม ${V2.seriesPrices[4]} ดาว · ต่อเป็นตอนๆ ได้`, v_motion: `${V2.motionPrice} ดาว · ภาพเคลื่อนไหวจริง ~10 วิ`, v_avatar: `เริ่ม ${V2.avatar?.std === false ? V2.avatar?.proPrices?.[15] : V2.avatar?.prices?.[15]} ดาว · พูด ไทย/EN/中文/Melayu`,
     v_show: `เริ่ม ${V2.prices[15]} ดาว · 2–8 รูป`, v_tips: `เริ่ม ${V2.prices[30]} ดาว · 3 หรือ 5 ทิป`, v_shop: `เริ่ม ${V2.prices[15]} ดาว · รูปร้าน+ข้อมูล`,
     v_pr_announce: `เริ่ม ${V2.prices[15]} ดาว · เสียงทางการ`, v_pr_recap: `เริ่ม ${V2.prices[15]} ดาว · จากรูปกิจกรรม` }[x.id] || `เริ่ม ${V2.prices[15]} ดาว · 9:16`;
 }

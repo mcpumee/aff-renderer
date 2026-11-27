@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import * as V from './video.mjs';
+const FAITH = V.FAITHFUL;
 import { TIERS, genImage, gpost, findText, checkContent } from './create.mjs';
 
 const KEY = () => process.env.GEMINI_API_KEY || '';
@@ -38,6 +39,7 @@ export const FILM_ARTS = [
   { id: 'cdrama', label: 'ซีรีส์จีนย้อนยุค', en: 'Chinese historical drama look, ornate costumes, palace sets, cinematic, photorealistic' },
   { id: 'noir', label: 'หนังมืด ลึกลับ', en: 'dark moody thriller look, low-key lighting, teal and orange, rain and neon, photorealistic' },
   { id: 'anime', label: 'อนิเมะ', en: 'high-quality Japanese anime film style, detailed backgrounds, cel shading, expressive characters' },
+  { id: 'pixel', label: 'พิกเซล 16-bit', en: '16-bit retro pixel art, crisp clearly visible square pixels, limited vibrant palette, cozy richly detailed pixel-art backgrounds, SNES-era RPG game aesthetic, cute chibi pixel-art characters with simple expressive faces, warm lighting, no anti-aliasing blur, no smooth gradients' },
   { id: 'stick', label: 'ตัวก้านไม้หัวกลม', en: 'simple flat 2D storybook illustration, minimalist stick-figure characters with big round plain white heads, simple dot eyes and small expressive mouth, thick clean black outlines, thin black stick arms, simple solid-color clothes, richly detailed warm cozy hand-drawn backgrounds, soft warm lamp lighting, gentle muted palette, heartwarming slice-of-life mood' },
   { id: '3d', label: 'แอนิเมชัน 3D', en: 'high-end 3D animated feature film style, soft global illumination, expressive stylized characters' },
 ];
@@ -98,11 +100,12 @@ export async function filmOutline(f) {
 ชื่อเรื่อง: ${f.title}
 แนว: ${G.label} — ${G.en}
 เรื่องย่อ: ${f.logline}
-${f.premise ? `ไอเดียเพิ่มเติม (ข้อมูล): ${f.premise}` : ''}
+${f.premise ? `ไอเดียเพิ่มเติม (ข้อมูล): ${f.premise}` : ''}${FAITH}
+- แบ่งเรื่องย่อของผู้ใช้ออกเป็นตอนๆ ตามลำดับ ให้ครบทุกเหตุการณ์ (ไม่อัดตอนเดียว ไม่ยืดด้วยเรื่องที่แต่งเพิ่ม)
 ตัวละคร:
 ${castText(f.cast)}
 กฎ: ทุกตอนต้องมีเหตุการณ์สำคัญ 1 อย่าง และจบด้วยการค้างคา (cliffhanger) ให้อยากดูตอนต่อไป ตอนสุดท้ายปิดเรื่องให้สะใจ/ซึ้ง · ตัวละครมีนิสัยคงที่ · ฉากถ่ายทำได้จริง
-ตอบ JSON ภาษาไทย: {"bible":{"world":"โลก/ฉากหลัก 1-2 ประโยค","tone":"โทนเรื่อง","rules":"สิ่งที่ต้องคงที่ทั้งเรื่อง"},"episodes":[{"n":1,"title":"ชื่อตอน","summary":"เกิดอะไรขึ้น 2-3 ประโยค","cliff":"ค้างคาท้ายตอน"}]}`, 0.8);
+ตอบ JSON ภาษาไทย: {"bible":{"world":"โลก/ฉากหลัก 1-2 ประโยค","tone":"โทนเรื่อง","rules":"สิ่งที่ต้องคงที่ทั้งเรื่อง"},"episodes":[{"n":1,"title":"ชื่อตอน","summary":"เกิดอะไรขึ้น 2-3 ประโยค","cliff":"ค้างคาท้ายตอน"}]}`, 0.55);
   const n = f.n || f.episodes.length;
   const eps = (o.episodes || []).slice(0, n).map((e, i) => ({ n: i + 1, title: clean(e.title, 60), summary: clean(e.summary, 1500), cliff: clean(e.cliff, 200), script: null, workId: null }));
   return { bible: { world: clean(o.bible?.world, 300), tone: clean(o.bible?.tone, 120), rules: clean(o.bible?.rules, 300) }, episodes: eps };
@@ -119,6 +122,7 @@ export async function filmScript(f, ep) {
 ตอนก่อนหน้า:
 ${prev || '-'}
 ตอนนี้: ${ep.title} — ${ep.summary} · ค้างคาท้ายตอน: ${ep.cliff}
+เขียนเฉพาะเหตุการณ์ของตอนนี้ตามลำดับ ไม่เพิ่มเหตุการณ์ใหม่ที่ไม่อยู่ในสรุปตอน · เกลาคำพูดให้เป็นธรรมชาติ สั้น ชัด
 ตัวละคร (ใช้ชื่อตามนี้เท่านั้น):
 ${castText(f.cast)}
 กฎสำคัญ:
@@ -127,7 +131,7 @@ ${castText(f.cast)}
 - บทพูดเป็นภาษา ${L.name} เป็นธรรมชาติ ดราม่าจัด สั้นและคม
 - scene/action/camera เขียนเป็นภาษาอังกฤษสำหรับ AI สร้างภาพ (ระบุสถานที่ แสง อารมณ์ ท่าทาง มุมกล้อง) ห้ามมีตัวหนังสือในภาพ
 - ห้ามเนื้อหาทางเพศโจ่งแจ้ง ความรุนแรงเกินเหตุ หรือเด็กในฉากอันตราย
-ตอบ JSON: {"shots":[{"scene":"EN location + time + lighting","action":"EN what happens and facial expression","camera":"EN shot type and movement e.g. close-up slow push-in","chars":["ชื่อตัวละครในภาพ"],"speaker":"ชื่อคนพูด หรือ ว่าง","line":"บทพูด หรือ ว่าง","mood":"tense|sad|sweet|funny|scary|epic"}],"hook":"ข้อความฮุคบนจอช่วงเปิด 2 บรรทัด คั่นด้วย \\n (ภาษาไทย)","facebook":"แคปชั่นโพสต์ภาษาไทย 2-4 บรรทัด ชวนดูต่อ","tiktok":"แคปชั่นสั้น","instagram":"แคปชั่น","hashtags":["5-8 แท็ก"]}`, 0.85, 150000);
+ตอบ JSON: {"shots":[{"scene":"EN location + time + lighting","action":"EN what happens and facial expression","camera":"EN shot type and movement e.g. close-up slow push-in","chars":["ชื่อตัวละครในภาพ"],"speaker":"ชื่อคนพูด หรือ ว่าง","line":"บทพูด หรือ ว่าง","mood":"tense|sad|sweet|funny|scary|epic"}],"hook":"ข้อความฮุคบนจอช่วงเปิด 2 บรรทัด คั่นด้วย \\n (ภาษาไทย)","facebook":"แคปชั่นโพสต์ภาษาไทย 2-4 บรรทัด ชวนดูต่อ","tiktok":"แคปชั่นสั้น","instagram":"แคปชั่น","hashtags":["5-8 แท็ก"]}`, 0.6, 150000);
   const names = new Set(f.cast.map((c) => c.name));
   const out = (o.shots || []).slice(0, shots).map((s, i) => {
     const sp = names.has(String(s.speaker || '').trim()) ? String(s.speaker).trim() : '';

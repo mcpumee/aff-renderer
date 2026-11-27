@@ -497,7 +497,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       tiers: TIERS.map(({ id, label, note, stars, free, size }) => ({ id, label, note, stars, free: !!free, size })),
       stars: m.stars, free: m.freeImages, keepDays: KEEP_DAYS,
       video: {
-        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal, variants, pr, agent, film }) => ({ id, label, emoji, color, reveal, variants, pr: !!pr, agent: !!agent, film: !!film })),
+        styles: V.VIDEO_STYLES.map(({ id, label, emoji, color, reveal, variants, pr, agent, film, as, preset }) => ({ id, label, emoji, color, reveal, variants, pr: !!pr, agent: !!agent, film: !!film, ...(as ? { as, preset } : {}) })),
         formulas: V.FORMULAS.map(({ id, label, desc, rec, dialogue }) => ({ id, label, desc, rec, dialogue: !!dialogue })),
         music: V.MUSIC,
         remix: { prices: RX.REMIX_PRICE, modes: RX.AVATAR_MODES, maxSec: RX.REMIX_MAX_SEC, flow: RX.FLOW_URL },
@@ -1156,7 +1156,7 @@ ${text ? `ข้อความที่ผู้ใช้วางมา (ถ�
       const meta = await sharp(f.path).rotate().metadata();
       const w = meta.autoOrient?.width || meta.width || 1, h = meta.autoOrient?.height || meta.height || 1;
       const near = RATIOS.map((r) => { const [a, b] = r.id.split(':').map(Number); return { id: r.id, d: Math.abs(Math.log((a / b) / (w / h))) }; }).sort((x, y) => x.d - y.d)[0]?.id;
-      const list = vid ? V.VIDEO_STYLES.filter((x) => !x.film) : STYLES;
+      const list = vid ? V.VIDEO_STYLES.filter((x) => !x.film && !x.as) : STYLES;
       const small = await sharp(f.path).rotate().resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
       const prompt = `ภาพนี้คือ "งานตัวอย่าง" ที่ลูกค้าอยากได้แบบเดียวกัน อ่านแล้วตอบ JSON เท่านั้น
 แนวงานที่มี (เลือก id ที่ใกล้ที่สุด 1 อัน): ${list.map((x) => `${x.id}=${x.label}`).join(' · ')}
@@ -1569,7 +1569,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     if (fs.existsSync(out.jpg)) { await sharp(out.jpg).resize({ width: 480 }).webp({ quality: 78 }).toFile(path.join(WORK_DIR, `${base}.webp`)); thumb = `${base}.webp`; fs.rm(out.jpg, () => {}); }
     const { captions, tags } = await finalizeCaptions(w, p, d.captions);
     const vf = [{ name: `${base}.mp4`, thumb, w: 1080, h: 1920, type: 'video' }];
-    const series = { title: d.title, ep: d.ep, epTitle: d.epTitle, summary: d.summary, cliff: d.cliff, genre: p.genre, art: p.art, frame,
+    const series = { title: d.title, ep: d.ep, epTitle: d.epTitle, summary: d.summary, cliff: d.cliff, genre: p.genre, art: p.art, frame, plot: d.plot || '', arc: d.arc || [],
       chars: d.chars.map(({ name, gender, age, look, voice, pitch, color }) => ({ name, gender, age, look, voice, pitch, color })), root: prev?.root || w.id };
     await q("UPDATE works SET status='done', title=$6, files=$2, captions=$3, hashtags=$4, params = params || $5::jsonb, done_at=now() WHERE id=$1",
       [w.id, JSON.stringify(vf), captions, tags, JSON.stringify({ series, script: lines.map((l) => `${l.name || 'ผู้บรรยาย'}: ${l.text}`), cast: series.chars.map(({ name, gender, age }) => ({ name, gender, age })) }), `${d.title} EP.${d.ep}${d.epTitle ? ` ${d.epTitle}` : ''}`.slice(0, 80)]);

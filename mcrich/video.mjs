@@ -276,7 +276,8 @@ async function ttsLine(text, voice, tone) {
   const want = [...String(text).replace(/\s+/g, '')].length / 15; // ไทย ~15 ตัวอักษร/วิ
   let best = null;
   for (let k = 0; k < 3; k++) {
-    const o = await ttsOnce(text, voice, tone);
+    let o;
+    try { o = await ttsOnce(text, voice, tone); } catch (e) { if (best) break; throw e; } // รอบตรวจคุณภาพพัง → ใช้เสียงที่ดีที่สุดที่มี
     const g = gapsOf(o.pcm, o.rate);
     const bad = (want > 1.2 && g.voiced < want * 0.45) || g.maxGap > 1.6;
     const score = Math.min(1, g.voiced / Math.max(0.5, want)) - (g.maxGap > 1.6 ? 0.5 : 0);
@@ -286,7 +287,19 @@ async function ttsLine(text, voice, tone) {
   }
   return best.o;
 }
+// TTS ของ Gemini ล้มชั่วคราวบ่อย (429 โควตาต่อนาที / 500 / 503 / ไม่ส่งเสียงกลับ) → รอแล้วลองใหม่ ไม่ให้ทั้งงานล้ม
 async function ttsOnce(text, voice, tone) {
+  const waits = [2000, 6000, 15000, 30000];
+  for (let a = 0; ; a++) {
+    try { return await ttsTry(text, voice, tone); } catch (e) {
+      const transient = !e.status || [408, 429, 500, 502, 503, 504].includes(e.status) || /tts_no_audio|timeout|fetch failed|ECONNRESET|aborted/i.test(e.message || '');
+      if (!transient || a >= waits.length || e.status === 402) throw e;
+      console.log(new Date().toISOString(), 'tts wait', e.status || '', String(e.message || '').slice(0, 80), `retry in ${waits[a] / 1000}s`);
+      await new Promise((ok) => setTimeout(ok, waits[a] + Math.random() * 1000));
+    }
+  }
+}
+async function ttsTry(text, voice, tone) {
   const models = ttsModel ? [ttsModel] : TTS_MODELS;
   let last;
   for (const m of models) {

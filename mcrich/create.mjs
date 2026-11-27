@@ -225,6 +225,8 @@ async function genCaptions(prompt) {
 }
 
 // ---------- คำสั่ง ----------
+// เก็บสาเหตุจริงไว้ให้แอดมินเห็นในหน้าผลงาน
+let noteFail = async () => {};
 let avRefImg = null; // ตั้งค่าใน register (ใช้ AV_DIR)
 const clean = (v, n = 200) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
 // นางแบบ/นายแบบ: ลุคสุภาพ หรือ เซ็กซี่แฟชั่น (ระดับแคตตาล็อกชุดว่ายน้ำ/ชุดชั้นใน) · ห้ามโป๊ ห้ามท่าทางทางเพศ · ผู้ใหญ่สมมติเท่านั้น
@@ -342,6 +344,7 @@ async function finish(buf, { logo, contact = [] }) {
 // เรื่องย่อ/พล็อต: ยาวได้ (เล่าเรื่องหลายตอน)
 const PLOT_MAX = 5000;
 export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, rand, pubUrl, films, hooks = {} }) {
+  noteFail = (w, e) => q("UPDATE works SET params = params || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ failDetail: `${aiWhy(e)} — ${String(e?.message || e).slice(0, 300)}` })]).catch(() => {});
   const WORK_DIR = path.join(DATA_DIR, 'works');
   const REF_DIR = path.join(DATA_DIR, 'refs');
   const LOGO_DIR = path.join(DATA_DIR, 'logos');
@@ -1003,7 +1006,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
       voice = fit.voice;
       if (fit.lines !== lines) { lines = fit.lines; let k = 0; for (const sl of d.slides) sl.lines = sl.lines.map(() => lines[k++]); }
       d.lines = lines;
-    } catch (e) { log('info prep fail', w.id, e.message); tmpFiles.forEach((f) => fs.rm(f, () => {})); return fail('AI เขียนบท/พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    } catch (e) { log('info prep fail', w.id, e.message); await noteFail(w, e); tmpFiles.forEach((f) => fs.rm(f, () => {})); return fail('AI เขียนบท/พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
     const starts = V.lineStarts(voice.alignment, d.lines);
     let li = 0;
     const bgs = [...photos, ...tmpFiles];
@@ -1102,7 +1105,7 @@ export function registerCreate(app, { q, pool, auth, wrap, log, DATA_DIR, me, ra
         const v = await V.voiceOne(ctaTxt, c ? c.voice : V.NARR_VOICE);
         lines.push({ ...last, text: ctaTxt, shot: -1, audio_base64: v.audio_base64, alignment: v.alignment });
       }
-    } catch (e) { log('drama voice fail', w.id, e.message); files.forEach((f) => f && fs.rm(f, () => {})); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    } catch (e) { log('drama voice fail', w.id, e.message); await noteFail(w, e); files.forEach((f) => f && fs.rm(f, () => {})); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
     let out;
     try {
       stage('กำลังตัดต่อ', 58);
@@ -1487,7 +1490,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
       // ให้พูดจบพอดีความยาวที่เลือก (บทของผู้ใช้: ย่อเฉพาะเมื่อยาวเกินจริงๆ)
       const fit = await voiceFit(lines, p.length, (ls) => V.voiceGemini(ls, vid, p.tone || 'เป็นกันเอง'), { lang: p.lang, id: w.id, maxSec: p.scriptMode === 'own' ? p.length * 1.2 + 2 : 0, noExpand: p.scriptMode === 'own' });
       voice = fit.voice; lines = fit.lines;
-    } catch (e) { log('avatar voice fail', w.id, e.message); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    } catch (e) { log('avatar voice fail', w.id, e.message); await noteFail(w, e); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
     const audio = Buffer.from(voice.audio_base64, 'base64');
     const sec = V.speechEnd(voice.alignment);
     if (sec > p.length * 1.5 + 3) return fail(`บทยาวเกินความยาวที่เลือกมาก (${Math.round(sec)} วิ) เลือกความยาวมากขึ้นหรือตัดบท · คืนดาวแล้ว`);
@@ -1658,7 +1661,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
           stage(`กำลังพากย์เสียง ${lines.filter(Boolean).length}/${all.length}`, 45 + Math.round((lines.filter(Boolean).length / all.length) * 10));
         }
       }));
-    } catch (e) { log('series voice fail', w.id, e.message); await motionJob; [...files, ...moving].forEach((f) => f && fs.rm(f, () => {})); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    } catch (e) { log('series voice fail', w.id, e.message); await noteFail(w, e); await motionJob; [...files, ...moving].forEach((f) => f && fs.rm(f, () => {})); return fail('พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
     if (p.motion) { stage('ให้ตัวละครขยับฉากเด่น', 56); await motionJob; }
     // เก็บภาพฉากแรกไว้ถาวร ใช้เป็นต้นแบบหน้าตาตัวละครของตอนถัดไป
     const frame = `w${w.id}-${rand(6).toLowerCase()}.jpg`;
@@ -1791,7 +1794,7 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
         stage('เขียนแคปชั่น', 10);
         script = { captions: await genCaptions(captionPrompt({ ...p, details: [p.details, (p.segments || []).map((g) => g.text).join(' ')].filter(Boolean).join(' / ').slice(0, 600) }, { label: 'คลิปรีวิวที่ถ่ายเอง' }, brand)).catch(() => ({})) };
       }
-    } catch (e) { log('self prep fail', w.id, e.message); return fail('AI เขียนบท/พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
+    } catch (e) { log('self prep fail', w.id, e.message); await noteFail(w, e); return fail('AI เขียนบท/พากย์เสียงไม่สำเร็จ · คืนดาวแล้ว'); }
     let out;
     try {
       stage('กำลังตัดต่อ', 35);

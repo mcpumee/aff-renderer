@@ -1,6 +1,7 @@
 // Mc Rich — สร้างภาพด้วย AI (Gemini Nano Banana) + แคปชั่น + ผลงานของฉัน
 // ตัดดาวตอนกดยืนยันเท่านั้น สร้างไม่สำเร็จคืนดาว/ภาพฟรีอัตโนมัติ ไฟล์ลบจากเซิร์ฟเวอร์เมื่อครบ 7 วัน
 import fs from 'node:fs';
+import { leoReady, leoImage } from './leonardo.mjs';
 import path from 'node:path';
 import multer from 'multer';
 import sharp from 'sharp';
@@ -1335,7 +1336,17 @@ ${art === 'real' ? 'Lighting: soft even key light, natural skin texture with por
     const model = MODEL_OVERRIDE || TIERS[1].model;
     const out = await Promise.all([0, 1].map(async (i) => {
       try {
-        const buf = await genImage({ model, prompt: i ? `${prompt}\nSlightly different face and pose from other takes.` : prompt, refs: [], ratio: '9:16', size: '1K' });
+        const pr = i ? `${prompt}\nSlightly different face and pose from other takes.` : prompt;
+        // ตัววาด: Gemini เป็นหลัก · ถ้า Gemini ปฏิเสธ/ล้ม และมีคีย์ Leonardo → วาดด้วย Leonardo แทน (LEONARDO_AVATAR=primary ให้ Leonardo วาดก่อน)
+        const leoStyle = sp.bg === 'bedroom' ? 'film' : sp.sexy === 'yes' || ['bodycon', 'gown', 'swim', 'crop', 'gymfit', 'satin'].includes(sp.outfit) ? 'fashion' : 'portrait';
+        const viaLeo = () => leoImage({ prompt: pr, ratio: '9:16', art: art === 'real' ? 'real' : 'art', style: leoStyle });
+        const viaGem = () => genImage({ model, prompt: pr, refs: [], ratio: '9:16', size: '1K' });
+        const leoFirst = leoReady() && process.env.LEONARDO_AVATAR === 'primary';
+        const buf = await (leoFirst ? viaLeo() : viaGem()).catch((e) => {
+          if (!leoReady()) throw e;
+          log('avatar design switch engine', req.uid, e.message.slice(0, 120));
+          return leoFirst ? viaGem() : viaLeo();
+        });
         const name = `c${req.uid}-${Date.now().toString(36)}${rand(4).toLowerCase()}.jpg`;
         await sharp(buf).rotate().jpeg({ quality: 92 }).toFile(path.join(AV_DIR, name));
         return name;

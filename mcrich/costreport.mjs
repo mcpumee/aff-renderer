@@ -1,7 +1,7 @@
 // หน้าต้นทุน–รายได้ (หลังบ้าน): รายได้จากดาว · ต้นทุน AI ที่วัดได้จริง · เงินที่จ่ายจริงให้แต่ละเครื่องมือ · เทียบประมาณการเดิม
 import { prices, savePrices, DEFAULT_PRICES } from './costs.mjs';
 
-const TOOLS = { gemini: 'Google Gemini', fal: 'fal.ai (Kling/Seedance)', openrouter: 'OpenRouter (Seedance Flash)', heygen: 'HeyGen', elevenlabs: 'ElevenLabs', hostinger: 'Hostinger VPS', domain: 'โดเมน', other: 'อื่นๆ' };
+const TOOLS = { gemini: 'Google Gemini', fal: 'fal.ai (Kling/Seedance)', openrouter: 'OpenRouter (Seedance Flash)', leonardo: 'Leonardo.Ai', heygen: 'HeyGen', elevenlabs: 'ElevenLabs', hostinger: 'Hostinger VPS', domain: 'โดเมน', other: 'อื่นๆ' };
 // ประมาณการเดิมต่อภาพ (USD) ตามระดับ — ใช้เทียบกับต้นทุนจริง
 const EST_IMAGE = { free: 0.02, std: 0.04, hd: 0.055, pro: 0.14, pro4k: 0.25 };
 
